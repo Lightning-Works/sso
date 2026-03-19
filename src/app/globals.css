@@ -1,26 +1,465 @@
 @import "tailwindcss";
 
+
+/* ============================================
+   LIGHTNINGWORKS SSO - GLOBAL DESIGN TOKENS
+   ============================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* Brand Colors */
+  --lw-purple: #6a24fa;
+  --lw-purple-hover: #7f4ae8;
+  --lw-panel: rgba(0, 0, 0, 0.8);
+  --lw-input-bg: rgba(26, 17, 46, 1); /* HSB 275 64 18 */
+
+  /* Background Colors */
+  --lw-bg-page: #0c0b0b;
+  --lw-bg-dark: #1a1a1a;
+  --lw-bg-input: #000000;
+  --lw-bg-input-hover: #3a3938;
+
+  /* Text Colors */
+  --lw-text-primary: #e4dad1;
+  --lw-text-secondary: #bab1a8;
+  --lw-text-muted: #7a7572;
+  --lw-text-white: #ffffff;
+
+  /* Border Colors */
+  --lw-border: #4c4946;
+  --lw-border-focus: var(--lw-purple);
+
+  /* Status Colors */
+  --lw-error: #ff4444;
+  --lw-success: #44ff44;
+
+  /* OAuth Brand Colors */
+  --lw-google-bg: #ffffff;
+  --lw-google-text: #000000;
+  --lw-discord-bg: #5865F2;
+  --lw-discord-hover: #4752C4;
+  --lw-apple-bg: #000000;
+  --lw-twitter-bg: #1a1a1a;
+
+  /* Spacing */
+  --lw-radius: 8px;
+  --lw-radius-sm: 4px;
+
+  /* Typography */
+  --lw-font-display: 'Bebas Neue', sans-serif;
+  --lw-font-body: 'Open Sans', sans-serif;
+
+  /* Sizes */
+  --lw-logo-height: 48px;
+  --lw-panel-max-width: 448px;
+  --lw-character-max-height: 550px;
+  --lw-character-offset-x: -55px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+body {
+  background-color: var(--lw-bg-page);
+  color: var(--lw-text-primary);
+  font-family: var(--lw-font-body);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ============================================
+   PAGE LAYOUTS
+   ============================================ */
+
+.lw-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: var(--lw-bg-page);
+  background-image: url('/bkgd_comics.webp');
+  background-repeat: repeat;
+  background-size: 400px;
+}
+
+.lw-page-inner {
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+}
+
+/* ============================================
+   PANELS
+   ============================================ */
+
+.lw-panel {
+  background-color: var(--lw-panel) !important;
+  border-radius: var(--lw-radius);
+  padding: 2rem;
+  border: none;
+  backdrop-filter: blur(10px);
+}
+
+.lw-panel-content {
+  width: 100%;
+  max-width: var(--lw-panel-max-width);
+}
+
+/* ============================================
+   HEADER / LOGO
+   ============================================ */
+
+.lw-logo {
+  height: var(--lw-logo-height);
+  display: block;
+  margin: 0 auto;
+}
+
+.lw-app-logo {
+  height: 90px;
+  display: block;
+  margin: 0 auto 1.5rem auto;
+  object-fit: contain;
+}
+
+.lw-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.lw-subtitle {
+  color: var(--lw-text-secondary);
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+}
+
+/* ============================================
+   CHARACTER IMAGE
+   ============================================ */
+
+.lw-character {
+  display: none;
+  height: auto;
+  object-fit: contain;
+  margin-left: -55px !important;
+  position: relative;
+  z-index: 10;
+  max-height: var(--lw-character-max-height);
+}
+
+@media (min-width: 1024px) {
+  .lw-character {
+    display: block;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ============================================
+   FORM INPUTS
+   ============================================ */
+
+input.lw-input,
+input.lw-input[type="email"],
+input.lw-input[type="password"],
+input.lw-input[type="text"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  background: rgba(26, 17, 46, 1) !important;
+  background-color: rgba(26, 17, 46, 1) !important;
+  color: #bab1a8 !important;
+  border: none !important;
+  border-radius: var(--lw-radius-sm);
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-family: var(--lw-font-body);
+  outline: none;
+  transition: box-shadow 0.2s ease;
+}
+
+input.lw-input:focus {
+  box-shadow: 0 0 0 2px var(--lw-purple);
+}
+
+input.lw-input::placeholder {
+  color: #7a7572 !important;
+  opacity: 1;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.lw-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--lw-radius-sm);
+  font-weight: 500;
+  font-family: var(--lw-font-body);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none !important;
+  font-size: 0.875rem;
+}
+
+.lw-btn-primary {
+  background-color: var(--lw-purple);
+  color: var(--lw-text-white);
+  width: 100%;
+  padding: 0.75rem 1rem;
+}
+
+.lw-btn-primary:hover {
+  background-color: var(--lw-purple-hover);
+}
+
+.lw-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lw-btn-secondary {
+  background-color: var(--lw-bg-input);
+  color: var(--lw-text-primary);
+}
+
+.lw-btn-secondary:hover {
+  background-color: var(--lw-bg-input-hover);
+}
+
+/* OAuth Buttons */
+.lw-btn-google {
+  background-color: var(--lw-google-bg);
+  color: var(--lw-google-text);
+}
+
+.lw-btn-google:hover {
+  background-color: #f0f0f0;
+}
+
+.lw-btn-apple {
+  background-color: var(--lw-apple-bg);
+  color: var(--lw-text-white);
+}
+
+.lw-btn-apple:hover {
+  background-color: #1a1a1a;
+}
+
+.lw-btn-discord {
+  background-color: var(--lw-discord-bg);
+  color: var(--lw-text-white);
+}
+
+.lw-btn-discord:hover {
+  background-color: var(--lw-discord-hover);
+}
+
+.lw-btn-twitter {
+  background-color: var(--lw-twitter-bg);
+  color: var(--lw-text-white);
+}
+
+.lw-btn-twitter:hover {
+  background-color: var(--lw-bg-input);
+}
+
+.lw-btn-wax {
+  background-color: #ff5722;
+  color: var(--lw-text-white);
+}
+
+.lw-btn-wax:hover {
+  background-color: #e64a19;
+}
+
+.lw-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============================================
+   OAUTH GRID
+   ============================================ */
+
+.lw-oauth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ============================================
+   DIVIDER
+   ============================================ */
+
+.lw-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.lw-divider-line {
+  flex: 1;
+  height: 1px;
+  background-color: var(--lw-border);
+}
+
+.lw-divider-text {
+  color: var(--lw-text-muted);
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   FORM LAYOUT
+   ============================================ */
+
+.lw-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ============================================
+   MESSAGES
+   ============================================ */
+
+.lw-error {
+  color: var(--lw-error);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.lw-success {
+  color: var(--lw-success);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ============================================
+   LINKS
+   ============================================ */
+
+.lw-link {
+  color: var(--lw-purple);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.lw-link:hover {
+  color: var(--lw-purple-hover);
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.lw-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+.lw-footer-text {
+  color: var(--lw-text-muted);
+  font-size: 0.75rem;
+}
+
+.lw-footer-links {
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+/* ============================================
+   ACCOUNT PAGE
+   ============================================ */
+
+.lw-account-page {
+  min-height: 100vh;
+  padding: 1rem;
+  background-color: var(--lw-bg-page);
+  background-image: url('/bkgd_comics.webp');
+  background-repeat: repeat;
+  background-size: 400px;
+}
+
+.lw-account-container {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.lw-account-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-top: 2rem;
+}
+
+.lw-section {
+  background-color: var(--lw-panel);
+  border-radius: var(--lw-radius);
+  padding: 1.5rem;
+  border: none;
+  backdrop-filter: blur(10px);
+  margin-bottom: 1.5rem;
+}
+
+.lw-section-title {
+  font-family: var(--lw-font-display);
+  font-size: 1.5rem;
+  color: var(--lw-text-white);
+  margin-bottom: 1rem;
+}
+
+.lw-heading-xl {
+  font-family: var(--lw-font-display);
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--lw-text-white);
+  letter-spacing: 0.025em;
+}
+
+.lw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.lw-row-label {
+  color: var(--lw-text-secondary);
+  font-size: 0.875rem;
+}
+
+.lw-row-value {
+  color: var(--lw-text-primary);
+  font-size: 0.875rem;
+}
+
+.lw-game-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background-color: var(--lw-bg-input);
+  border-radius: var(--lw-radius-sm);
+  margin-bottom: 0.75rem;
+}
+
+.lw-game-title {
+  color: var(--lw-text-white);
+  font-weight: 500;
+}
+
+.lw-game-subtitle {
+  color: var(--lw-text-muted);
+  font-size: 0.875rem;
+}
+
+.lw-connected {
+  color: var(--lw-success);
+  font-size: 0.875rem;
 }
