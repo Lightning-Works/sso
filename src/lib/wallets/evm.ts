@@ -4,22 +4,20 @@
  */
 
 import { http, createConfig } from 'wagmi'
-import { mainnet, polygon, bsc, arbitrum } from 'wagmi/chains'
+import { mainnet, polygon } from 'wagmi/chains'
 import { metaMask } from 'wagmi/connectors'
 import type { ConnectedWallet } from './types'
 import { shortenAddress } from './types'
 
-// Wagmi config - add more chains as needed
+// Wagmi config - Ethereum and Polygon only
 export const evmConfig = createConfig({
-  chains: [mainnet, polygon, bsc, arbitrum],
+  chains: [mainnet, polygon],
   connectors: [
     metaMask(),
   ],
   transports: {
     [mainnet.id]: http(),
     [polygon.id]: http(),
-    [bsc.id]: http(),
-    [arbitrum.id]: http(),
   },
 })
 
@@ -27,8 +25,6 @@ export const evmConfig = createConfig({
 const chainNames: Record<number, string> = {
   1: 'Ethereum',
   137: 'Polygon',
-  56: 'BSC',
-  42161: 'Arbitrum',
 }
 
 export function getChainName(chainId: number): string {

@@ -51,7 +51,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   }
 
   // EVM state
-  const { address: evmAddress, chainId, isConnected: evmConnected } = useAccount()
+  const { address: evmAddress, addresses: evmAddresses, chainId, isConnected: evmConnected } = useAccount()
   const { connect, connectors } = useConnect()
   const { disconnect: evmDisconnect } = useDisconnect()
 
@@ -92,15 +92,18 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   }
 
   const handleSaveEvm = async () => {
-    if (evmAddress && chainId) {
-      await saveWallet({
-        chain: 'evm',
-        provider: 'metamask',
-        address: evmAddress,
-        displayAddress: shortenAddress(evmAddress),
-        chainId,
-        chainName: chainId === 1 ? 'Ethereum' : chainId === 137 ? 'Polygon' : `Chain ${chainId}`,
-      })
+    const addresses = evmAddresses || (evmAddress ? [evmAddress] : [])
+    if (addresses.length > 0 && chainId) {
+      for (const addr of addresses) {
+        await saveWallet({
+          chain: 'evm',
+          provider: 'metamask',
+          address: addr,
+          displayAddress: shortenAddress(addr),
+          chainId,
+          chainName: chainId === 1 ? 'Ethereum' : chainId === 137 ? 'Polygon' : `Chain ${chainId}`,
+        })
+      }
       setConnecting('')
     }
   }
@@ -151,17 +154,21 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
           <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="24" height="24" />
           <div>
             <span className="lw-row-value">MetaMask (EVM)</span>
-            {evmConnected && evmAddress && (
-              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '2px 0 0 0' }}>
-                {shortenAddress(evmAddress)}
-              </p>
+            {evmConnected && evmAddresses && evmAddresses.length > 0 && (
+              <div style={{ marginTop: '2px' }}>
+                {evmAddresses.map(addr => (
+                  <p key={addr} style={{ color: isWalletSaved(addr) ? 'var(--lw-success)' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '1px 0' }}>
+                    {isWalletSaved(addr) ? '✓ ' : ''}{shortenAddress(addr)}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </div>
-        {isWalletSaved(evmAddress || '') ? (
-          <span className="lw-connected">✓ Connected</span>
+        {evmConnected && evmAddresses && evmAddresses.every(a => isWalletSaved(a)) ? (
+          <span className="lw-connected">✓ All Saved</span>
         ) : evmConnected ? (
-          <ConnectBtn id="metamask-save" onClick={handleSaveEvm} label="Save Wallet" />
+          <ConnectBtn id="metamask-save" onClick={handleSaveEvm} label={`Save ${evmAddresses?.length || 1} Address${(evmAddresses?.length || 1) > 1 ? 'es' : ''}`} />
         ) : (
           <ConnectBtn id="metamask" onClick={handleMetaMask} />
         )}
