@@ -1,7 +1,7 @@
 /**
  * EVM Balance Checker via Alchemy API
  * Returns native + USDT/USDC + other ERC-20 token balances
- * Currently supports Ethereum and Polygon only
+ * Supports: Ethereum, Polygon, Base, BSC
  */
 
 import type { WalletToken } from '../types'
@@ -19,6 +19,16 @@ const CHAINS: Record<string, { url: string; symbol: string; name: string }> = {
     symbol: 'POL',
     name: 'Polygon',
   },
+  base: {
+    url: `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+    symbol: 'ETH',
+    name: 'Base',
+  },
+  bsc: {
+    url: 'https://bsc-dataseed.binance.org',
+    symbol: 'BNB',
+    name: 'BSC',
+  },
 }
 
 // Always show these tokens even at 0 balance
@@ -31,11 +41,17 @@ const ALWAYS_SHOW_TOKENS: Record<string, { address: string; symbol: string; name
     { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', name: 'Tether', decimals: 6 },
     { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
   ],
+  base: [
+    { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+  ],
+  bsc: [
+    { address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', name: 'Tether', decimals: 18 },
+    { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', symbol: 'USDC', name: 'USD Coin', decimals: 18 },
+  ],
 }
 
 async function getTokenBalance(rpcUrl: string, tokenAddress: string, walletAddress: string): Promise<string> {
   try {
-    // balanceOf(address) function selector
     const data = '0x70a08231' + walletAddress.slice(2).padStart(64, '0')
     const res = await fetch(rpcUrl, {
       method: 'POST',
@@ -100,63 +116,65 @@ async function getChainBalances(chainName: string, config: typeof CHAINS[string]
       })
     }
 
-    // Get other ERC-20 tokens with non-zero balances via Alchemy
-    try {
-      const tokenRes = await fetch(config.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 2,
-          method: 'alchemy_getTokenBalances',
-          params: [address],
-        }),
-      })
-      const tokenData = await tokenRes.json()
+    // Get other ERC-20 tokens with non-zero balances via Alchemy (not available for BSC)
+    if (chainName !== 'bsc') {
+      try {
+        const tokenRes = await fetch(config.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'alchemy_getTokenBalances',
+            params: [address],
+          }),
+        })
+        const tokenData = await tokenRes.json()
 
-      if (tokenData.result?.tokenBalances) {
-        const alwaysShowAddresses = new Set(alwaysShow.map(t => t.address.toLowerCase()))
-        const nonZeroTokens = tokenData.result.tokenBalances.filter(
-          (t: { tokenBalance: string; contractAddress: string }) =>
-            t.tokenBalance !== '0x0000000000000000000000000000000000000000000000000000000000000000' &&
-            !alwaysShowAddresses.has(t.contractAddress.toLowerCase())
-        )
+        if (tokenData.result?.tokenBalances) {
+          const alwaysShowAddresses = new Set(alwaysShow.map(t => t.address.toLowerCase()))
+          const nonZeroTokens = tokenData.result.tokenBalances.filter(
+            (t: { tokenBalance: string; contractAddress: string }) =>
+              t.tokenBalance !== '0x0000000000000000000000000000000000000000000000000000000000000000' &&
+              !alwaysShowAddresses.has(t.contractAddress.toLowerCase())
+          )
 
-        for (const token of nonZeroTokens.slice(0, 15)) {
-          try {
-            const metaRes = await fetch(config.url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 3,
-                method: 'alchemy_getTokenMetadata',
-                params: [token.contractAddress],
-              }),
-            })
-            const meta = await metaRes.json()
+          for (const token of nonZeroTokens.slice(0, 15)) {
+            try {
+              const metaRes = await fetch(config.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 3,
+                  method: 'alchemy_getTokenMetadata',
+                  params: [token.contractAddress],
+                }),
+              })
+              const meta = await metaRes.json()
 
-            if (meta.result) {
-              const rawBalance = BigInt(token.tokenBalance)
-              const decimals = meta.result.decimals || 18
-              const balance = Number(rawBalance) / Math.pow(10, decimals)
+              if (meta.result) {
+                const rawBalance = BigInt(token.tokenBalance)
+                const decimals = meta.result.decimals || 18
+                const balance = Number(rawBalance) / Math.pow(10, decimals)
 
-              if (balance > 0.0001) {
-                tokens.push({
-                  symbol: meta.result.symbol || '???',
-                  name: `${meta.result.name || 'Unknown'} (${config.name})`,
-                  balance: balance.toFixed(4),
-                  decimals,
-                  address: token.contractAddress,
-                  chain: 'evm',
-                  walletAddress: address,
-                })
+                if (balance > 0.0001) {
+                  tokens.push({
+                    symbol: meta.result.symbol || '???',
+                    name: `${meta.result.name || 'Unknown'} (${config.name})`,
+                    balance: balance.toFixed(4),
+                    decimals,
+                    address: token.contractAddress,
+                    chain: 'evm',
+                    walletAddress: address,
+                  })
+                }
               }
-            }
-          } catch { /* skip token */ }
+            } catch { /* skip token */ }
+          }
         }
-      }
-    } catch { /* Alchemy token fetch failed, we still have native + stables */ }
+      } catch { /* Alchemy token fetch failed */ }
+    }
 
   } catch (e) {
     console.error(`${chainName} balance error:`, e)
@@ -166,11 +184,6 @@ async function getChainBalances(chainName: string, config: typeof CHAINS[string]
 }
 
 export async function getEvmBalances(address: string): Promise<WalletToken[]> {
-  if (!ALCHEMY_KEY) {
-    console.error('Alchemy API key not set')
-    return []
-  }
-
   const results = await Promise.allSettled(
     Object.entries(CHAINS).map(([name, config]) => getChainBalances(name, config, address))
   )

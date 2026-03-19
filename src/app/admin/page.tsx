@@ -291,6 +291,9 @@ export default function AdminPage() {
           <a href="/account" className="lw-btn lw-btn-secondary" style={{ width: 'auto', textDecoration: 'none' }}>
             ← Back to Account
           </a>
+          <a href="/admin/api-docs" className="lw-btn lw-btn-primary" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>
+            API Docs
+          </a>
         </div>
 
         {message && (

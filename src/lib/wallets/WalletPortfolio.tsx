@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getAllBalances } from './balances'
+import { getTokenPrices, formatUsd } from './balances/prices'
 import { shortenAddress } from './types'
 import type { ConnectedWallet, WalletToken } from './types'
 
@@ -11,15 +12,21 @@ interface WalletPortfolioProps {
 
 export function WalletPortfolio({ savedWallets }: WalletPortfolioProps) {
   const [tokens, setTokens] = useState<WalletToken[]>([])
+  const [prices, setPrices] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const loadBalances = async () => {
     if (savedWallets.length === 0) return
     setLoading(true)
-    const walletInputs = savedWallets.map(w => ({ chain: w.chain, address: w.address }))
-    const allTokens = await getAllBalances(walletInputs)
+
+    const [allTokens, tokenPrices] = await Promise.all([
+      getAllBalances(savedWallets.map(w => ({ chain: w.chain, address: w.address }))),
+      getTokenPrices(),
+    ])
+
     setTokens(allTokens)
+    setPrices(tokenPrices)
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -55,12 +62,34 @@ export function WalletPortfolio({ savedWallets }: WalletPortfolioProps) {
     wax: '🌐',
   }
 
+  const getUsdValue = (token: WalletToken): number | null => {
+    const bal = parseFloat(token.balance)
+    if (bal === 0) return null
+    const price = prices[token.symbol]
+    if (price) return bal * price
+    return null
+  }
+
+  // Calculate total portfolio value
+  let totalValue = 0
+  for (const t of tokens) {
+    const usd = getUsdValue(t)
+    if (usd) totalValue += usd
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem' }}>
-          {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ''}
-        </span>
+        <div>
+          {totalValue > 0 && (
+            <span style={{ color: 'var(--lw-text-white)', fontSize: '1.2rem', fontWeight: 'bold' }}>
+              Total: {formatUsd(totalValue)}
+            </span>
+          )}
+          <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', marginLeft: totalValue > 0 ? '1rem' : 0 }}>
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ''}
+          </span>
+        </div>
         <button
           onClick={loadBalances}
           disabled={loading}
@@ -93,21 +122,31 @@ export function WalletPortfolio({ savedWallets }: WalletPortfolioProps) {
             </div>
           ) : (
             <div style={{ paddingLeft: '1.75rem' }}>
-              {walletTokens.map((t, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--lw-text-primary)', fontSize: '0.9rem', fontWeight: 500, minWidth: '60px' }}>
-                      {t.symbol}
-                    </span>
-                    <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>
-                      {t.name !== t.symbol ? t.name : ''}
-                    </span>
+              {walletTokens.map((t, i) => {
+                const usdValue = getUsdValue(t)
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: 'var(--lw-text-primary)', fontSize: '0.9rem', fontWeight: 500, minWidth: '60px' }}>
+                        {t.symbol}
+                      </span>
+                      <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>
+                        {t.name !== t.symbol ? t.name : ''}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ color: 'var(--lw-text-white)', fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                        {parseFloat(t.balance) > 0 ? t.balance : '0'}
+                      </span>
+                      {usdValue !== null && (
+                        <span style={{ color: 'var(--lw-purple)', fontSize: '0.8rem', minWidth: '70px', textAlign: 'right' }}>
+                          [{formatUsd(usdValue)}]
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span style={{ color: 'var(--lw-text-white)', fontSize: '0.9rem', fontFamily: 'monospace' }}>
-                    {parseFloat(t.balance) > 0 ? t.balance : '0'}
-                  </span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
