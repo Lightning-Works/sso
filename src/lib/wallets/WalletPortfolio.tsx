@@ -70,26 +70,12 @@ export function WalletPortfolio({ savedWallets }: WalletPortfolioProps) {
     return null
   }
 
-  // Calculate total portfolio value
-  let totalValue = 0
-  for (const t of tokens) {
-    const usd = getUsdValue(t)
-    if (usd) totalValue += usd
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div>
-          {totalValue > 0 && (
-            <span style={{ color: 'var(--lw-text-white)', fontSize: '1.2rem', fontWeight: 'bold' }}>
-              Total: {formatUsd(totalValue)}
-            </span>
-          )}
-          <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', marginLeft: totalValue > 0 ? '1rem' : 0 }}>
-            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ''}
-          </span>
-        </div>
+        <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem' }}>
+          {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ''}
+        </span>
         <button
           onClick={loadBalances}
           disabled={loading}
@@ -139,7 +125,7 @@ export function WalletPortfolio({ savedWallets }: WalletPortfolioProps) {
                         {parseFloat(t.balance) > 0 ? t.balance : '0'}
                       </span>
                       {usdValue !== null && (
-                        <span style={{ color: 'var(--lw-purple)', fontSize: '0.8rem', minWidth: '70px', textAlign: 'right' }}>
+                        <span style={{ color: '#aaa', fontSize: '0.8rem', minWidth: '70px', textAlign: 'right' }}>
                           [{formatUsd(usdValue)}]
                         </span>
                       )}

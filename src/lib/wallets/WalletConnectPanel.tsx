@@ -2,11 +2,13 @@
 
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { connectWaxWallet } from './wax'
 import { shortenAddress } from './types'
-import type { ConnectedWallet } from './types'
+import type { ConnectedWallet, WalletToken } from './types'
+import { getBalancesForAddress } from './balances'
+import { getTokenPrices, getTokenPrice, formatUsd } from './balances/prices'
 
 interface WalletConnectPanelProps {
   userId: string
@@ -144,69 +146,193 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     setConnecting('')
   }
 
+  // Expandable panels
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [walletBalances, setWalletBalances] = useState<Record<string, WalletToken[]>>({})
+  const [loadingBalances, setLoadingBalances] = useState<string | null>(null)
+  const [prices, setPrices] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    getTokenPrices().then(setPrices)
+  }, [])
+
+  const toggleExpand = async (walletId: string, address: string, chain: 'evm' | 'solana' | 'wax') => {
+    if (expanded === walletId) {
+      setExpanded(null)
+      return
+    }
+    setExpanded(walletId)
+    if (!walletBalances[address]) {
+      setLoadingBalances(walletId)
+      const balances = await getBalancesForAddress(chain, address)
+      setWalletBalances(prev => ({ ...prev, [address]: balances }))
+      const freshPrices = await getTokenPrices()
+      setPrices(freshPrices)
+      setLoadingBalances(null)
+    }
+  }
+
+  const BalancePanel = ({ address, chain }: { address: string, chain: string }) => {
+    const tokens = walletBalances[address]
+    const [tokenPrices, setTokenPrices] = useState<Record<string, number | null>>({})
+
+    useEffect(() => {
+      if (!tokens) return
+      // Look up prices for tokens not in the main price cache
+      const lookupPrices = async () => {
+        const newPrices: Record<string, number | null> = {}
+        for (const t of tokens) {
+          const bal = parseFloat(t.balance)
+          if (bal <= 0) continue
+          if (prices[t.symbol]) continue // Already have price
+          if (tokenPrices[t.address || t.symbol] !== undefined) continue // Already looked up
+          const price = await getTokenPrice(t.symbol, t.address || undefined, chain)
+          newPrices[t.address || t.symbol] = price
+        }
+        if (Object.keys(newPrices).length > 0) {
+          setTokenPrices(prev => ({ ...prev, ...newPrices }))
+        }
+      }
+      lookupPrices()
+    }, [tokens])
+
+    if (!tokens) {
+      return <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
+    }
+    if (tokens.length === 0) {
+      return <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No tokens found</div>
+    }
+    return (
+      <div style={{ padding: '0.25rem 0 0.5rem 2.5rem' }}>
+        {tokens.map((t, i) => {
+          const bal = parseFloat(t.balance)
+          const price = prices[t.symbol] || tokenPrices[t.address || t.symbol] || null
+          const usdValue = bal > 0 && price ? bal * price : null
+          return (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--lw-text-primary)', fontSize: '0.85rem', fontWeight: 500, minWidth: '55px' }}>{t.symbol}</span>
+                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{t.name !== t.symbol ? t.name : ''}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', fontFamily: 'monospace' }}>{bal > 0 ? t.balance : '0'}</span>
+                {usdValue !== null && (
+                  <span style={{ color: '#aaa', fontSize: '0.75rem', minWidth: '65px', textAlign: 'right' }}>[{formatUsd(usdValue)}]</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Find saved wallets by provider
+  const getSavedForProvider = (provider: string) => savedWallets.filter(w => w.provider === provider)
+
+  const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, onSave, addresses }: {
+    id: string, name: string, icon: React.ReactNode, provider: string, chain: 'evm' | 'solana' | 'wax',
+    isSaved: boolean, onConnect: () => void, onSave?: () => void, addresses: string[]
+  }) => {
+    const saved = getSavedForProvider(provider)
+    const hasBalances = saved.length > 0
+    const isExpanded = expanded === id
+
+    return (
+      <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div
+          className="lw-row"
+          style={{ padding: '0.75rem 0', cursor: hasBalances ? 'pointer' : 'default' }}
+          onClick={() => hasBalances && saved[0] && toggleExpand(id, saved[0].address, chain)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {icon}
+            <div>
+              <span className="lw-row-value">{name}</span>
+              {addresses.length > 0 && (
+                <div style={{ marginTop: '2px' }}>
+                  {addresses.map(addr => (
+                    <p key={addr} style={{ color: isWalletSaved(addr) ? 'var(--lw-success)' : 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '1px 0', fontFamily: 'monospace' }}>
+                      {isWalletSaved(addr) ? '✓ ' : ''}{shortenAddress(addr)}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {saved.length > 0 && addresses.length === 0 && (
+                <div style={{ marginTop: '2px' }}>
+                  {saved.map(w => (
+                    <p key={w.address} style={{ color: 'var(--lw-success)', fontSize: '0.7rem', margin: '1px 0', fontFamily: 'monospace' }}>
+                      ✓ {w.displayAddress}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }} onClick={e => e.stopPropagation()}>
+            {isSaved ? (
+              <span className="lw-connected">✓ Saved</span>
+            ) : onSave ? (
+              <ConnectBtn id={`${id}-save`} onClick={onSave} label="Save" />
+            ) : (
+              <ConnectBtn id={id} onClick={onConnect} />
+            )}
+            <span
+              style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', cursor: hasBalances ? 'pointer' : 'default', width: '1.5rem', textAlign: 'center', flexShrink: 0 }}
+              onClick={() => hasBalances && saved[0] && toggleExpand(id, saved[0].address, chain)}
+            >
+              {hasBalances ? (isExpanded ? '▲' : '▼') : ''}
+            </span>
+          </div>
+        </div>
+        {isExpanded && saved[0] && (
+          loadingBalances === id ? (
+            <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
+          ) : (
+            <BalancePanel address={saved[0].address} chain={chain} />
+          )
+        )}
+      </div>
+    )
+  }
+
+  const evmSaved = evmConnected && evmAddresses && evmAddresses.every(a => isWalletSaved(a))
+  const phantomSaved = publicKey && isWalletSaved(publicKey.toBase58())
+
   return (
     <div>
       {error && <p className="lw-error" style={{ marginBottom: '0.75rem' }}>{error}</p>}
 
-      {/* MetaMask */}
-      <div className="lw-row" style={{ padding: '0.75rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="24" height="24" />
-          <div>
-            <span className="lw-row-value">MetaMask (EVM)</span>
-            {evmConnected && evmAddresses && evmAddresses.length > 0 && (
-              <div style={{ marginTop: '2px' }}>
-                {evmAddresses.map(addr => (
-                  <p key={addr} style={{ color: isWalletSaved(addr) ? 'var(--lw-success)' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '1px 0' }}>
-                    {isWalletSaved(addr) ? '✓ ' : ''}{shortenAddress(addr)}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        {evmConnected && evmAddresses && evmAddresses.every(a => isWalletSaved(a)) ? (
-          <span className="lw-connected">✓ All Saved</span>
-        ) : evmConnected ? (
-          <ConnectBtn id="metamask-save" onClick={handleSaveEvm} label={`Save ${evmAddresses?.length || 1} Address${(evmAddresses?.length || 1) > 1 ? 'es' : ''}`} />
-        ) : (
-          <ConnectBtn id="metamask" onClick={handleMetaMask} />
-        )}
-      </div>
+      <WalletRow
+        id="metamask" name="MetaMask (EVM)"
+        icon={<img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="24" height="24" />}
+        provider="metamask" chain="evm"
+        isSaved={!!evmSaved}
+        onConnect={handleMetaMask}
+        onSave={evmConnected ? handleSaveEvm : undefined}
+        addresses={evmConnected && evmAddresses ? [...evmAddresses] : []}
+      />
 
-      {/* Phantom */}
-      <div className="lw-row" style={{ padding: '0.75rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/phantom_logo.png" alt="Phantom" width="24" height="24" style={{ borderRadius: '6px' }} />
-          <div>
-            <span className="lw-row-value">Phantom (Solana)</span>
-            {publicKey && (
-              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '2px 0 0 0' }}>
-                {shortenAddress(publicKey.toBase58())}
-              </p>
-            )}
-          </div>
-        </div>
-        {publicKey && isWalletSaved(publicKey.toBase58()) ? (
-          <span className="lw-connected">✓ Connected</span>
-        ) : publicKey ? (
-          <ConnectBtn id="phantom-save" onClick={() => handleSaveSolana('phantom')} label="Save Wallet" />
-        ) : (
-          <ConnectBtn id="phantom" onClick={() => handleSolanaConnect('phantom')} />
-        )}
-      </div>
+      <WalletRow
+        id="phantom" name="Phantom (Solana)"
+        icon={<img src="/phantom_logo.png" alt="Phantom" width="24" height="24" style={{ borderRadius: '6px' }} />}
+        provider="phantom" chain="solana"
+        isSaved={!!phantomSaved}
+        onConnect={() => handleSolanaConnect('phantom')}
+        onSave={publicKey && !phantomSaved ? () => handleSaveSolana('phantom') : undefined}
+        addresses={publicKey ? [publicKey.toBase58()] : []}
+      />
 
-      {/* Solflare */}
-      <div className="lw-row" style={{ padding: '0.75rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/solflare_logo.png" alt="Solflare" width="24" height="24" style={{ borderRadius: '6px' }} />
-          <span className="lw-row-value">Solflare (Solana)</span>
-        </div>
-        <ConnectBtn id="solflare" onClick={() => handleSolanaConnect('solflare')} />
-      </div>
+      <WalletRow
+        id="solflare" name="Solflare (Solana)"
+        icon={<img src="/solflare_logo.png" alt="Solflare" width="24" height="24" style={{ borderRadius: '6px' }} />}
+        provider="solflare" chain="solana"
+        isSaved={false}
+        onConnect={() => handleSolanaConnect('solflare')}
+        addresses={[]}
+      />
 
-      {/* DiviGo */}
-      <div className="lw-row" style={{ padding: '0.75rem 0' }}>
+      <div className="lw-row" style={{ padding: '0.75rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width="24" height="24" style={{ borderRadius: '50%' }} />
           <span className="lw-row-value">DiviGo Wallet</span>
@@ -216,27 +342,14 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         </button>
       </div>
 
-      {/* WAX Cloud Wallet */}
-      <div className="lw-row" style={{ padding: '0.75rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="https://www.mycloudwallet.com/favicon.ico" alt="WAX" width="24" height="24" style={{ borderRadius: '4px' }} />
-          <span className="lw-row-value">WAX Cloud Wallet</span>
-        </div>
-        <ConnectBtn id="wax" onClick={handleWaxConnect} />
-      </div>
-
-      {/* Saved wallets list */}
-      {savedWallets.length > 0 && (
-        <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
-          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Saved addresses:</p>
-          {savedWallets.map((w, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0', fontSize: '0.8rem' }}>
-              <span style={{ color: 'var(--lw-text-secondary)' }}>{w.provider} · {w.chainName}</span>
-              <span style={{ color: 'var(--lw-text-muted)', fontFamily: 'monospace' }}>{w.displayAddress}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <WalletRow
+        id="wax" name="WAX Cloud Wallet"
+        icon={<img src="https://www.mycloudwallet.com/favicon.ico" alt="WAX" width="24" height="24" style={{ borderRadius: '4px' }} />}
+        provider="wax" chain="wax"
+        isSaved={false}
+        onConnect={handleWaxConnect}
+        addresses={[]}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 /**
  * Token Price Fetcher
- * Uses CoinGecko free API for USD prices
+ * Uses CoinGecko for major tokens + Jupiter for Solana tokens
+ * Falls back to DexScreener for anything not found
  */
 
 const COINGECKO_IDS: Record<string, string> = {
@@ -16,41 +17,127 @@ const COINGECKO_IDS: Record<string, string> = {
 }
 
 let priceCache: Record<string, number> = {}
+let mintPriceCache: Record<string, number> = {}
 let lastFetch = 0
 
-export async function getTokenPrices(): Promise<Record<string, number>> {
-  // Cache prices for 60 seconds
-  if (Date.now() - lastFetch < 60000 && Object.keys(priceCache).length > 0) {
-    return priceCache
-  }
-
+// Fetch major token prices from CoinGecko
+async function fetchCoinGeckoPrices(): Promise<Record<string, number>> {
   try {
     const ids = Object.values(COINGECKO_IDS).join(',')
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
-      { next: { revalidate: 60 } }
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`
     )
     const data = await res.json()
-
     const prices: Record<string, number> = {}
     for (const [symbol, geckoId] of Object.entries(COINGECKO_IDS)) {
       if (data[geckoId]?.usd) {
         prices[symbol] = data[geckoId].usd
       }
     }
-
-    // Stablecoins should always be ~1
     prices['USDT'] = prices['USDT'] || 1
     prices['USDC'] = prices['USDC'] || 1
-
-    priceCache = prices
-    lastFetch = Date.now()
     return prices
-  } catch (e) {
-    console.error('Price fetch error:', e)
-    // Return stablecoin defaults at minimum
-    return { USDT: 1, USDC: 1, ...priceCache }
+  } catch {
+    return { USDT: 1, USDC: 1 }
   }
+}
+
+// Fetch Solana token prices from Jupiter Price API (free, all tokens)
+async function fetchJupiterPrices(mintAddresses: string[]): Promise<Record<string, number>> {
+  if (mintAddresses.length === 0) return {}
+  try {
+    const ids = mintAddresses.join(',')
+    const res = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`)
+    const data = await res.json()
+    const prices: Record<string, number> = {}
+    if (data.data) {
+      for (const [mint, info] of Object.entries(data.data)) {
+        const priceInfo = info as { price?: string }
+        if (priceInfo.price) {
+          prices[mint] = parseFloat(priceInfo.price)
+        }
+      }
+    }
+    return prices
+  } catch {
+    return {}
+  }
+}
+
+// Fetch price for any token by contract address from DexScreener (free)
+async function fetchDexScreenerPrice(address: string, chain: string): Promise<number | null> {
+  try {
+    const chainMap: Record<string, string> = {
+      'evm': 'ethereum',
+      'solana': 'solana',
+    }
+    const dexChain = chainMap[chain] || chain
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`)
+    const data = await res.json()
+    if (data.pairs && data.pairs.length > 0) {
+      // Use the pair with highest liquidity
+      const sorted = data.pairs.sort((a: { liquidity?: { usd?: number } }, b: { liquidity?: { usd?: number } }) =>
+        (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+      )
+      const price = parseFloat(sorted[0].priceUsd)
+      if (!isNaN(price)) return price
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+export async function getTokenPrices(): Promise<Record<string, number>> {
+  if (Date.now() - lastFetch < 60000 && Object.keys(priceCache).length > 0) {
+    return priceCache
+  }
+
+  const prices = await fetchCoinGeckoPrices()
+  priceCache = prices
+  lastFetch = Date.now()
+  return prices
+}
+
+// Get price for a specific Solana token by mint address
+export async function getSolanaTokenPrice(mintAddress: string): Promise<number | null> {
+  if (mintPriceCache[mintAddress] !== undefined) {
+    return mintPriceCache[mintAddress]
+  }
+
+  const jupPrices = await fetchJupiterPrices([mintAddress])
+  if (jupPrices[mintAddress]) {
+    mintPriceCache[mintAddress] = jupPrices[mintAddress]
+    return jupPrices[mintAddress]
+  }
+
+  // Fallback to DexScreener
+  const dsPrice = await fetchDexScreenerPrice(mintAddress, 'solana')
+  if (dsPrice) {
+    mintPriceCache[mintAddress] = dsPrice
+    return dsPrice
+  }
+
+  return null
+}
+
+// Get price for any token — checks symbol first, then mint/contract address
+export async function getTokenPrice(symbol: string, mintAddress?: string, chain?: string): Promise<number | null> {
+  // Check cached symbol prices first
+  const cached = priceCache[symbol]
+  if (cached) return cached
+
+  // For Solana tokens with mint addresses, try Jupiter
+  if (mintAddress && (chain === 'solana' || !chain)) {
+    const jupPrice = await getSolanaTokenPrice(mintAddress)
+    if (jupPrice) return jupPrice
+  }
+
+  // For EVM tokens with contract addresses, try DexScreener
+  if (mintAddress && chain === 'evm') {
+    const dsPrice = await fetchDexScreenerPrice(mintAddress, 'evm')
+    if (dsPrice) return dsPrice
+  }
+
+  return null
 }
 
 export function formatUsd(amount: number): string {
