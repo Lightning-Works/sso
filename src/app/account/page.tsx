@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { WalletConnectPanel } from '@/lib/wallets/WalletConnectPanel'
+import { WalletPortfolio } from '@/lib/wallets/WalletPortfolio'
 import type { ConnectedWallet } from '@/lib/wallets/types'
 import { shortenAddress } from '@/lib/wallets/types'
 
@@ -197,6 +198,12 @@ export default function AccountPage() {
             savedWallets={savedWallets}
             onWalletSaved={() => user?.id && loadWallets(user.id)}
           />
+        </div>
+
+        {/* Wallet Balances */}
+        <div className="lw-section">
+          <h2 className="lw-section-title">Wallet Balances</h2>
+          <WalletPortfolio savedWallets={savedWallets} />
         </div>
 
         {/* My Games */}

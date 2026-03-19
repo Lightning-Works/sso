@@ -267,6 +267,36 @@ input.lw-input::placeholder {
   background-color: var(--lw-bg-input);
 }
 
+/* Animated dots for "Working..." */
+.lw-dots::after {
+  content: '';
+  animation: dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+  100% { content: ''; }
+}
+
+/* Wallet connect button */
+.lw-btn-connect {
+  background-color: #3a3938 !important;
+  color: #e4dad1 !important;
+  min-width: 100px;
+  transition: background-color 0.15s ease !important;
+}
+
+.lw-btn-connect:hover {
+  background-color: #4f4e4d !important;
+}
+
+.lw-btn-connect.working {
+  background-color: var(--lw-purple) !important;
+}
+
 .lw-btn-wax {
   background-color: #ff5722;
   color: var(--lw-text-white);

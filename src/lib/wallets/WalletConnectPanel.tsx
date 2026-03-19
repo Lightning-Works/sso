@@ -14,10 +14,41 @@ interface WalletConnectPanelProps {
   onWalletSaved: () => void
 }
 
+// Click sound
+const playClick = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 800
+    gain.gain.value = 0.1
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.08)
+  } catch { /* audio not available */ }
+}
+
 export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: WalletConnectPanelProps) {
   const [saving, setSaving] = useState('')
+  const [connecting, setConnecting] = useState('')
   const [error, setError] = useState('')
   const supabase = createClient()
+
+  const ConnectBtn = ({ id, onClick, label }: { id: string, onClick: () => void, label?: string }) => {
+    const isWorking = connecting === id || saving === id
+    return (
+      <button
+        onClick={() => { playClick(); setConnecting(id); onClick() }}
+        className={`lw-btn lw-btn-connect${isWorking ? ' working' : ''}`}
+        style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem' }}
+        disabled={isWorking}
+      >
+        {isWorking ? <span className="lw-dots">Working</span> : (label || 'Connect')}
+      </button>
+    )
+  }
 
   // EVM state
   const { address: evmAddress, chainId, isConnected: evmConnected } = useAccount()
@@ -56,7 +87,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   const handleMetaMask = async () => {
     const metamaskConnector = connectors.find(c => c.name === 'MetaMask')
     if (metamaskConnector) {
-      connect({ connector: metamaskConnector })
+      connect({ connector: metamaskConnector }, { onSettled: () => setConnecting('') })
     }
   }
 
@@ -70,6 +101,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         chainId,
         chainName: chainId === 1 ? 'Ethereum' : chainId === 137 ? 'Polygon' : `Chain ${chainId}`,
       })
+      setConnecting('')
     }
   }
 
@@ -84,6 +116,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         console.error('Solana connect error:', e)
       }
     }
+    setConnecting('')
   }
 
   const handleSaveSolana = async (provider: string) => {
@@ -95,6 +128,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         displayAddress: shortenAddress(publicKey.toBase58()),
         chainName: 'Solana',
       })
+      setConnecting('')
     }
   }
 
@@ -104,6 +138,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     if (wallet) {
       await saveWallet(wallet)
     }
+    setConnecting('')
   }
 
   return (
@@ -126,13 +161,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         {isWalletSaved(evmAddress || '') ? (
           <span className="lw-connected">✓ Connected</span>
         ) : evmConnected ? (
-          <button onClick={handleSaveEvm} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-            {saving === 'metamask' ? 'Saving...' : 'Save Wallet'}
-          </button>
+          <ConnectBtn id="metamask-save" onClick={handleSaveEvm} label="Save Wallet" />
         ) : (
-          <button onClick={handleMetaMask} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-            Connect
-          </button>
+          <ConnectBtn id="metamask" onClick={handleMetaMask} />
         )}
       </div>
 
@@ -152,13 +183,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         {publicKey && isWalletSaved(publicKey.toBase58()) ? (
           <span className="lw-connected">✓ Connected</span>
         ) : publicKey ? (
-          <button onClick={() => handleSaveSolana('phantom')} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-            {saving === 'phantom' ? 'Saving...' : 'Save Wallet'}
-          </button>
+          <ConnectBtn id="phantom-save" onClick={() => handleSaveSolana('phantom')} label="Save Wallet" />
         ) : (
-          <button onClick={() => handleSolanaConnect('phantom')} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-            Connect
-          </button>
+          <ConnectBtn id="phantom" onClick={() => handleSolanaConnect('phantom')} />
         )}
       </div>
 
@@ -168,9 +195,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
           <img src="/solflare_logo.png" alt="Solflare" width="24" height="24" style={{ borderRadius: '6px' }} />
           <span className="lw-row-value">Solflare (Solana)</span>
         </div>
-        <button onClick={() => handleSolanaConnect('solflare')} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-          Connect
-        </button>
+        <ConnectBtn id="solflare" onClick={() => handleSolanaConnect('solflare')} />
       </div>
 
       {/* DiviGo */}
@@ -190,9 +215,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
           <img src="https://www.mycloudwallet.com/favicon.ico" alt="WAX" width="24" height="24" style={{ borderRadius: '4px' }} />
           <span className="lw-row-value">WAX Cloud Wallet</span>
         </div>
-        <button onClick={handleWaxConnect} className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1' }}>
-          {saving === 'wax' ? 'Saving...' : 'Connect'}
-        </button>
+        <ConnectBtn id="wax" onClick={handleWaxConnect} />
       </div>
 
       {/* Saved wallets list */}
