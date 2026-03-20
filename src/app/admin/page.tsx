@@ -288,11 +288,8 @@ export default function AdminPage() {
 
         <div className="lw-account-header">
           <h1 className="lw-heading-xl">Admin Panel</h1>
-          <a href="/account" className="lw-btn lw-btn-secondary" style={{ width: 'auto', textDecoration: 'none' }}>
+          <a href="/account" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>
             ← Back to Account
-          </a>
-          <a href="/admin/api-docs" className="lw-btn lw-btn-primary" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>
-            API Docs
           </a>
         </div>
 
@@ -303,21 +300,31 @@ export default function AdminPage() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: '1.5rem' }}>
-          <button
-            onClick={() => setActiveTab('companies')}
-            className="lw-btn"
-            style={{ borderRadius: '4px 0 0 4px', background: activeTab === 'companies' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
-          >
-            Companies
-          </button>
-          <button
-            onClick={() => setActiveTab('apps')}
-            className="lw-btn"
-            style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'apps' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
-          >
-            Apps
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: 0 }}>
+            <button
+              onClick={() => setActiveTab('companies')}
+              className="lw-btn"
+              style={{ borderRadius: '4px 0 0 4px', background: activeTab === 'companies' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Companies
+            </button>
+            <button
+              onClick={() => setActiveTab('apps')}
+              className="lw-btn"
+              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'apps' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Apps
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '2rem' }}>
+            <a href="/admin/api-docs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px' }}>
+              APIs
+            </a>
+            <a href="/admin/logs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px' }}>
+              Logs
+            </a>
+          </div>
         </div>
 
         {/* Companies Tab */}

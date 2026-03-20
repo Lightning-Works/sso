@@ -203,7 +203,7 @@ export default function AccountPage() {
         {/* My Games */}
         <div className="lw-section">
           <h2 className="lw-section-title">My Games</h2>
-          <div className="lw-game-card">
+          <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <img src="/siege_worlds_game_logo_800px.webp" alt="Siege Worlds" style={{ height: '32px' }} />
               <div>
@@ -215,7 +215,7 @@ export default function AccountPage() {
               Play →
             </a>
           </div>
-          <div className="lw-game-card">
+          <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <img src="/starblind_game_logo_800px.webp" alt="Starblind" style={{ height: '32px' }} />
               <div>
@@ -227,7 +227,7 @@ export default function AccountPage() {
               View →
             </a>
           </div>
-          <div className="lw-game-card" style={{ opacity: 0.5 }}>
+          <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.5 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{ width: '32px', height: '32px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7a7572', fontSize: '0.7rem' }}>?</div>
               <div>

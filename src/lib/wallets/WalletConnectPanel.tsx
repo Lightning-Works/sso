@@ -8,6 +8,7 @@ import { connectWaxWallet } from './wax'
 import { shortenAddress } from './types'
 import type { ConnectedWallet, WalletToken } from './types'
 import { getBalancesForAddress } from './balances'
+import { logWallet } from '@/lib/audit'
 import { getTokenPrices, getTokenPrice, formatUsd } from './balances/prices'
 
 interface WalletConnectPanelProps {
@@ -74,7 +75,15 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         onConflict: 'user_id,wallet_address'
       })
       if (err) throw err
+      // Log the wallet connection
+      await logWallet(supabase, 'wallet_linked', {
+        user_id: userId,
+        description: `Linked ${wallet.provider} wallet ${wallet.displayAddress} (${wallet.chain})`,
+        metadata: { chain: wallet.chain, provider: wallet.provider, address: wallet.address },
+      })
       onWalletSaved()
+      // Auto-expand to show balances
+      toggleExpandAddr(wallet.address, wallet.chain)
     } catch (e: unknown) {
       setError('Failed to save wallet: ' + (e instanceof Error ? e.message : String(e)))
     }
@@ -93,49 +102,70 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     }
   }
 
-  const handleSaveEvm = async () => {
-    const addresses = evmAddresses || (evmAddress ? [evmAddress] : [])
-    if (addresses.length > 0 && chainId) {
-      for (const addr of addresses) {
-        await saveWallet({
-          chain: 'evm',
-          provider: 'metamask',
-          address: addr,
-          displayAddress: shortenAddress(addr),
-          chainId,
-          chainName: chainId === 1 ? 'Ethereum' : chainId === 137 ? 'Polygon' : `Chain ${chainId}`,
-        })
+  // Auto-save EVM addresses when they appear
+  useEffect(() => {
+    if (evmConnected && evmAddresses && chainId) {
+      const unsaved = evmAddresses.filter(a => !isWalletSaved(a))
+      if (unsaved.length > 0) {
+        (async () => {
+          for (const addr of unsaved) {
+            await saveWallet({
+              chain: 'evm',
+              provider: 'metamask',
+              address: addr,
+              displayAddress: shortenAddress(addr),
+              chainId,
+              chainName: chainId === 1 ? 'Ethereum' : chainId === 137 ? 'Polygon' : `Chain ${chainId}`,
+            })
+          }
+          setConnecting('')
+        })()
       }
-      setConnecting('')
     }
-  }
+  }, [evmConnected, evmAddresses, chainId])
 
   // === Solana (Phantom / Solflare) ===
+  // Use the actual connected wallet adapter name, not a tracked variable
+  const solanaWalletName = useWallet().wallet?.adapter.name || ''
+
   const handleSolanaConnect = async (walletName: string) => {
+    // Disconnect first if switching wallets
+    if (publicKey) {
+      try { await solDisconnect() } catch { /* ignore */ }
+    }
     const wallet = wallets.find(w => w.adapter.name.toLowerCase() === walletName.toLowerCase())
     if (wallet) {
       select(wallet.adapter.name)
-      try {
-        await solConnect()
-      } catch (e) {
-        console.error('Solana connect error:', e)
-      }
-    }
-    setConnecting('')
-  }
-
-  const handleSaveSolana = async (provider: string) => {
-    if (publicKey) {
-      await saveWallet({
-        chain: 'solana',
-        provider,
-        address: publicKey.toBase58(),
-        displayAddress: shortenAddress(publicKey.toBase58()),
-        chainName: 'Solana',
-      })
+      // Small delay to let the adapter register the selection
+      setTimeout(async () => {
+        try {
+          await solConnect()
+        } catch (e) {
+          console.error('Solana connect error:', e)
+        }
+        setConnecting('')
+      }, 100)
+    } else {
       setConnecting('')
     }
   }
+
+  // Auto-save Solana address when connected — use actual adapter name
+  useEffect(() => {
+    if (publicKey && solanaWalletName && !isWalletSaved(publicKey.toBase58())) {
+      const providerName = solanaWalletName.toLowerCase()
+      ;(async () => {
+        await saveWallet({
+          chain: 'solana',
+          provider: providerName,
+          address: publicKey.toBase58(),
+          displayAddress: shortenAddress(publicKey.toBase58()),
+          chainName: 'Solana',
+        })
+        setConnecting('')
+      })()
+    }
+  }, [publicKey, solanaWalletName])
 
   // === WAX ===
   const handleWaxConnect = async () => {
@@ -146,29 +176,85 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     setConnecting('')
   }
 
-  // Expandable panels
-  const [expanded, setExpanded] = useState<string | null>(null)
+  // Filter
+  const [hideSmall, setHideSmall] = useState(true)
+
+  // Expandable panels — per address
+  const [expandedAddr, setExpandedAddr] = useState<string | null>(null)
   const [walletBalances, setWalletBalances] = useState<Record<string, WalletToken[]>>({})
   const [loadingBalances, setLoadingBalances] = useState<string | null>(null)
   const [prices, setPrices] = useState<Record<string, number>>({})
+  const [addingAddr, setAddingAddr] = useState<string | null>(null)
 
   useEffect(() => {
     getTokenPrices().then(setPrices)
   }, [])
 
-  const toggleExpand = async (walletId: string, address: string, chain: 'evm' | 'solana' | 'wax') => {
-    if (expanded === walletId) {
-      setExpanded(null)
+  const toggleExpandAddr = async (address: string, chain: 'evm' | 'solana' | 'wax') => {
+    if (expandedAddr === address) {
+      setExpandedAddr(null)
       return
     }
-    setExpanded(walletId)
+    setExpandedAddr(address)
     if (!walletBalances[address]) {
-      setLoadingBalances(walletId)
+      setLoadingBalances(address)
       const balances = await getBalancesForAddress(chain, address)
       setWalletBalances(prev => ({ ...prev, [address]: balances }))
       const freshPrices = await getTokenPrices()
       setPrices(freshPrices)
       setLoadingBalances(null)
+    }
+  }
+
+  const handleAddAnother = async (provider: string, chain: string) => {
+    playClick()
+    if (chain === 'solana') {
+      try { await solDisconnect() } catch { /* ignore */ }
+    } else if (chain === 'evm') {
+      try { evmDisconnect() } catch { /* ignore */ }
+    }
+    setAddingAddr(provider)
+  }
+
+  const handleConfirmAddAddr = async (provider: string, chain: string) => {
+    setAddingAddr(null)
+    setConnecting(provider)
+    if (chain === 'solana') {
+      const wallet = wallets.find(w => w.adapter.name.toLowerCase() === provider.toLowerCase())
+      if (wallet) {
+        try {
+          select(wallet.adapter.name)
+          await new Promise(resolve => setTimeout(resolve, 300))
+          await wallet.adapter.connect()
+        } catch (e) {
+          console.error('Add address error:', e)
+        }
+      }
+      setConnecting('')
+    } else if (chain === 'evm') {
+      // For MetaMask, request accounts directly — this prompts the user to select/authorize accounts
+      try {
+        const ethereum = (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<string[]> } }).ethereum
+        if (ethereum) {
+          const accounts = await ethereum.request({ method: 'eth_requestAccounts' })
+          // Save any new accounts
+          for (const addr of accounts) {
+            if (!isWalletSaved(addr)) {
+              await saveWallet({
+                chain: 'evm',
+                provider: 'metamask',
+                address: addr,
+                displayAddress: shortenAddress(addr),
+                chainId: chainId || 1,
+                chainName: chainId === 137 ? 'Polygon' : chainId === 8453 ? 'Base' : chainId === 56 ? 'BSC' : 'Ethereum',
+              })
+            }
+          }
+        }
+      } catch (e) {
+        console.error('MetaMask add address error:', e)
+      }
+      setConnecting('')
     }
   }
 
@@ -197,32 +283,55 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     }, [tokens])
 
     if (!tokens) {
-      return <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
+      return <div style={{ padding: '0.5rem 0.75rem 0.75rem 2.75rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
     }
     if (tokens.length === 0) {
-      return <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No tokens found</div>
+      return <div style={{ padding: '0.5rem 0.75rem 0.75rem 2.75rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No tokens found</div>
     }
+
+    // Native chain symbols — always show first
+    const nativeSymbols: Record<string, string> = { evm: 'ETH', solana: 'SOL', wax: 'WAX' }
+    const nativeSymbol = nativeSymbols[chain] || ''
+
+    // Calculate USD values and sort
+    const enriched = tokens.map(t => {
+      const bal = parseFloat(t.balance)
+      const price = prices[t.symbol] || tokenPrices[t.address || t.symbol] || null
+      const usdValue = bal > 0 && price ? bal * price : null
+      const isNative = t.symbol === nativeSymbol && !t.address
+      return { ...t, bal, price, usdValue, isNative }
+    })
+
+    // Sort: native first, then by USD value descending
+    enriched.sort((a, b) => {
+      if (a.isNative && !b.isNative) return -1
+      if (!a.isNative && b.isNative) return 1
+      const aVal = a.usdValue ?? -1
+      const bVal = b.usdValue ?? -1
+      return bVal - aVal
+    })
+
+    // Filter
+    const filtered = hideSmall
+      ? enriched.filter(t => t.isNative || (t.usdValue !== null && t.usdValue >= 1) || t.bal === 0)
+      : enriched
+
     return (
-      <div style={{ padding: '0.25rem 0 0.5rem 2.5rem' }}>
-        {tokens.map((t, i) => {
-          const bal = parseFloat(t.balance)
-          const price = prices[t.symbol] || tokenPrices[t.address || t.symbol] || null
-          const usdValue = bal > 0 && price ? bal * price : null
-          return (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: 'var(--lw-text-primary)', fontSize: '0.85rem', fontWeight: 500, minWidth: '55px' }}>{t.symbol}</span>
-                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{t.name !== t.symbol ? t.name : ''}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <span style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', fontFamily: 'monospace' }}>{bal > 0 ? t.balance : '0'}</span>
-                {usdValue !== null && (
-                  <span style={{ color: '#aaa', fontSize: '0.75rem', minWidth: '65px', textAlign: 'right' }}>[{formatUsd(usdValue)}]</span>
-                )}
-              </div>
+      <div style={{ padding: '0.25rem 0.75rem 0.75rem 2.75rem' }}>
+        {filtered.map((t, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ color: 'var(--lw-text-primary)', fontSize: '0.85rem', fontWeight: 500, minWidth: '55px' }}>{t.symbol}</span>
+              <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{t.name !== t.symbol ? t.name : ''}</span>
             </div>
-          )
-        })}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', fontFamily: 'monospace' }}>{t.bal > 0 ? t.balance : '0'}</span>
+              <span style={{ color: '#aaa', fontSize: '0.75rem', minWidth: '65px', textAlign: 'right' }}>
+                {t.bal <= 0 ? '' : t.usdValue !== null ? `[${formatUsd(t.usdValue)}]` : '[not found]'}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
@@ -230,125 +339,185 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   // Find saved wallets by provider
   const getSavedForProvider = (provider: string) => savedWallets.filter(w => w.provider === provider)
 
-  const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, onSave, addresses }: {
+  const AddressRow = ({ addr, chain, isActive }: { addr: string, chain: 'evm' | 'solana' | 'wax', isActive: boolean }) => {
+    const isExp = expandedAddr === addr
+    return (
+      <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', margin: '2px 0' }}>
+          <span style={{
+            color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
+            fontSize: '0.7rem',
+            fontFamily: 'monospace',
+            fontWeight: isActive ? 600 : 400,
+          }}>
+            ✓ {shortenAddress(addr)}
+          </span>
+          <span
+            style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', cursor: 'pointer', padding: '0 0.25rem' }}
+            onClick={(e) => { e.stopPropagation(); toggleExpandAddr(addr, chain) }}
+          >
+            {isExp ? '▲' : '▼'}
+          </span>
+        </div>
+        {isExp && (
+          loadingBalances === addr ? (
+            <div style={{ padding: '0.25rem 0 0.5rem 1rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
+          ) : (
+            <BalancePanel address={addr} chain={chain} />
+          )
+        )}
+      </>
+    )
+  }
+
+  const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, addresses, canAddMore }: {
     id: string, name: string, icon: React.ReactNode, provider: string, chain: 'evm' | 'solana' | 'wax',
-    isSaved: boolean, onConnect: () => void, onSave?: () => void, addresses: string[]
+    isSaved: boolean, onConnect: () => void, addresses: string[], canAddMore?: boolean
   }) => {
     const saved = getSavedForProvider(provider)
-    const hasBalances = saved.length > 0
-    const isExpanded = expanded === id
+    const allAddresses = [...new Set([...addresses, ...saved.map(w => w.address)])]
 
     return (
-      <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div
-          className="lw-row"
-          style={{ padding: '0.75rem 0', cursor: hasBalances ? 'pointer' : 'default' }}
-          onClick={() => hasBalances && saved[0] && toggleExpand(id, saved[0].address, chain)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {icon}
-            <div>
+      <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', marginBottom: '0.5rem', overflow: 'hidden' }}>
+        <div className="lw-row" style={{ padding: '0.75rem', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
+            <div style={{ paddingTop: '2px' }}>{icon}</div>
+            <div style={{ flex: 1 }}>
               <span className="lw-row-value">{name}</span>
-              {addresses.length > 0 && (
-                <div style={{ marginTop: '2px' }}>
-                  {addresses.map(addr => (
-                    <p key={addr} style={{ color: isWalletSaved(addr) ? 'var(--lw-success)' : 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '1px 0', fontFamily: 'monospace' }}>
-                      {isWalletSaved(addr) ? '✓ ' : ''}{shortenAddress(addr)}
-                    </p>
+              {allAddresses.length > 0 && (
+                <div style={{ marginTop: '4px' }}>
+                  {allAddresses.map((addr, i) => (
+                    <AddressRow key={addr} addr={addr} chain={chain} isActive={expandedAddr === addr} />
                   ))}
-                </div>
-              )}
-              {saved.length > 0 && addresses.length === 0 && (
-                <div style={{ marginTop: '2px' }}>
-                  {saved.map(w => (
-                    <p key={w.address} style={{ color: 'var(--lw-success)', fontSize: '0.7rem', margin: '1px 0', fontFamily: 'monospace' }}>
-                      ✓ {w.displayAddress}
-                    </p>
-                  ))}
+                  {canAddMore && isSaved && addingAddr !== provider && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleAddAnother(provider, chain) }}
+                      className="lw-btn"
+                      style={{ padding: '0.1rem 0.5rem', fontSize: '0.65rem', backgroundColor: '#3a3938', color: '#aaa', marginTop: '3px', width: 'auto', cursor: 'pointer' }}
+                    >
+                      + Add Addr
+                    </button>
+                  )}
+                  {addingAddr === provider && (
+                    <div style={{ marginTop: '6px', padding: '0.5rem', backgroundColor: 'rgba(106,36,250,0.15)', borderRadius: '4px' }}>
+                      <p style={{ color: 'var(--lw-text-secondary)', fontSize: '0.7rem', margin: '0 0 0.5rem 0' }}>
+                        In your {name.split(' ')[0]} extension, switch to the account you want to add.
+                      </p>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); playClick(); handleConfirmAddAddr(provider, chain) }}
+                          className="lw-btn"
+                          style={{ padding: '0.15rem 0.75rem', fontSize: '0.7rem', backgroundColor: 'var(--lw-purple)', color: '#fff', width: 'auto', cursor: 'pointer' }}
+                        >
+                          Connect
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setAddingAddr(null) }}
+                          className="lw-btn"
+                          style={{ padding: '0.15rem 0.75rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: '#aaa', width: 'auto', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0', flexShrink: 0 }}>
             {isSaved ? (
-              <span className="lw-connected">✓ Saved</span>
-            ) : onSave ? (
-              <ConnectBtn id={`${id}-save`} onClick={onSave} label="Save" />
+              <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: 'rgb(62, 45, 107)', color: '#ccc', cursor: 'default', minWidth: '100px' }}>
+                Linked
+              </button>
             ) : (
               <ConnectBtn id={id} onClick={onConnect} />
             )}
-            <span
-              style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', cursor: hasBalances ? 'pointer' : 'default', width: '1.5rem', textAlign: 'center', flexShrink: 0 }}
-              onClick={() => hasBalances && saved[0] && toggleExpand(id, saved[0].address, chain)}
-            >
-              {hasBalances ? (isExpanded ? '▲' : '▼') : ''}
-            </span>
+            <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
           </div>
         </div>
-        {isExpanded && saved[0] && (
-          loadingBalances === id ? (
-            <div style={{ padding: '0.5rem 0 0.5rem 2.5rem', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}><span className="lw-dots">Loading</span></div>
-          ) : (
-            <BalancePanel address={saved[0].address} chain={chain} />
-          )
-        )}
       </div>
     )
   }
 
-  const evmSaved = evmConnected && evmAddresses && evmAddresses.every(a => isWalletSaved(a))
-  const phantomSaved = publicKey && isWalletSaved(publicKey.toBase58())
+  const metamaskSavedWallets = savedWallets.filter(w => w.provider === 'metamask')
+  const evmSaved = metamaskSavedWallets.length > 0
+  const phantomSavedWallets = savedWallets.filter(w => w.provider === 'phantom')
+  const solflareSavedWallets = savedWallets.filter(w => w.provider === 'solflare')
+  const waxSavedWallets = savedWallets.filter(w => w.provider === 'wax')
+  const isCurrentlyPhantom = solanaWalletName.toLowerCase() === 'phantom'
+  const isCurrentlySolflare = solanaWalletName.toLowerCase() === 'solflare'
+  const phantomSaved = phantomSavedWallets.length > 0
+  const solflareSaved = solflareSavedWallets.length > 0
+  const waxSaved = waxSavedWallets.length > 0
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--lw-text-muted)' }}>
+          <input
+            type="checkbox"
+            checked={hideSmall}
+            onChange={e => setHideSmall(e.target.checked)}
+            style={{ accentColor: 'var(--lw-purple)', width: '14px', height: '14px', cursor: 'pointer' }}
+          />
+          Hide &lt; US$1
+        </label>
+      </div>
       {error && <p className="lw-error" style={{ marginBottom: '0.75rem' }}>{error}</p>}
 
       <WalletRow
         id="metamask" name="MetaMask (EVM)"
         icon={<img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="24" height="24" />}
         provider="metamask" chain="evm"
-        isSaved={!!evmSaved}
+        isSaved={evmSaved}
         onConnect={handleMetaMask}
-        onSave={evmConnected ? handleSaveEvm : undefined}
-        addresses={evmConnected && evmAddresses ? [...evmAddresses] : []}
+        addresses={evmConnected && evmAddresses ? [...evmAddresses] : metamaskSavedWallets.map(w => w.address)}
+        canAddMore={true}
       />
 
       <WalletRow
         id="phantom" name="Phantom (Solana)"
         icon={<img src="/phantom_logo.png" alt="Phantom" width="24" height="24" style={{ borderRadius: '6px' }} />}
         provider="phantom" chain="solana"
-        isSaved={!!phantomSaved}
+        isSaved={phantomSaved}
         onConnect={() => handleSolanaConnect('phantom')}
-        onSave={publicKey && !phantomSaved ? () => handleSaveSolana('phantom') : undefined}
-        addresses={publicKey ? [publicKey.toBase58()] : []}
+        addresses={isCurrentlyPhantom && publicKey ? [publicKey.toBase58()] : phantomSavedWallets.map(w => w.address)}
+        canAddMore={true}
       />
 
       <WalletRow
         id="solflare" name="Solflare (Solana)"
         icon={<img src="/solflare_logo.png" alt="Solflare" width="24" height="24" style={{ borderRadius: '6px' }} />}
         provider="solflare" chain="solana"
-        isSaved={false}
+        isSaved={solflareSaved}
         onConnect={() => handleSolanaConnect('solflare')}
-        addresses={[]}
+        addresses={isCurrentlySolflare && publicKey ? [publicKey.toBase58()] : solflareSavedWallets.map(w => w.address)}
+        canAddMore={true}
       />
 
-      <div className="lw-row" style={{ padding: '0.75rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width="24" height="24" style={{ borderRadius: '50%' }} />
-          <span className="lw-row-value">DiviGo Wallet</span>
+      <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', marginBottom: '0.5rem' }}>
+        <div className="lw-row" style={{ padding: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width="24" height="24" style={{ borderRadius: '50%' }} />
+            <span className="lw-row-value">DiviGo Wallet</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+            <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1', opacity: 0.5, cursor: 'not-allowed', minWidth: '100px' }}>
+              Coming Soon
+            </button>
+            <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
+          </div>
         </div>
-        <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1', opacity: 0.5, cursor: 'not-allowed' }}>
-          Coming Soon
-        </button>
       </div>
 
       <WalletRow
         id="wax" name="WAX Cloud Wallet"
         icon={<img src="https://www.mycloudwallet.com/favicon.ico" alt="WAX" width="24" height="24" style={{ borderRadius: '4px' }} />}
         provider="wax" chain="wax"
-        isSaved={false}
+        isSaved={waxSaved}
         onConnect={handleWaxConnect}
-        addresses={[]}
+        addresses={waxSavedWallets.map(w => w.address)}
       />
     </div>
   )

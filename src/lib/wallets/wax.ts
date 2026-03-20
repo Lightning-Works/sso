@@ -4,7 +4,6 @@
  */
 
 import type { ConnectedWallet } from './types'
-import { shortenAddress } from './types'
 
 // WAX RPC endpoint
 export const WAX_RPC = 'https://wax.greymass.com'
@@ -12,10 +11,8 @@ export const WAX_RPC = 'https://wax.greymass.com'
 export async function connectWaxWallet(): Promise<ConnectedWallet | null> {
   try {
     // Dynamic import to avoid SSR issues
-    const waxModule = await import('@waxio/waxjs/dist')
-    const WaxJS = waxModule.default || waxModule
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wax = new (WaxJS as any)({ rpcEndpoint: WAX_RPC })
+    const { WaxJS } = await import('@waxio/waxjs/dist')
+    const wax = new WaxJS({ rpcEndpoint: WAX_RPC })
 
     const userAccount = await wax.login()
 
@@ -34,7 +31,7 @@ export function formatWaxWallet(account: string): ConnectedWallet {
     chain: 'wax',
     provider: 'wax',
     address: account,
-    displayAddress: account, // WAX accounts are short readable names
+    displayAddress: account,
     chainName: 'WAX',
   }
 }
