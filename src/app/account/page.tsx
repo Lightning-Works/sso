@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js'
 import { WalletConnectPanel } from '@/lib/wallets/WalletConnectPanel'
 import type { ConnectedWallet } from '@/lib/wallets/types'
 import { shortenAddress } from '@/lib/wallets/types'
+import { UserImageCircle } from '@/lib/components/UserImageCircle'
 
 export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -17,6 +18,9 @@ export default function AccountPage() {
   const [message, setMessage] = useState('')
   const [isSuperadmin, setIsSuperadmin] = useState(false)
   const [savedWallets, setSavedWallets] = useState<ConnectedWallet[]>([])
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarOuterColor, setAvatarOuterColor] = useState('#000000')
+  const [avatarInnerColor, setAvatarInnerColor] = useState('#000000')
   const router = useRouter()
   const supabase = createClient()
 
@@ -30,9 +34,12 @@ export default function AccountPage() {
       setUser(user)
       setUsername(user.user_metadata?.username || '')
       setDisplayName(user.user_metadata?.display_name || '')
-      // Check role
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      // Check role and avatar
+      const { data: profile } = await supabase.from('profiles').select('role, avatar_url, avatar_outer_color, avatar_inner_color').eq('id', user.id).single()
       if (profile?.role === 'superadmin') setIsSuperadmin(true)
+      if (profile?.avatar_url) setAvatarUrl(profile.avatar_url)
+      if (profile?.avatar_outer_color) setAvatarOuterColor(profile.avatar_outer_color)
+      if (profile?.avatar_inner_color) setAvatarInnerColor(profile.avatar_inner_color)
       // Load saved wallets
       loadWallets(user.id)
       setLoading(false)
@@ -131,27 +138,67 @@ export default function AccountPage() {
         {/* Profile */}
         <div className="lw-section">
           <h2 className="lw-section-title">Profile</h2>
-          <div className="lw-form">
-            <div>
-              <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Email</label>
-              <p style={{ color: 'var(--lw-text-white)' }}>{user?.email}</p>
+          <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+            {/* Left — form fields */}
+            <div className="lw-form" style={{ flex: 1 }}>
+              <div>
+                <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Email</label>
+                <p style={{ color: 'var(--lw-text-white)' }}>{user?.email}</p>
+              </div>
+              <div>
+                <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Username</label>
+                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="lw-input" />
+              </div>
+              <div>
+                <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Display Name</label>
+                <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="lw-input" />
+              </div>
+              {message && <p className={message.startsWith('Error') ? 'lw-error' : 'lw-success'}>{message}</p>}
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={handleUpdateProfile} disabled={saving} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={handleChangePassword} className="lw-btn lw-btn-secondary">
+                  Change Password
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Username</label>
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="lw-input" />
-            </div>
-            <div>
-              <label className="lw-row-label" style={{ display: 'block', marginBottom: '0.25rem' }}>Display Name</label>
-              <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="lw-input" />
-            </div>
-            {message && <p className={message.startsWith('Error') ? 'lw-error' : 'lw-success'}>{message}</p>}
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={handleUpdateProfile} disabled={saving} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button onClick={handleChangePassword} className="lw-btn lw-btn-secondary">
-                Change Password
-              </button>
+
+            {/* Right — avatar circle */}
+            <div style={{ flexShrink: 0 }}>
+              <UserImageCircle
+                diameter={180}
+                initialImageUrl={avatarUrl}
+                initialOuterColor={avatarOuterColor}
+                initialInnerColor={avatarInnerColor}
+                onSave={async ({ file, outerColor, innerColor, panX, panY, zoom }) => {
+                  let newAvatarUrl = avatarUrl
+                  // Upload image if new file
+                  if (file && user?.id) {
+                    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+                    const path = `${user.id}/avatar.${ext}`
+                    const { error: upErr } = await supabase.storage.from('user-avatars').upload(path, file, { upsert: true })
+                    if (!upErr) {
+                      newAvatarUrl = `https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public/user-avatars/${path}`
+                    }
+                  }
+                  // Save to profile
+                  if (user?.id) {
+                    await supabase.from('profiles').update({
+                      avatar_url: newAvatarUrl,
+                      avatar_outer_color: outerColor,
+                      avatar_inner_color: innerColor,
+                      avatar_pan_x: panX,
+                      avatar_pan_y: panY,
+                      avatar_zoom: zoom,
+                    }).eq('id', user.id)
+                    setAvatarUrl(newAvatarUrl)
+                    setAvatarOuterColor(outerColor)
+                    setAvatarInnerColor(innerColor)
+                    setMessage('Avatar saved!')
+                  }
+                }}
+              />
             </div>
           </div>
         </div>
