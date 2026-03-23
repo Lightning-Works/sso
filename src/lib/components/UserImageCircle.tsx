@@ -8,6 +8,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024
 interface UserImageCircleProps {
   diameter?: number
   initialImageUrl?: string | null
+  initialIsVideo?: boolean
   initialOuterColor?: string
   initialInnerColor?: string
   onSave?: (data: { file: File | null; dataUrl: string | null; outerColor: string; innerColor: string; panX: number; panY: number; zoom: number }) => void
@@ -16,12 +17,14 @@ interface UserImageCircleProps {
 export function UserImageCircle({
   diameter = 180,
   initialImageUrl = null,
+  initialIsVideo = false,
   initialOuterColor = '#000000',
   initialInnerColor = '#000000',
   onSave,
 }: UserImageCircleProps) {
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(initialImageUrl)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [isVideo, setIsVideo] = useState(initialIsVideo)
   const [outerColor, setOuterColor] = useState(initialOuterColor)
   const [innerColor, setInnerColor] = useState(initialInnerColor)
   const [panX, setPanX] = useState(0.5)
@@ -37,8 +40,14 @@ export function UserImageCircle({
 
   // Update if initial URL changes
   useEffect(() => {
-    if (initialImageUrl && !imageFile) setImageDataUrl(initialImageUrl)
-  }, [initialImageUrl])
+    if (initialImageUrl && !imageFile) {
+      setImageDataUrl(initialImageUrl)
+      // Detect video from URL
+      if (initialImageUrl.includes('.mp4') || initialIsVideo) {
+        setIsVideo(true)
+      }
+    }
+  }, [initialImageUrl, initialIsVideo])
 
   const handleFile = useCallback((file: File) => {
     setError(null)
@@ -50,16 +59,25 @@ export function UserImageCircle({
       setError('File must be under 5 MB')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImageFile(file)
-      setImageDataUrl(reader.result as string)
-      setPanX(0.5)
-      setPanY(0.5)
-      setZoom(1.0)
-      setDirty(true)
+    const fileIsVideo = file.type === 'video/mp4'
+    setIsVideo(fileIsVideo)
+    setImageFile(file)
+    setPanX(0.5)
+    setPanY(0.5)
+    setZoom(1.0)
+    setDirty(true)
+
+    if (fileIsVideo) {
+      // Use object URL for video — data URLs are too large
+      const objectUrl = URL.createObjectURL(file)
+      setImageDataUrl(objectUrl)
+    } else {
+      const reader = new FileReader()
+      reader.onload = () => {
+        setImageDataUrl(reader.result as string)
+      }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
   }, [])
 
   // Drag to pan
@@ -118,26 +136,27 @@ export function UserImageCircle({
   const imageSize = diameter - totalInset * 2
   const imgTransform = `scale(${zoom}) translate(${(panX - 0.5) * -100}%, ${(panY - 0.5) * -100}%)`
 
-  // Color picker rectangle style
+  // Color picker rectangle style — 3:2 ratio, below circle, edges aligned with outer ring
+  const pickerW = 27
+  const pickerH = 18
   const pickerStyle = (isLeft: boolean): React.CSSProperties => ({
     position: 'absolute',
-    bottom: isLeft ? '8px' : '8px',
-    [isLeft ? 'left' : 'right']: '8px',
-    width: '36px',
-    height: '24px',
-    borderRadius: '3px',
-    overflow: 'hidden',
+    bottom: '-10px',
+    [isLeft ? 'left' : 'right']: '0px',
+    width: `${pickerW}px`,
+    height: `${pickerH}px`,
+    borderRadius: '2px',
+    overflow: 'visible',
     cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
   })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-      {/* Circle with rings */}
-      <div style={{ position: 'relative', width: diameter, height: diameter }}>
+      {/* Circle with rings — extra bottom padding for color pickers */}
+      <div style={{ position: 'relative', width: diameter, height: diameter, marginBottom: '24px' }}>
         <div
           ref={circleRef}
           onMouseDown={handleMouseDown}
@@ -165,10 +184,25 @@ export function UserImageCircle({
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {imageDataUrl ? (
-              <img src={imageDataUrl} alt="User" draggable={false} style={{
-                width: '100%', height: '100%', objectFit: 'cover',
-                transform: imgTransform, transformOrigin: 'center center', pointerEvents: 'none',
-              }} />
+              isVideo ? (
+                <video
+                  src={imageDataUrl}
+                  autoPlay loop muted playsInline
+                  draggable={false}
+                  crossOrigin="anonymous"
+                  onError={(e) => console.error('Video load error:', e)}
+                  onLoadedData={() => console.log('Video loaded successfully')}
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    transform: imgTransform, transformOrigin: 'center center', pointerEvents: 'none',
+                  }}
+                />
+              ) : (
+                <img src={imageDataUrl} alt="User" draggable={false} style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  transform: imgTransform, transformOrigin: 'center center', pointerEvents: 'none',
+                }} />
+              )
             ) : (
               <span style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.7rem', textAlign: 'center', padding: '8px' }}>
                 Click to upload
@@ -180,7 +214,7 @@ export function UserImageCircle({
         {/* Outer color picker — bottom left */}
         <div style={pickerStyle(true)}>
           <label style={{ display: 'block', width: '100%', height: '100%', cursor: 'pointer', position: 'relative' }}>
-            <div style={{ width: '100%', height: '100%', backgroundColor: outerColor, border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px' }} />
+            <div style={{ width: `${pickerW}px`, height: `${pickerH}px`, backgroundColor: outerColor, border: '1px solid rgba(255,255,255,0.15)', borderRadius: '2px' }} />
             <input type="color" value={outerColor} onChange={e => { setOuterColor(e.target.value); setDirty(true) }}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </label>
@@ -190,7 +224,7 @@ export function UserImageCircle({
         {/* Inner color picker — bottom right */}
         <div style={pickerStyle(false)}>
           <label style={{ display: 'block', width: '100%', height: '100%', cursor: 'pointer', position: 'relative' }}>
-            <div style={{ width: '100%', height: '100%', backgroundColor: innerColor, border: '1px solid rgba(255,255,255,0.15)', borderRadius: '3px' }} />
+            <div style={{ width: `${pickerW}px`, height: `${pickerH}px`, backgroundColor: innerColor, border: '1px solid rgba(255,255,255,0.15)', borderRadius: '2px' }} />
             <input type="color" value={innerColor} onChange={e => { setInnerColor(e.target.value); setDirty(true) }}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </label>
@@ -216,7 +250,7 @@ export function UserImageCircle({
       </div>
 
       {/* Error */}
-      {error && <span style={{ color: 'var(--lw-error, #ff4444)', fontSize: '0.7rem' }}>{error}</span>}
+      {error && <span style={{ color: 'var(--lw-error, #ff4444)', fontSize: '0.75rem', textAlign: 'center', display: 'block', maxWidth: `${diameter}px` }}>{error}</span>}
 
       {/* Instructions */}
       <span style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.6rem', textAlign: 'center' }}>

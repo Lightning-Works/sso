@@ -139,18 +139,24 @@ body {
    CHARACTER IMAGE
    ============================================ */
 
-.lw-character {
+.lw-character-wrapper {
   display: none;
+  position: relative;
+  margin-left: -55px;
+  z-index: 10;
+  align-self: flex-end;
+  bottom: 44px;
+}
+
+.lw-character {
   height: auto;
   object-fit: contain;
-  margin-left: -55px !important;
-  position: relative;
-  z-index: 10;
   max-height: var(--lw-character-max-height);
+  display: block;
 }
 
 @media (min-width: 1024px) {
-  .lw-character {
+  .lw-character-wrapper {
     display: block;
   }
 }
@@ -416,9 +422,29 @@ input.lw-input::placeholder {
   background-size: 400px;
 }
 
+.lw-account-page-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  max-width: 70rem;
+  margin: 0 auto;
+}
+
 .lw-account-container {
   max-width: 42rem;
+  width: 100%;
   margin: 0 auto;
+}
+
+.lw-account-character-sidebar {
+  display: none;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1200px) {
+  .lw-account-character-sidebar {
+    display: block;
+  }
 }
 
 .lw-account-header {

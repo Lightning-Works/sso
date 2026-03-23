@@ -22,6 +22,8 @@ interface App {
   slug: string
   app_header_img: string | null
   app_side_img: string | null
+  character_info: string | null
+  chat_api_key: string | null
   companies?: Company | null
 }
 
@@ -65,25 +67,31 @@ export default function AdminPage() {
 
   const uploadFile = async (bucket: string, file: File): Promise<string | null> => {
     const filename = file.name.toLowerCase().replace(/\s+/g, '_')
-    const { error } = await supabase.storage.from(bucket).upload(filename, file, { upsert: true })
-    if (error) { setMessage('Upload error: ' + error.message); return null }
+    const { error } = await supabase.storage.from(bucket).upload(filename, file, { upsert: true, contentType: file.type })
+    if (error) {
+      console.error('Upload error:', error)
+      setMessage(`Upload error (${bucket}): ${error.message}`)
+      return null
+    }
     return filename
   }
 
-  // Reusable image upload component
-  const ImageField = ({ label, currentFile, bucketUrl, height, fileRef }: {
-    label: string, currentFile: string | null, bucketUrl: string, height: string, fileRef: React.RefObject<HTMLInputElement | null>
+  // Reusable image upload component with local preview
+  const ImageField = ({ label, currentFile, bucketUrl, height, fileRef, onFileSelected }: {
+    label: string, currentFile: string | null, bucketUrl: string, height: string, fileRef: React.RefObject<HTMLInputElement | null>, onFileSelected?: () => void
   }) => {
-    const [selectedName, setSelectedName] = useState<string | null>(null)
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
     const [dims, setDims] = useState('')
+
+    const displayUrl = previewUrl || (currentFile ? `${bucketUrl}/${currentFile}` : null)
 
     return (
       <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
         <label style={{ marginBottom: '0.75rem', display: 'block', color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem' }}>{label}</label>
-        {currentFile && (
+        {displayUrl && (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', marginBottom: '0.4rem' }}>
             <img
-              src={`${bucketUrl}/${currentFile}`}
+              src={displayUrl}
               alt=""
               style={{ height, display: 'block' }}
               onLoad={(e) => {
@@ -104,20 +112,23 @@ export default function AdminPage() {
             ref={fileRef}
             accept="image/*"
             style={{ display: 'none' }}
-            onChange={(e) => setSelectedName(e.target.files?.[0]?.name || null)}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) {
+                const url = URL.createObjectURL(file)
+                setPreviewUrl(url)
+                setDims('')
+                onFileSelected?.()
+              }
+            }}
           />
           <button
             onClick={() => fileRef.current?.click()}
             className="lw-btn"
             style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', backgroundColor: '#3a3938', color: '#e4dad1', cursor: 'pointer' }}
           >
-            {currentFile ? 'Replace Image' : 'Upload Image'}
+            {displayUrl ? 'Replace Image' : 'Upload Image'}
           </button>
-          {selectedName && (
-            <span style={{ color: 'var(--lw-success)', fontSize: '0.8rem', marginLeft: '0.75rem' }}>
-              ✓ {selectedName}
-            </span>
-          )}
         </div>
       </div>
     )
@@ -130,8 +141,11 @@ export default function AdminPage() {
     const [slug, setSlug] = useState(company?.slug || '')
     const [primaryColor, setPrimaryColor] = useState(company?.primary_color || '#6a24fa')
     const [saving, setSaving] = useState(false)
+    const [saved, setSaved] = useState(false)
     const logoRef = useRef<HTMLInputElement>(null)
     const sideRef = useRef<HTMLInputElement>(null)
+
+    const markDirty = () => setSaved(false)
 
     const handleSave = async () => {
       setSaving(true)
@@ -152,13 +166,13 @@ export default function AdminPage() {
           name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
         })
         if (error) { setMessage('Error: ' + error.message) }
-        else { setMessage('Company created!'); setShowNewCompany(false) }
+        else { setShowNewCompany(false) }
       } else {
         const { error } = await supabase.from('companies').update({
           name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
         }).eq('id', company!.id)
         if (error) { setMessage('Error: ' + error.message) }
-        else { setMessage('Company updated!'); setEditingCompany(null) }
+        else { setSaved(true) }
       }
 
       setSaving(false)
@@ -171,21 +185,21 @@ export default function AdminPage() {
         <div className="lw-form">
           <div>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Company Name</label>
-            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={name} onChange={e => setName(e.target.value)} placeholder="Company Name" />
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={name} onChange={e => { setName(e.target.value); markDirty() }} placeholder="Company Name" />
           </div>
           <div>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Slug (URL identifier)</label>
-            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => setSlug(e.target.value)} placeholder="companyname" />
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => { setSlug(e.target.value); markDirty() }} placeholder="companyname" />
           </div>
           <div>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Primary Color</label>
-            <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} style={{ width: '60px', height: '36px', cursor: 'pointer', marginTop: '0.25rem' }} />
+            <input type="color" value={primaryColor} onChange={e => { setPrimaryColor(e.target.value); markDirty() }} style={{ width: '60px', height: '36px', cursor: 'pointer', marginTop: '0.25rem' }} />
           </div>
-          <ImageField label="Company Logo" currentFile={company?.logo_url || null} bucketUrl={`${STORAGE_BASE}/company-logos`} height="60px" fileRef={logoRef} />
-          <ImageField label="Default Side Image" currentFile={company?.app_side_img || null} bucketUrl={`${STORAGE_BASE}/app_side_image`} height="200px" fileRef={sideRef} />
+          <ImageField label="Company Logo" currentFile={company?.logo_url || null} bucketUrl={`${STORAGE_BASE}/company-logos`} height="60px" fileRef={logoRef} onFileSelected={markDirty} />
+          <ImageField label="Default Side Image" currentFile={company?.app_side_img || null} bucketUrl={`${STORAGE_BASE}/app_side_image`} height="200px" fileRef={sideRef} onFileSelected={markDirty} />
           <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button onClick={handleSave} disabled={saving} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
-              {saving ? 'Saving...' : isNew ? 'Create Company' : 'Save Changes'}
+            <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
+              {saving ? 'Saving...' : saved ? 'Saved' : isNew ? 'Create Company' : 'Save'}
             </button>
             <button onClick={() => { setEditingCompany(null); setShowNewCompany(false) }} className="lw-btn lw-btn-secondary" style={{ width: 'auto' }}>
               Cancel
@@ -202,36 +216,35 @@ export default function AdminPage() {
     const [name, setName] = useState(app?.name || '')
     const [slug, setSlug] = useState(app?.slug || '')
     const [companyId, setCompanyId] = useState(app?.company_id || companies[0]?.id || 0)
+    const [apiKey, setApiKey] = useState(app?.chat_api_key || '')
     const [saving, setSaving] = useState(false)
+    const [saved, setSaved] = useState(false)
     const headerRef = useRef<HTMLInputElement>(null)
-    const sideRef = useRef<HTMLInputElement>(null)
+
+    const markDirty = () => setSaved(false)
 
     const handleSave = async () => {
       setSaving(true)
       setMessage('')
 
       let headerImg = app?.app_header_img || null
-      let sideImg = app?.app_side_img || null
 
       if (headerRef.current?.files?.[0]) {
         headerImg = await uploadFile('app_logo', headerRef.current.files[0])
       }
-      if (sideRef.current?.files?.[0]) {
-        sideImg = await uploadFile('app_side_image', sideRef.current.files[0])
-      }
 
       if (isNew) {
         const { error } = await supabase.from('apps').insert({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, app_side_img: sideImg
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, chat_api_key: apiKey || null
         })
         if (error) { setMessage('Error: ' + error.message) }
-        else { setMessage('App created!'); setShowNewApp(false) }
+        else { setShowNewApp(false) }
       } else {
         const { error } = await supabase.from('apps').update({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, app_side_img: sideImg
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, chat_api_key: apiKey || null
         }).eq('id', app!.id)
         if (error) { setMessage('Error: ' + error.message) }
-        else { setMessage('App updated!'); setEditingApp(null) }
+        else { setSaved(true) }
       }
 
       setSaving(false)
@@ -244,17 +257,17 @@ export default function AdminPage() {
         <div className="lw-form">
           <div>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>App Name</label>
-            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={name} onChange={e => setName(e.target.value)} placeholder="App Name" />
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={name} onChange={e => { setName(e.target.value); markDirty() }} placeholder="App Name" />
           </div>
           <div>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Slug (URL identifier)</label>
-            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => setSlug(e.target.value)} placeholder="appname" />
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => { setSlug(e.target.value); markDirty() }} placeholder="appname" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginTop: '0.5rem' }}>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', flexShrink: 0 }}>Company</label>
             <select
               value={companyId}
-              onChange={e => setCompanyId(parseInt(e.target.value))}
+              onChange={e => { setCompanyId(parseInt(e.target.value)); markDirty() }}
               className="lw-input"
               style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8', width: 'auto', minWidth: '200px'}}
             >
@@ -263,16 +276,164 @@ export default function AdminPage() {
               ))}
             </select>
           </div>
-          <ImageField label="App Logo (shown in login panel)" currentFile={app?.app_header_img || null} bucketUrl={`${STORAGE_BASE}/app_logo`} height="75px" fileRef={headerRef} />
-          <ImageField label="Side Character Image" currentFile={app?.app_side_img || null} bucketUrl={`${STORAGE_BASE}/app_side_image`} height="250px" fileRef={sideRef} />
+          <div>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Kinet.ink API Key</label>
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={apiKey} onChange={e => { setApiKey(e.target.value); markDirty() }} placeholder="API key from Kinet.ink" />
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>Used for character chat and RAG training</p>
+          </div>
+          <ImageField label="App Logo (shown in login panel)" currentFile={app?.app_header_img || null} bucketUrl={`${STORAGE_BASE}/app_logo`} height="75px" fileRef={headerRef} onFileSelected={markDirty} />
           <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button onClick={handleSave} disabled={saving} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
-              {saving ? 'Saving...' : isNew ? 'Create App' : 'Save Changes'}
+            <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
+              {saving ? 'Saving...' : saved ? 'Saved' : isNew ? 'Create App' : 'Save'}
             </button>
             <button onClick={() => { setEditingApp(null); setShowNewApp(false) }} className="lw-btn lw-btn-secondary" style={{ width: 'auto' }}>
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // === CHARACTER PANEL ===
+
+  const CharacterPanel = ({ app }: { app: App }) => {
+    const [characterInfo, setCharacterInfo] = useState(app.character_info || '')
+    const [saving, setSaving] = useState(false)
+    const [saved, setSaved] = useState(false)
+    const [training, setTraining] = useState(false)
+    const [trained, setTrained] = useState(false)
+    const [trainResult, setTrainResult] = useState('')
+    const sideRef = useRef<HTMLInputElement>(null)
+
+    const markDirty = () => { setSaved(false); setTrained(false) }
+
+    const handleSaveCharacter = async () => {
+      setSaving(true)
+      setMessage('')
+
+      let sideImg = app.app_side_img || null
+      if (sideRef.current?.files?.[0]) {
+        sideImg = await uploadFile('app_side_image', sideRef.current.files[0])
+      }
+
+      const { error } = await supabase.from('apps').update({
+        app_side_img: sideImg,
+        character_info: characterInfo,
+      }).eq('id', app.id)
+
+      if (error) { setMessage('Error: ' + error.message) }
+      else { setSaved(true) }
+
+      setSaving(false)
+      loadData()
+    }
+
+    const handleTrain = async () => {
+      if (!characterInfo.trim()) {
+        setTrainResult('No game info to train on. Add text first.')
+        return
+      }
+      setTraining(true)
+      setTrainResult('')
+
+      // Get the app's Kinet.ink API key
+      const { data: appData } = await supabase.from('apps').select('chat_api_key').eq('id', app.id).single()
+      const apiKey = appData?.chat_api_key
+      if (!apiKey) {
+        setTrainResult('No Kinet.ink API key configured for this app. Add one in the App settings.')
+        setTraining(false)
+        return
+      }
+
+      try {
+        console.log('Training request:', { apiKey: apiKey.slice(0, 8) + '...', textLength: characterInfo.length, label: `${app.slug}-game-info` })
+        const res = await fetch('https://kabdqrzcewkzbjmeqmxx.supabase.co/functions/v1/public-ingest-knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            text: characterInfo,
+            source_label: `${app.slug}-game-info`,
+          }),
+        })
+        console.log('Training response status:', res.status)
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+          setTrainResult(`Training failed: ${err.error || res.statusText}`)
+        } else {
+          const data = await res.json()
+          setTrained(true)
+          setTrainResult(data.chunksProcessed ? `${data.chunksProcessed} chunks processed` : '')
+        }
+      } catch {
+        setTrainResult('Connection failed — check network or API key.')
+      }
+
+      setTraining(false)
+    }
+
+    return (
+      <div className="lw-section" style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+        <h3 className="lw-section-title">Character</h3>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+          {/* Left — Character image */}
+          <div style={{ flexShrink: 0, width: '220px' }}>
+            <ImageField
+              label="Side Image"
+              currentFile={app.app_side_img || null}
+              bucketUrl={`${STORAGE_BASE}/app_side_image`}
+              height="250px"
+              fileRef={sideRef}
+              onFileSelected={markDirty}
+            />
+          </div>
+
+          {/* Right — Game Info */}
+          <div style={{ flex: 1 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.5rem' }}>
+              Game Info
+            </label>
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>
+              Paste all information you want the character AI to know about this game. This will be sent to Kinet.ink for RAG training.
+            </p>
+            <textarea
+              value={characterInfo}
+              maxLength={500000}
+              onChange={e => { setCharacterInfo(e.target.value); markDirty() }}
+              className="lw-input"
+              placeholder="Paste game lore, mechanics, characters, world-building, FAQ, etc..."
+              style={{
+                backgroundColor: 'rgb(26,17,46)', color: '#bab1a8',
+                width: '100%', minHeight: '300px', resize: 'vertical',
+                fontFamily: 'inherit', fontSize: '0.85rem', lineHeight: '1.5',
+                padding: '0.75rem',
+              }}
+            />
+            <p style={{ color: characterInfo.length > 490000 ? '#ff8800' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0', textAlign: 'right' }}>
+              {characterInfo.length.toLocaleString()} / 500,000
+            </p>
+          </div>
+        </div>
+
+        {/* Buttons — right-aligned */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '1rem', justifyContent: 'flex-end' }}>
+          {trainResult && (
+            <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', marginRight: 'auto' }}>{trainResult}</span>
+          )}
+          <button onClick={handleSaveCharacter} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
+            {saving ? 'Saving...' : saved ? 'Saved' : 'Save'}
+          </button>
+          <button onClick={handleTrain} disabled={training || trained || !characterInfo.trim()} className="lw-btn" style={{
+            width: 'auto', padding: '0.5rem 1.5rem',
+            backgroundColor: trained ? '#34A853' : training ? '#3a3938' : '#ff8800', color: '#fff',
+            cursor: training || trained || !characterInfo.trim() ? 'not-allowed' : 'pointer',
+            opacity: !characterInfo.trim() ? 0.5 : 1,
+            fontWeight: 600,
+          }}>
+            {training ? 'Training...' : trained ? 'Trained' : 'Train'}
+          </button>
         </div>
       </div>
     )
@@ -379,7 +540,10 @@ export default function AdminPage() {
             {apps.map(app => (
               <div key={app.id}>
                 {editingApp?.id === app.id ? (
-                  <AppForm app={app} isNew={false} />
+                  <>
+                    <AppForm app={app} isNew={false} />
+                    <CharacterPanel app={app} />
+                  </>
                 ) : (
                   <div className="lw-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
