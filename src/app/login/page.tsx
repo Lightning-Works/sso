@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import { logAuth } from '@/lib/audit'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -22,6 +23,8 @@ function LoginContent() {
   const [userName, setUserName] = useState('')
   const [userBorderColor, setUserBorderColor] = useState('')
   const [userInnerColor, setUserInnerColor] = useState('')
+  const [userId, setUserId] = useState('')
+  const [userEmail, setUserEmail] = useState('')
 
   // Convert hex (#rrggbb) to HSL string for Kinet.ink
   const hexToHsl = (hex: string): string => {
@@ -47,6 +50,8 @@ function LoginContent() {
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
+      setUserId(user.id)
+      setUserEmail(user.email || '')
       setUserName(user.user_metadata?.display_name || user.user_metadata?.username || '')
       const { data: profile } = await supabase.from('profiles').select('avatar_url, display_name, username, avatar_outer_color, avatar_inner_color').eq('id', user.id).single()
       if (profile?.display_name || profile?.username) setUserName(profile.display_name || profile.username)
@@ -115,6 +120,8 @@ function LoginContent() {
         if (iframe?.contentWindow) {
           const msg = {
             type: 'setUserIdentity',
+            userId: userId || '',
+            email: userEmail || '',
             avatar: userAvatarUrl || '',
             user_avatar: userAvatarUrl || '',
             name: userName || '',
@@ -146,11 +153,28 @@ function LoginContent() {
     if (error) {
       setError(error.message)
       setLoading(false)
+      await logAuth(supabase, 'auth.login.failed', {
+        email,
+        description: `Failed login attempt for ${email}`,
+        metadata: { reason: error.message },
+      })
     } else if (externalRedirect) {
       const session = data.session
+      await logAuth(supabase, 'auth.login.password', {
+        user_id: data.user?.id,
+        email: data.user?.email || email,
+        username: data.user?.user_metadata?.username,
+        description: `Logged in via email/password`,
+      })
       const sep = externalRedirect.includes('#') ? '&' : '#'
       window.location.href = `${externalRedirect}${sep}access_token=${session.access_token}&refresh_token=${session.refresh_token}&token_type=bearer`
     } else {
+      await logAuth(supabase, 'auth.login.password', {
+        user_id: data.user?.id,
+        email: data.user?.email || email,
+        username: data.user?.user_metadata?.username,
+        description: `Logged in via email/password`,
+      })
       router.push('/account')
     }
   }

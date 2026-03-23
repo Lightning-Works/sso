@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { logAdmin } from '@/lib/audit'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -24,11 +25,13 @@ interface App {
   app_side_img: string | null
   character_info: string | null
   chat_api_key: string | null
+  admin_api_key: string | null
   companies?: Company | null
 }
 
 export default function AdminPage() {
   const [role, setRole] = useState('')
+  const [adminUser, setAdminUser] = useState<{ id: string; email?: string; username?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
@@ -55,6 +58,7 @@ export default function AdminPage() {
       return
     }
     setRole(profile.role)
+    setAdminUser({ id: user.id, email: user.email, username: user.user_metadata?.username })
     setLoading(false)
   }
 
@@ -166,13 +170,31 @@ export default function AdminPage() {
           name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
         })
         if (error) { setMessage('Error: ' + error.message) }
-        else { setShowNewCompany(false) }
+        else {
+          await logAdmin(supabase, 'admin.company.create', {
+            user_id: adminUser?.id,
+            email: adminUser?.email,
+            username: adminUser?.username,
+            description: `Created company "${name}"`,
+            metadata: { name, slug: slug.toLowerCase() },
+          })
+          setShowNewCompany(false)
+        }
       } else {
         const { error } = await supabase.from('companies').update({
           name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
         }).eq('id', company!.id)
         if (error) { setMessage('Error: ' + error.message) }
-        else { setSaved(true) }
+        else {
+          await logAdmin(supabase, 'admin.company.update', {
+            user_id: adminUser?.id,
+            email: adminUser?.email,
+            username: adminUser?.username,
+            description: `Updated company "${name}"`,
+            metadata: { name, slug: slug.toLowerCase() },
+          })
+          setSaved(true)
+        }
       }
 
       setSaving(false)
@@ -216,7 +238,8 @@ export default function AdminPage() {
     const [name, setName] = useState(app?.name || '')
     const [slug, setSlug] = useState(app?.slug || '')
     const [companyId, setCompanyId] = useState(app?.company_id || companies[0]?.id || 0)
-    const [apiKey, setApiKey] = useState(app?.chat_api_key || '')
+    // API keys are managed in the Character panel, not here
+    // But we preserve them on save so they don't get wiped
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const headerRef = useRef<HTMLInputElement>(null)
@@ -235,16 +258,34 @@ export default function AdminPage() {
 
       if (isNew) {
         const { error } = await supabase.from('apps').insert({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, chat_api_key: apiKey || null
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg
         })
         if (error) { setMessage('Error: ' + error.message) }
-        else { setShowNewApp(false) }
+        else {
+          await logAdmin(supabase, 'admin.app.create', {
+            user_id: adminUser?.id,
+            email: adminUser?.email,
+            username: adminUser?.username,
+            description: `Created app "${name}"`,
+            metadata: { name, slug: slug.toLowerCase() },
+          })
+          setShowNewApp(false)
+        }
       } else {
         const { error } = await supabase.from('apps').update({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, chat_api_key: apiKey || null
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg
         }).eq('id', app!.id)
         if (error) { setMessage('Error: ' + error.message) }
-        else { setSaved(true) }
+        else {
+          await logAdmin(supabase, 'admin.app.update', {
+            user_id: adminUser?.id,
+            email: adminUser?.email,
+            username: adminUser?.username,
+            description: `Updated app "${name}"`,
+            metadata: { name, slug: slug.toLowerCase() },
+          })
+          setSaved(true)
+        }
       }
 
       setSaving(false)
@@ -276,11 +317,6 @@ export default function AdminPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Kinet.ink API Key</label>
-            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={apiKey} onChange={e => { setApiKey(e.target.value); markDirty() }} placeholder="API key from Kinet.ink" />
-            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>Used for character chat and RAG training</p>
-          </div>
           <ImageField label="App Logo (shown in login panel)" currentFile={app?.app_header_img || null} bucketUrl={`${STORAGE_BASE}/app_logo`} height="75px" fileRef={headerRef} onFileSelected={markDirty} />
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
@@ -299,6 +335,8 @@ export default function AdminPage() {
 
   const CharacterPanel = ({ app }: { app: App }) => {
     const [characterInfo, setCharacterInfo] = useState(app.character_info || '')
+    const [chatKey, setChatKey] = useState(app.chat_api_key || '')
+    const [adminKey, setAdminKey] = useState(app.admin_api_key || '')
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const [training, setTraining] = useState(false)
@@ -320,10 +358,21 @@ export default function AdminPage() {
       const { error } = await supabase.from('apps').update({
         app_side_img: sideImg,
         character_info: characterInfo,
+        chat_api_key: chatKey || null,
+        admin_api_key: adminKey || null,
       }).eq('id', app.id)
 
       if (error) { setMessage('Error: ' + error.message) }
-      else { setSaved(true) }
+      else {
+        await logAdmin(supabase, 'admin.character.save', {
+          user_id: adminUser?.id,
+          email: adminUser?.email,
+          username: adminUser?.username,
+          description: `Saved character info for ${app.name}`,
+          metadata: { app_slug: app.slug, chars: characterInfo.length },
+        })
+        setSaved(true)
+      }
 
       setSaving(false)
       loadData()
@@ -337,22 +386,19 @@ export default function AdminPage() {
       setTraining(true)
       setTrainResult('')
 
-      // Get the app's Kinet.ink API key
-      const { data: appData } = await supabase.from('apps').select('chat_api_key').eq('id', app.id).single()
-      const apiKey = appData?.chat_api_key
-      if (!apiKey) {
-        setTrainResult('No Kinet.ink API key configured for this app. Add one in the App settings.')
+      if (!adminKey) {
+        setTrainResult('No Admin API key configured. Add one below.')
         setTraining(false)
         return
       }
 
       try {
-        console.log('Training request:', { apiKey: apiKey.slice(0, 8) + '...', textLength: characterInfo.length, label: `${app.slug}-game-info` })
+        console.log('Training request:', { apiKey: adminKey.slice(0, 8) + '...', textLength: characterInfo.length, label: `${app.slug}-game-info` })
         const res = await fetch('https://kabdqrzcewkzbjmeqmxx.supabase.co/functions/v1/public-ingest-knowledge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            api_key: apiKey,
+            api_key: adminKey,
             text: characterInfo,
             source_label: `${app.slug}-game-info`,
           }),
@@ -364,6 +410,13 @@ export default function AdminPage() {
           setTrainResult(`Training failed: ${err.error || res.statusText}`)
         } else {
           const data = await res.json()
+          await logAdmin(supabase, 'admin.character.train', {
+            user_id: adminUser?.id,
+            email: adminUser?.email,
+            username: adminUser?.username,
+            description: `Sent character training for ${app.name}`,
+            metadata: { app_slug: app.slug, chars: characterInfo.length, result: data.chunksProcessed ? `${data.chunksProcessed} chunks` : 'success' },
+          })
           setTrained(true)
           setTrainResult(data.chunksProcessed ? `${data.chunksProcessed} chunks processed` : '')
         }
@@ -414,6 +467,20 @@ export default function AdminPage() {
             <p style={{ color: characterInfo.length > 490000 ? '#ff8800' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0', textAlign: 'right' }}>
               {characterInfo.length.toLocaleString()} / 500,000
             </p>
+          </div>
+        </div>
+
+        {/* API Keys */}
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Chat API Key</label>
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={chatKey} onChange={e => { setChatKey(e.target.value); markDirty() }} placeholder="Chat key (public, used in iframe)" />
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0' }}>Embedded in iframe URL — safe to expose client-side</p>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Admin API Key</label>
+            <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={adminKey} onChange={e => { setAdminKey(e.target.value); markDirty() }} placeholder="Admin key (private, for training)" />
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0' }}>Server-side only — used for RAG training</p>
           </div>
         </div>
 

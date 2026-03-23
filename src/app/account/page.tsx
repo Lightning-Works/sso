@@ -8,6 +8,7 @@ import { WalletConnectPanel } from '@/lib/wallets/WalletConnectPanel'
 import type { ConnectedWallet } from '@/lib/wallets/types'
 import { shortenAddress } from '@/lib/wallets/types'
 import { UserImageCircle } from '@/lib/components/UserImageCircle'
+import { logAuth, logProfile } from '@/lib/audit'
 
 export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -128,16 +129,18 @@ export default function AccountPage() {
   // Build user identity message for Kinet.ink chat iframe
   const buildUserIdentityMsg = useCallback(() => ({
     type: 'setUserIdentity',
+    userId: user?.id || '',
     avatar: avatarUrl || '',
     user_avatar: avatarUrl || '',
     name: displayName || username || '',
     userName: displayName || username || '',
+    email: user?.email || '',
     borderColor: avatarOuterColor !== '#000000' ? hexToHsl(avatarOuterColor) : '',
     userBorderColor: avatarOuterColor !== '#000000' ? hexToHsl(avatarOuterColor) : '',
     innerColor: avatarInnerColor !== '#000000' ? hexToHsl(avatarInnerColor) : '',
     userInnerColor: avatarInnerColor !== '#000000' ? hexToHsl(avatarInnerColor) : '',
     userColor: avatarOuterColor !== '#000000' ? hexToHsl(avatarOuterColor) : '',
-  }), [avatarUrl, displayName, username, avatarOuterColor, avatarInnerColor])
+  }), [user, avatarUrl, displayName, username, avatarOuterColor, avatarInnerColor])
 
   // Listen for ALL messages from the chat iframe and respond with user identity
   useEffect(() => {
@@ -190,6 +193,12 @@ export default function AccountPage() {
   }, [supabase])
 
   const handleLogout = async () => {
+    await logAuth(supabase, 'auth.logout', {
+      user_id: user?.id,
+      email: user?.email,
+      username: user?.user_metadata?.username,
+      description: 'User signed out',
+    })
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -207,6 +216,13 @@ export default function AccountPage() {
       setMessage('Error: ' + error.message)
     } else {
       setMessage('Profile updated!')
+      await logProfile(supabase, 'profile.update', {
+        user_id: user?.id,
+        email: user?.email,
+        username: username.toLowerCase(),
+        description: `Updated username and display name`,
+        metadata: { fields: ['username', 'display_name'], username: username.toLowerCase(), display_name: displayName },
+      })
     }
     setSaving(false)
   }
@@ -221,11 +237,24 @@ export default function AccountPage() {
     if (error) {
       alert('Error: ' + error.message)
     } else {
+      await logAuth(supabase, 'auth.password.change', {
+        user_id: user?.id,
+        email: user?.email,
+        username: user?.user_metadata?.username,
+        description: 'Password changed',
+      })
       alert('Password updated!')
     }
   }
 
   const connectProvider = async (provider: 'google' | 'discord' | 'apple' | 'twitter') => {
+    await logAuth(supabase, 'auth.identity.link', {
+      user_id: user?.id,
+      email: user?.email,
+      username: user?.user_metadata?.username,
+      description: `Linked ${provider} login`,
+      metadata: { provider },
+    })
     const { error } = await supabase.auth.linkIdentity({
       provider,
       options: {
@@ -275,6 +304,13 @@ export default function AccountPage() {
     if (!confirm('This will invalidate all existing backup codes. Continue?')) return
     const codes = generateBackupCodes()
     await storeBackupCodes(codes)
+    await logAuth(supabase, 'auth.mfa.backup.generate', {
+      user_id: user?.id,
+      email: user?.email,
+      username: user?.user_metadata?.username,
+      description: 'Regenerated backup codes',
+      metadata: { count: 10 },
+    })
     setBackupCodes(codes)
     setShowBackupCodes(true)
   }
@@ -354,6 +390,13 @@ export default function AccountPage() {
                     if (upErr) {
                       console.error('Avatar upload error:', upErr)
                     } else {
+                      await logProfile(supabase, 'profile.avatar.upload', {
+                        user_id: user?.id,
+                        email: user?.email,
+                        username: user?.user_metadata?.username,
+                        description: 'Uploaded new avatar image',
+                        metadata: { file_type: file.type, file_ext: ext },
+                      })
                       // Store just the path — we'll generate signed URLs on load
                       newAvatarUrl = path
                       // Also get a signed URL for immediate display
@@ -378,6 +421,13 @@ export default function AccountPage() {
                       alert('Profile save failed: ' + profileErr.message)
                     } else {
                       console.log('Profile saved with avatar:', newAvatarUrl)
+                      await logProfile(supabase, 'profile.avatar.save', {
+                        user_id: user?.id,
+                        email: user?.email,
+                        username: user?.user_metadata?.username,
+                        description: 'Saved avatar settings',
+                        metadata: { outerColor, innerColor, panX, panY, zoom },
+                      })
                     }
                     setAvatarUrl(newAvatarUrl)
                     setAvatarOuterColor(outerColor)
@@ -502,6 +552,12 @@ export default function AccountPage() {
                     const factor = factors?.totp?.find(f => f.status === 'verified')
                     if (factor) {
                       await supabase.auth.mfa.unenroll({ factorId: factor.id })
+                      await logAuth(supabase, 'auth.mfa.disable', {
+                        user_id: user?.id,
+                        email: user?.email,
+                        username: user?.user_metadata?.username,
+                        description: 'Disabled two-factor authentication',
+                      })
                       setMfaEnabled(false)
                     }
                   }}
@@ -669,6 +725,19 @@ export default function AccountPage() {
                             // Generate and store backup codes
                             const codes = generateBackupCodes()
                             await storeBackupCodes(codes)
+                            await logAuth(supabase, 'auth.mfa.enable', {
+                              user_id: user?.id,
+                              email: user?.email,
+                              username: user?.user_metadata?.username,
+                              description: 'Enabled two-factor authentication',
+                            })
+                            await logAuth(supabase, 'auth.mfa.backup.generate', {
+                              user_id: user?.id,
+                              email: user?.email,
+                              username: user?.user_metadata?.username,
+                              description: 'Generated 10 backup codes during 2FA setup',
+                              metadata: { count: 10 },
+                            })
                             setBackupCodes(codes)
                             setShowBackupCodes(true)
                             setMfaEnabled(true)

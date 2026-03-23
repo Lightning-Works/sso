@@ -420,6 +420,9 @@ input.lw-input::placeholder {
   background-image: url('/bkgd_comics.webp');
   background-repeat: repeat;
   background-size: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .lw-account-page-inner {

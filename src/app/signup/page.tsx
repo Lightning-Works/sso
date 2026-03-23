@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
+import { logAuth } from '@/lib/audit'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -29,7 +30,14 @@ export default function SignupPage() {
       options: { data: { username: username.toLowerCase(), display_name: username } },
     })
     if (error) { setError(error.message); setLoading(false) }
-    else { setSuccess(true) }
+    else {
+      await logAuth(supabase, 'auth.signup', {
+        email,
+        username: username.toLowerCase(),
+        description: `New account created for ${email}`,
+      })
+      setSuccess(true)
+    }
   }
 
   if (success) {

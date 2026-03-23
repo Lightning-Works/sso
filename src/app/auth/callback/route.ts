@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { logAuth } from '@/lib/audit/logger'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -12,6 +13,31 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
+      const user = data.user
+      const provider = user?.app_metadata?.provider || 'unknown'
+
+      // Determine if this is a new signup or returning login
+      // If the user was created within the last 10 seconds, treat as signup
+      const isNewUser = user?.created_at && (Date.now() - new Date(user.created_at).getTime() < 10000)
+
+      if (isNewUser) {
+        await logAuth(supabase, 'auth.signup', {
+          user_id: user?.id,
+          email: user?.email,
+          username: user?.user_metadata?.username,
+          description: `Signed up via ${provider}`,
+          metadata: { provider },
+        })
+      }
+
+      await logAuth(supabase, 'auth.login.oauth', {
+        user_id: user?.id,
+        email: user?.email,
+        username: user?.user_metadata?.username,
+        description: `Logged in via ${provider}`,
+        metadata: { provider },
+      })
+
       // If an external app requested this login, redirect back with tokens
       if (externalRedirect && data.session) {
         const sep = externalRedirect.includes('#') ? '&' : '#'

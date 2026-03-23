@@ -6,6 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { logAuth } from '@/lib/audit/logger'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -67,6 +68,16 @@ export async function POST(request: Request) {
     const meta = user.user_metadata || {}
     const resolvedUsername = profile?.username || meta.username || meta.preferred_username || meta.user_name || ''
     const resolvedDisplayName = profile?.display_name || meta.display_name || meta.full_name || meta.name || ''
+
+    // Log the verification
+    const origin = request.headers.get('origin') || request.headers.get('referer') || 'unknown'
+    await logAuth(supabase, 'auth.verify', {
+      user_id: user.id,
+      email: user.email,
+      username: resolvedUsername,
+      description: `Token verified by external app`,
+      metadata: { app_origin: origin },
+    })
 
     return NextResponse.json({
       valid: true,
