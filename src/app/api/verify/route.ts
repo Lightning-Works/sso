@@ -33,8 +33,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401, headers: CORS_HEADERS })
     }
 
+    // Use a service-role client for the profiles query to bypass RLS
+    // (this endpoint is called by external apps without browser cookies)
+    const { createClient: createServiceClient } = await import('@supabase/supabase-js')
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    let profileClient = supabase
+    if (serviceKey) {
+      profileClient = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
+    }
+
     // Get profile with role and avatar details
-    const { data: profile } = await supabase
+    const { data: profile } = await profileClient
       .from('profiles')
       .select('username, display_name, role, avatar_url, avatar_outer_color, avatar_inner_color, avatar_pan_x, avatar_pan_y, avatar_zoom')
       .eq('id', user.id)
@@ -47,7 +56,7 @@ export async function POST(request: Request) {
         resolvedAvatarUrl = profile.avatar_url
       } else {
         // Storage path — generate signed URL
-        const { data: signedData } = await supabase.storage.from('user_avatars').createSignedUrl(profile.avatar_url, 604800)
+        const { data: signedData } = await profileClient.storage.from('user_avatars').createSignedUrl(profile.avatar_url, 604800)
         if (signedData?.signedUrl) resolvedAvatarUrl = signedData.signedUrl
       }
     }

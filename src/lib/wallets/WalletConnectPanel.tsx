@@ -344,14 +344,32 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', margin: '2px 0' }}>
-          <span style={{
-            color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
-            fontSize: '0.7rem',
-            fontFamily: 'monospace',
-            fontWeight: isActive ? 600 : 400,
-          }}>
-            ✓ {shortenAddress(addr)}
-          </span>
+          {chain === 'wax' ? (
+            <a
+              href={`/wallet/wax?account=${encodeURIComponent(addr)}`}
+              style={{
+                color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
+                fontSize: '0.7rem',
+                fontFamily: 'monospace',
+                fontWeight: isActive ? 600 : 400,
+                textDecoration: 'none',
+              }}
+              onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+              onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+              title="View WAX portfolio & NFTs"
+            >
+              ✓ {shortenAddress(addr)}
+            </a>
+          ) : (
+            <span style={{
+              color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
+              fontSize: '0.7rem',
+              fontFamily: 'monospace',
+              fontWeight: isActive ? 600 : 400,
+            }}>
+              ✓ {shortenAddress(addr)}
+            </span>
+          )}
           <span
             style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', cursor: 'pointer', padding: '0 0.25rem' }}
             onClick={(e) => { e.stopPropagation(); toggleExpandAddr(addr, chain) }}
@@ -370,9 +388,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     )
   }
 
-  const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, addresses, canAddMore }: {
+  const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, addresses, canAddMore, walletLink }: {
     id: string, name: string, icon: React.ReactNode, provider: string, chain: 'evm' | 'solana' | 'wax',
-    isSaved: boolean, onConnect: () => void, addresses: string[], canAddMore?: boolean
+    isSaved: boolean, onConnect: () => void, addresses: string[], canAddMore?: boolean, walletLink?: string
   }) => {
     const saved = getSavedForProvider(provider)
     const allAddresses = [...new Set([...addresses, ...saved.map(w => w.address)])]
@@ -425,15 +443,21 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             {isSaved ? (
-              <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: 'rgb(62, 45, 107)', color: '#ccc', cursor: 'default', minWidth: '100px' }}>
-                Linked
-              </button>
+              <>
+                {walletLink && (
+                  <a href={walletLink} className="lw-btn lw-btn-connect" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', textDecoration: 'none', minWidth: '80px', textAlign: 'center' }}>
+                    Wallet
+                  </a>
+                )}
+                <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: 'rgb(62, 45, 107)', color: '#ccc', cursor: 'default', minWidth: '100px' }}>
+                  Linked
+                </button>
+              </>
             ) : (
               <ConnectBtn id={id} onClick={onConnect} />
             )}
-            <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
           </div>
         </div>
       </div>
@@ -518,6 +542,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         isSaved={waxSaved}
         onConnect={handleWaxConnect}
         addresses={waxSavedWallets.map(w => w.address)}
+        walletLink={waxSavedWallets[0] ? `/wallet/wax?account=${encodeURIComponent(waxSavedWallets[0].address)}` : undefined}
       />
     </div>
   )

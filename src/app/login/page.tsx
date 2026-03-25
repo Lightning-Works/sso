@@ -15,7 +15,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [companyLogo, setCompanyLogo] = useState('/lightningworks_logo_fordark_800px.webp')
   const [appLogo, setAppLogo] = useState('')
-  const [sideImg, setSideImg] = useState('/shiyang_pointing_1800px.webp')
+  const [sideImg, setSideImg] = useState<string | null>('/shiyang_pointing_1800px.webp')
   const [chatOpen, setChatOpen] = useState(false)
   const [chatApiKey, setChatApiKey] = useState('')
   const [appName, setAppName] = useState('')
@@ -90,7 +90,12 @@ function LoginContent() {
         .then(({ data }) => {
           if (data) {
             if (data.app_header_img) setAppLogo(`${STORAGE_BASE}/app_logo/${data.app_header_img}`)
-            if (data.app_side_img) setSideImg(`${STORAGE_BASE}/app_side_image/${data.app_side_img}`)
+            // Set side image if configured, clear the default if not
+            if (data.app_side_img) {
+              setSideImg(`${STORAGE_BASE}/app_side_image/${data.app_side_img}`)
+            } else {
+              setSideImg(null)
+            }
             if (data.companies?.logo_url) setCompanyLogo(`${STORAGE_BASE}/company-logos/${data.companies.logo_url}`)
             if (data.chat_api_key) setChatApiKey(data.chat_api_key)
             if (data.name) setAppName(data.name)
@@ -251,7 +256,7 @@ function LoginContent() {
               </button>
               {chatApiKey ? (
                 <iframe
-                  src={`https://fairytime.lovable.app/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${userName ? `&userName=${encodeURIComponent(userName)}` : ''}`}
+                  src={`https://fairytime.lovable.app/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${userId ? `&user_id=${encodeURIComponent(userId)}` : ''}${userName ? `&userName=${encodeURIComponent(userName)}` : ''}`}
                   style={{
                     width: '100%',
                     height: '650px',
@@ -377,8 +382,8 @@ function LoginContent() {
           </p>
         </div>
 
-        {/* Character with chat bubble */}
-        <div className="lw-character-wrapper">
+        {/* Character with chat bubble — only if side image exists */}
+        {sideImg && <div className="lw-character-wrapper">
           {/* Chat bubble — sits above the character */}
           {!chatOpen && (
             <button
@@ -417,7 +422,7 @@ function LoginContent() {
             alt="Character"
             className="lw-character"
           />
-        </div>
+        </div>}
       </div>
     </div>
     </>

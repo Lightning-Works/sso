@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
+import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -35,11 +36,17 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
-  const [activeTab, setActiveTab] = useState<'companies' | 'apps'>('companies')
+  const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
+  const [activeTab, setActiveTab] = useState<'companies' | 'apps' | 'characters'>('companies')
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [editingApp, setEditingApp] = useState<App | null>(null)
+  const [editingCharacter, setEditingCharacter] = useState<CharacterData | null>(null)
   const [showNewCompany, setShowNewCompany] = useState(false)
   const [showNewApp, setShowNewApp] = useState(false)
+  const [showNewCharacter, setShowNewCharacter] = useState(false)
+  const [charFilterCompany, setCharFilterCompany] = useState('')
+  const [charFilterApp, setCharFilterApp] = useState('')
+  const [charSearch, setCharSearch] = useState('')
   const [message, setMessage] = useState('')
   const router = useRouter()
   const supabase = createClient()
@@ -65,8 +72,14 @@ export default function AdminPage() {
   const loadData = async () => {
     const { data: companiesData } = await supabase.from('companies').select('*').order('id')
     const { data: appsData } = await supabase.from('apps').select('*, companies(name, slug)').order('id')
+    const { data: charsData } = await supabase.from('characters').select('*, companies(name), apps(name)').order('id')
     if (companiesData) setCompanies(companiesData)
     if (appsData) setApps(appsData)
+    if (charsData) setCharacters(charsData.map((c: Record<string, unknown>) => ({
+      ...c,
+      company_name: (c.companies as Record<string, unknown>)?.name as string || '',
+      app_name: (c.apps as Record<string, unknown>)?.name as string || '',
+    })) as (CharacterData & { company_name?: string; app_name?: string })[])
   }
 
   const uploadFile = async (bucket: string, file: File): Promise<string | null> => {
@@ -333,7 +346,7 @@ export default function AdminPage() {
 
   // === CHARACTER PANEL ===
 
-  const CharacterPanel = ({ app }: { app: App }) => {
+  const AppCharacterPanel = ({ app }: { app: App }) => {
     const [characterInfo, setCharacterInfo] = useState(app.character_info || '')
     const [chatKey, setChatKey] = useState(app.chat_api_key || '')
     const [adminKey, setAdminKey] = useState(app.admin_api_key || '')
@@ -506,6 +519,74 @@ export default function AdminPage() {
     )
   }
 
+  // New Character form
+  const NewCharacterForm = ({ companies: cos, apps: appsList, supabase: sb, adminUser: au, onCreated, onCancel, setMessage: sm }: {
+    companies: Company[], apps: App[], supabase: ReturnType<typeof createClient>,
+    adminUser: typeof adminUser, onCreated: () => void, onCancel: () => void, setMessage: (m: string) => void
+  }) => {
+    const [name, setName] = useState('')
+    const [slug, setSlug] = useState('')
+    const [companyId, setCompanyId] = useState<number | ''>(cos[0]?.id || '')
+    const [appId, setAppId] = useState<number | ''>('')
+    const [saving, setSaving] = useState(false)
+
+    return (
+      <div className="lw-form">
+        <div>
+          <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Character Name</label>
+          <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={name} onChange={e => setName(e.target.value)} placeholder="Shi Yang" />
+        </div>
+        <div>
+          <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Slug</label>
+          <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => setSlug(e.target.value)} placeholder="shi-yang" />
+        </div>
+        <div style={{ display: 'flex', gap: '1.5rem' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Company</label>
+            <select className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={companyId} onChange={e => setCompanyId(e.target.value ? parseInt(e.target.value) : '')}>
+              <option value="">None</option>
+              {cos.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>App</label>
+            <select className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={appId} onChange={e => setAppId(e.target.value ? parseInt(e.target.value) : '')}>
+              <option value="">None</option>
+              {appsList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            disabled={saving || !name || !slug}
+            onClick={async () => {
+              setSaving(true)
+              const { error } = await sb.from('characters').insert({
+                name, slug: slug.toLowerCase(),
+                company_id: companyId || null,
+                app_id: appId || null,
+              })
+              if (error) { sm('Error: ' + error.message) }
+              else {
+                await logAdmin(sb, 'admin.character.create', {
+                  user_id: au?.id, email: au?.email, username: au?.username,
+                  description: `Created character "${name}"`,
+                  metadata: { name, slug: slug.toLowerCase() },
+                })
+                onCreated()
+              }
+              setSaving(false)
+            }}
+            className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}
+          >
+            {saving ? 'Creating...' : 'Create Character'}
+          </button>
+          <button onClick={onCancel} className="lw-btn lw-btn-secondary" style={{ width: 'auto' }}>Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return <div className="lw-page"><p className="lw-subtitle">Loading...</p></div>
   }
@@ -540,9 +621,16 @@ export default function AdminPage() {
             <button
               onClick={() => setActiveTab('apps')}
               className="lw-btn"
-              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'apps' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+              style={{ borderRadius: '0', background: activeTab === 'apps' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Apps
+            </button>
+            <button
+              onClick={() => setActiveTab('characters')}
+              className="lw-btn"
+              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'characters' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Characters
             </button>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '2rem' }}>
@@ -609,7 +697,7 @@ export default function AdminPage() {
                 {editingApp?.id === app.id ? (
                   <>
                     <AppForm app={app} isNew={false} />
-                    <CharacterPanel app={app} />
+                    <AppCharacterPanel app={app} />
                   </>
                 ) : (
                   <div className="lw-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -634,6 +722,107 @@ export default function AdminPage() {
                 )}
               </div>
             ))}
+          </>
+        )}
+
+        {/* Characters Tab */}
+        {activeTab === 'characters' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 className="lw-section-title" style={{ margin: 0 }}>Characters ({characters.length})</h2>
+              <button onClick={() => { setShowNewCharacter(true); setEditingCharacter(null) }} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
+                + Add Character
+              </button>
+            </div>
+
+            {/* Search and Filters */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <input
+                className="lw-input"
+                style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '150px' }}
+                placeholder="Search characters..."
+                value={charSearch}
+                onChange={e => setCharSearch(e.target.value)}
+              />
+              <select
+                className="lw-input"
+                style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', width: 'auto', minWidth: '150px' }}
+                value={charFilterCompany}
+                onChange={e => setCharFilterCompany(e.target.value)}
+              >
+                <option value="">All Companies</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select
+                className="lw-input"
+                style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', width: 'auto', minWidth: '150px' }}
+                value={charFilterApp}
+                onChange={e => setCharFilterApp(e.target.value)}
+              >
+                <option value="">All Apps</option>
+                {apps.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+
+            {/* New Character Form */}
+            {showNewCharacter && (
+              <div className="lw-section" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                <h3 className="lw-section-title">New Character</h3>
+                <NewCharacterForm
+                  companies={companies}
+                  apps={apps}
+                  supabase={supabase}
+                  adminUser={adminUser}
+                  onCreated={() => { setShowNewCharacter(false); loadData() }}
+                  onCancel={() => setShowNewCharacter(false)}
+                  setMessage={setMessage}
+                />
+              </div>
+            )}
+
+            {/* Character List */}
+            {characters
+              .filter(c => {
+                if (charSearch && !c.name.toLowerCase().includes(charSearch.toLowerCase()) && !c.slug.toLowerCase().includes(charSearch.toLowerCase())) return false
+                if (charFilterCompany && String(c.company_id) !== charFilterCompany) return false
+                if (charFilterApp && String(c.app_id) !== charFilterApp) return false
+                return true
+              })
+              .map(char => (
+                <div key={char.id}>
+                  {editingCharacter?.id === char.id ? (
+                    <CharacterPanel
+                      character={char}
+                      supabase={supabase}
+                      adminUser={adminUser}
+                      onSaved={() => loadData()}
+                      setMessage={setMessage}
+                      uploadFile={uploadFile}
+                    />
+                  ) : (
+                    <div className="lw-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        {char.side_img && (
+                          <img src={`${STORAGE_BASE}/app_side_image/${char.side_img}`} alt={char.name} style={{ height: '50px', objectFit: 'contain' }} />
+                        )}
+                        <div>
+                          <p style={{ color: 'var(--lw-text-white)', fontWeight: 500, margin: 0 }}>{char.name}</p>
+                          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', margin: 0 }}>
+                            slug: {char.slug}
+                            {char.company_name && ` · company: ${char.company_name}`}
+                            {char.app_name && ` · app: ${char.app_name}`}
+                            {char.chat_api_key ? ' · chat ✓' : ''}
+                            {char.admin_api_key ? ' · admin ✓' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button onClick={() => { setEditingCharacter(char); setShowNewCharacter(false) }} className="lw-btn lw-btn-secondary" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem' }}>
+                        Edit
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
           </>
         )}
 

@@ -882,7 +882,7 @@ export default function AccountPage() {
               ✕
             </button>
             <iframe
-              src={`https://fairytime.lovable.app/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${displayName || username ? `&userName=${encodeURIComponent(displayName || username)}` : ''}`}
+              src={`https://fairytime.lovable.app/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${user?.id ? `&user_id=${encodeURIComponent(user.id)}` : ''}${displayName || username ? `&userName=${encodeURIComponent(displayName || username)}` : ''}`}
               style={{ width: '100%', height: '650px', border: 'none', display: 'block' }}
               allow="clipboard-write"
               title="Character Chat"
