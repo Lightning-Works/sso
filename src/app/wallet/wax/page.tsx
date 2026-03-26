@@ -274,15 +274,15 @@ function WaxPortfolioContent() {
                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                       >
                         <div style={{
-                          width: '100%', aspectRatio: '1',
+                          width: '100%', aspectRatio: '5 / 7',
                           backgroundColor: '#1a1a1c',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           overflow: 'hidden',
                         }}>
                           {nft.videoUrl ? (
-                            <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                           ) : nft.imageUrl ? (
-                            <img src={nft.imageUrl} alt={nft.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                            <img src={nft.imageUrl} alt={nft.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                           ) : (
                             <span style={{ color: '#7a7572', fontSize: '0.7rem' }}>No image</span>
                           )}
