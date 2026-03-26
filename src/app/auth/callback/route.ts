@@ -49,9 +49,15 @@ export async function GET(request: Request) {
       }
       return NextResponse.redirect(`${origin}${next}`)
     }
+
+    // Code exchange failed
+    const reason = errorDescription || error.message
+    const callbackProvider = searchParams.get('provider') || 'unknown'
+    return NextResponse.redirect(`${origin}/login?error=auth_failed&reason=${encodeURIComponent(reason)}&provider=${encodeURIComponent(callbackProvider)}`)
   }
 
-  const reason = errorDescription || (error ? error.message : 'No authorization code received')
-  const provider = searchParams.get('provider') || 'unknown'
-  return NextResponse.redirect(`${origin}/login?error=auth_failed&reason=${encodeURIComponent(reason)}&provider=${encodeURIComponent(provider)}`)
+  // No code received at all
+  const reason = errorDescription || 'No authorization code received'
+  const callbackProvider = searchParams.get('provider') || 'unknown'
+  return NextResponse.redirect(`${origin}/login?error=auth_failed&reason=${encodeURIComponent(reason)}&provider=${encodeURIComponent(callbackProvider)}`)
 }
