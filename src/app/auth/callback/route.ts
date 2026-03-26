@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') ?? '/account'
   const externalRedirect = searchParams.get('external_redirect')
 
+  const errorDescription = searchParams.get('error_description')
+
   if (code) {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
@@ -49,5 +51,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`)
+  const reason = errorDescription || (error ? error.message : 'No authorization code received')
+  const provider = searchParams.get('provider') || 'unknown'
+  return NextResponse.redirect(`${origin}/login?error=auth_failed&reason=${encodeURIComponent(reason)}&provider=${encodeURIComponent(provider)}`)
 }

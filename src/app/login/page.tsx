@@ -25,6 +25,8 @@ function LoginContent() {
   const [userInnerColor, setUserInnerColor] = useState('')
   const [userId, setUserId] = useState('')
   const [userEmail, setUserEmail] = useState('')
+  const [authError, setAuthError] = useState<{ show: boolean; reason: string; logs: string }>({ show: false, reason: '', logs: '' })
+  const [copied, setCopied] = useState(false)
 
   // Convert hex (#rrggbb) to HSL string for Kinet.ink
   const hexToHsl = (hex: string): string => {
@@ -45,6 +47,33 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Show error modal if redirected back with auth error
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    if (errorParam === 'auth_failed') {
+      const reason = searchParams.get('reason') || 'Authentication failed. Please try again.'
+      const provider = searchParams.get('provider') || 'unknown'
+      const appParam = searchParams.get('app') || 'none'
+      const now = new Date()
+
+      const logLines = [
+        `--- LightningWorks SSO Diagnostic Log ---`,
+        `Timestamp: ${now.toISOString()}`,
+        `Local time: ${now.toLocaleString()}`,
+        `Provider: ${provider}`,
+        `Error: ${reason}`,
+        `App: ${appParam}`,
+        `Page URL: ${window.location.origin}/login`,
+        `Browser: ${navigator.userAgent}`,
+        `Screen: ${window.screen.width}x${window.screen.height}`,
+        `Language: ${navigator.language}`,
+        `---`,
+      ].join('\n')
+
+      setAuthError({ show: true, reason, logs: logLines })
+    }
+  }, [searchParams])
 
   // Check if user is already logged in — load avatar for chat
   useEffect(() => {
@@ -185,9 +214,9 @@ function LoginContent() {
   }
 
   const handleOAuth = async (provider: 'google' | 'discord' | 'apple' | 'twitter') => {
-    const callbackUrl = externalRedirect
-      ? `${window.location.origin}/auth/callback?external_redirect=${encodeURIComponent(externalRedirect)}`
-      : `${window.location.origin}/auth/callback`
+    const params = new URLSearchParams({ provider })
+    if (externalRedirect) params.set('external_redirect', externalRedirect)
+    const callbackUrl = `${window.location.origin}/auth/callback?${params.toString()}`
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -200,6 +229,87 @@ function LoginContent() {
 
   return (
     <>
+    {/* Auth error modal */}
+    {authError.show && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+      }}>
+        <div style={{
+          background: 'linear-gradient(135deg, #1a112e 0%, #2a1a4e 100%)',
+          border: '1px solid rgba(106, 36, 250, 0.3)',
+          borderRadius: '16px', padding: '2rem', maxWidth: '480px', width: '90%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: 'rgba(255, 68, 68, 0.15)', margin: '0 auto 1rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.5rem', color: '#ff4444',
+            }}>!</div>
+            <h3 style={{ color: '#fff', margin: '0 0 0.75rem', fontSize: '1.25rem' }}>
+              Sign-in Failed
+            </h3>
+            <p style={{ color: '#bab1a8', margin: '0 0 1.25rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              {authError.reason}
+            </p>
+          </div>
+
+          {/* Diagnostic log */}
+          <details style={{ marginBottom: '1.25rem' }}>
+            <summary style={{
+              color: '#7a7572', fontSize: '0.8rem', cursor: 'pointer',
+              userSelect: 'none', marginBottom: '0.5rem',
+            }}>
+              Diagnostic details (click to expand)
+            </summary>
+            <pre style={{
+              background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '8px', padding: '0.75rem', margin: 0,
+              fontSize: '0.75rem', color: '#9a9a9a', lineHeight: 1.6,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              maxHeight: '200px', overflowY: 'auto',
+            }}>
+              {authError.logs}
+            </pre>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(authError.logs)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              }}
+              style={{
+                marginTop: '0.5rem', width: '100%', padding: '0.5rem',
+                background: 'rgba(106, 36, 250, 0.15)', border: '1px solid rgba(106, 36, 250, 0.3)',
+                borderRadius: '8px', color: '#bab1a8', fontSize: '0.8rem',
+                cursor: 'pointer',
+              }}
+            >
+              {copied ? 'Copied!' : 'Copy diagnostic log'}
+            </button>
+          </details>
+
+          <button
+            onClick={() => {
+              setAuthError({ show: false, reason: '', logs: '' })
+              setCopied(false)
+              const url = new URL(window.location.href)
+              url.searchParams.delete('error')
+              url.searchParams.delete('reason')
+              url.searchParams.delete('provider')
+              window.history.replaceState({}, '', url.toString())
+            }}
+            className="lw-btn lw-btn-primary"
+            style={{ width: '100%' }}
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )}
+
     <style>{`
       .lw-input, .lw-input:focus, .lw-input:active,
       input[type="email"].lw-input, input[type="password"].lw-input {
@@ -335,7 +445,7 @@ function LoginContent() {
               </button>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <button onClick={() => handleOAuth('apple')} className="lw-btn lw-btn-apple">
+                <button disabled className="lw-btn lw-btn-apple" style={{ opacity: 0.4, cursor: 'not-allowed' }} title="Apple sign-in coming soon">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
                   Apple
                 </button>
