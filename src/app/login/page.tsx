@@ -241,7 +241,29 @@ function LoginContent() {
           border: '1px solid rgba(106, 36, 250, 0.3)',
           borderRadius: '16px', padding: '2rem', maxWidth: '480px', width: '90%',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          position: 'relative',
         }}>
+          {/* Close button */}
+          <button
+            onClick={() => {
+              setAuthError({ show: false, reason: '', logs: '' })
+              setCopied(false)
+              const url = new URL(window.location.href)
+              url.searchParams.delete('error')
+              url.searchParams.delete('reason')
+              url.searchParams.delete('provider')
+              window.history.replaceState({}, '', url.toString())
+            }}
+            style={{
+              position: 'absolute', top: '12px', right: '12px',
+              background: 'rgba(255,255,255,0.1)', border: 'none',
+              color: '#9a9a9a', width: '32px', height: '32px',
+              borderRadius: '50%', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.1rem', lineHeight: 1,
+            }}
+            aria-label="Close"
+          >&#x2715;</button>
           <div style={{ textAlign: 'center' }}>
             <div style={{
               width: '48px', height: '48px', borderRadius: '50%',
