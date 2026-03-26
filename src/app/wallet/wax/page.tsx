@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { getWaxBalances } from '@/lib/wallets/balances/wax-balances'
+import { getWaxBalances, getSyndicateTokens, type SyndicateToken } from '@/lib/wallets/balances/wax-balances'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import type { WalletToken } from '@/lib/wallets/types'
 
@@ -24,6 +24,7 @@ function WaxPortfolioContent() {
   const account = searchParams.get('account') || ''
 
   const [tokens, setTokens] = useState<WalletToken[]>([])
+  const [syndicateTokens, setSyndicateTokens] = useState<SyndicateToken[]>([])
   const [nfts, setNfts] = useState<WaxNft[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingNfts, setLoadingNfts] = useState(false)
@@ -32,6 +33,8 @@ function WaxPortfolioContent() {
   const [hasMore, setHasMore] = useState(false)
   const [selectedNft, setSelectedNft] = useState<WaxNft | null>(null)
   const [selectedCollection, setSelectedCollection] = useState(COLLECTIONS[0].slug)
+  const [selectedSchema, setSelectedSchema] = useState<string | null>(null)
+  const [schemaCounts, setSchemaCounts] = useState<Record<string, number>>({})
   const [ashChatOpen, setAshChatOpen] = useState(false)
   const [ashChatKey, setAshChatKey] = useState('')
   const [ashSideImg, setAshSideImg] = useState('')
@@ -60,8 +63,12 @@ function WaxPortfolioContent() {
     if (!account) return
     const load = async () => {
       setLoading(true)
-      const tokenData = await getWaxBalances(account)
+      const [tokenData, synData] = await Promise.all([
+        getWaxBalances(account),
+        getSyndicateTokens(account),
+      ])
       setTokens(tokenData)
+      setSyndicateTokens(synData)
       setLoading(false)
     }
     load()
@@ -73,16 +80,25 @@ function WaxPortfolioContent() {
     const loadCollection = async () => {
       setLoadingNfts(true)
       setPage(1)
+      setSelectedSchema(null)
       if (selectedCollection === '__misc__') {
-        // Fetch all NFTs and filter out known collections
         const nftData = await getWaxNfts(account, 1, 100)
         const filtered = nftData.nfts.filter(n => !KNOWN_COLLECTION_SLUGS.includes(n.collectionName))
         setNfts(filtered)
+        setSchemaCounts({})
         setHasMore(nftData.nfts.length >= 100)
       } else {
         const nftData = await getWaxNfts(account, 1, 100, selectedCollection)
         setNfts(nftData.nfts)
         setHasMore(nftData.nfts.length >= 100)
+        // Count schemas for Alien Worlds
+        if (selectedCollection === 'alien.worlds') {
+          const counts: Record<string, number> = {}
+          nftData.nfts.forEach(n => { counts[n.schemaName] = (counts[n.schemaName] || 0) + 1 })
+          setSchemaCounts(counts)
+        } else {
+          setSchemaCounts({})
+        }
       }
       setLoadingNfts(false)
     }
@@ -175,25 +191,73 @@ function WaxPortfolioContent() {
             {/* Token Balances */}
             <div className="lw-section">
               <h2 className="lw-section-title">Tokens</h2>
-              {tokens.length === 0 ? (
-                <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No tokens found</p>
-              ) : (
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                {/* WAX & TLM tokens */}
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   {tokens.map(t => (
                     <div key={t.symbol} style={{
                       backgroundColor: 'var(--lw-wallet-row-bg)',
                       borderRadius: 'var(--lw-radius-sm)',
-                      padding: '1rem 1.5rem',
-                      minWidth: '150px',
+                      padding: '0.75rem 1.25rem',
+                      minWidth: '120px',
+                      textAlign: 'center',
                     }}>
-                      <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: 0 }}>
-                        {parseFloat(t.balance).toLocaleString()} {t.symbol}
+                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: 0, fontWeight: 600, letterSpacing: '0.05em' }}>
+                        ${t.symbol}
                       </p>
-                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>{t.name}</p>
+                      <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: '0.2rem 0 0 0' }}>
+                        {parseFloat(parseFloat(t.balance).toFixed(2)).toLocaleString()}
+                      </p>
                     </div>
                   ))}
                 </div>
-              )}
+
+                {/* Syndicate Tokens */}
+                {syndicateTokens.length > 0 && (
+                  <div style={{
+                    backgroundColor: 'var(--lw-wallet-row-bg)',
+                    borderRadius: 'var(--lw-radius-sm)',
+                    padding: '0.75rem 1rem',
+                    flex: 1,
+                    minWidth: '300px',
+                  }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0 0 0.5rem 0', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                      Syndicate Tokens
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                      {syndicateTokens.map(st => {
+                        const hasAny = st.liquid > 0 || st.staked > 0 || st.pendingUnstakes.length > 0
+                        return (
+                          <div key={st.symbol} style={{
+                            backgroundColor: 'rgba(0,0,0,0.25)',
+                            borderRadius: '6px',
+                            padding: '0.5rem 0.6rem',
+                            opacity: hasAny ? 1 : 0.4,
+                          }}>
+                            <p style={{ color: '#ff8800', fontSize: '0.7rem', margin: 0, fontWeight: 600 }}>
+                              ${st.symbol} <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400, fontSize: '0.6rem' }}>{st.planet}</span>
+                            </p>
+                            <p style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', margin: '0.15rem 0 0 0', fontWeight: 500 }}>
+                              {st.liquid.toFixed(2)}
+                            </p>
+                            {st.staked > 0 && (
+                              <p style={{ color: '#34A853', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
+                                Staked: {st.staked.toFixed(2)}
+                                {st.stakeDelay != null && ` (${Math.round(st.stakeDelay / 86400)}d lock)`}
+                              </p>
+                            )}
+                            {st.pendingUnstakes.length > 0 && st.pendingUnstakes.map((u, i) => (
+                              <p key={i} style={{ color: '#ff8800', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
+                                Unstaking: {u.amount.toFixed(2)} ({new Date(u.releaseTime + 'Z').toLocaleDateString()})
+                              </p>
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Collection Tabs */}
@@ -250,8 +314,52 @@ function WaxPortfolioContent() {
             <div className="lw-section">
               <h2 className="lw-section-title">
                 {COLLECTIONS.find(c => c.slug === selectedCollection)?.name} NFTs
-                {!loadingNfts && ` (${nfts.length}${hasMore ? '+' : ''})`}
+                {!loadingNfts && ` (${(selectedSchema ? nfts.filter(n => n.schemaName === selectedSchema) : nfts).length}${hasMore ? '+' : ''})`}
               </h2>
+
+              {/* Schema tabs for Alien Worlds */}
+              {selectedCollection === 'alien.worlds' && Object.keys(schemaCounts).length > 0 && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setSelectedSchema(null)}
+                    style={{
+                      padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none',
+                      fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
+                      backgroundColor: selectedSchema === null ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
+                      color: selectedSchema === null ? '#fff' : 'var(--lw-text-muted)',
+                    }}
+                  >
+                    All [{nfts.length}]
+                  </button>
+                  {[
+                    { schema: 'tool.worlds', label: 'Tools' },
+                    { schema: 'land.worlds', label: 'Land' },
+                    { schema: 'arms.worlds', label: 'Weapons' },
+                    { schema: 'crew.worlds', label: 'Crew' },
+                    { schema: 'faces.worlds', label: 'Faces' },
+                    { schema: 'items.worlds', label: 'Items' },
+                  ].map(({ schema, label }) => {
+                    const count = schemaCounts[schema] || 0
+                    return (
+                      <button
+                        key={schema}
+                        onClick={() => count > 0 ? setSelectedSchema(schema) : undefined}
+                        style={{
+                          padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none',
+                          fontSize: '0.75rem', fontWeight: 500,
+                          cursor: count > 0 ? 'pointer' : 'default',
+                          backgroundColor: selectedSchema === schema ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
+                          color: selectedSchema === schema ? '#fff' : 'var(--lw-text-muted)',
+                          opacity: count > 0 ? 1 : 0.35,
+                        }}
+                      >
+                        {label} [{count}]
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
               {loadingNfts ? (
                 <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2rem 0' }}>Loading NFTs...</p>
               ) : nfts.length === 0 ? (
@@ -259,7 +367,7 @@ function WaxPortfolioContent() {
               ) : (
                 <>
                   <div className="wax-nft-grid">
-                    {nfts.map(nft => (
+                    {(selectedSchema ? nfts.filter(n => n.schemaName === selectedSchema) : nfts).map(nft => (
                       <div
                         key={nft.assetId}
                         onClick={() => setSelectedNft(nft)}
