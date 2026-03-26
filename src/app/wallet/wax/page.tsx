@@ -224,15 +224,16 @@ function WaxPortfolioContent() {
                     <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0 0 0.5rem 0', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                       Syndicate Tokens
                     </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                      {syndicateTokens.map(st => {
-                        const hasAny = st.liquid > 0 || st.staked > 0 || st.pendingUnstakes.length > 0
-                        return (
-                          <div key={st.symbol} style={{
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem 0.5rem' }}>
+                      {syndicateTokens.map(st => (
+                        <div key={st.symbol}>
+                          <p style={{ color: '#fff', fontSize: '0.72rem', margin: '0 0 0.25rem 0', fontWeight: 600 }}>
+                            {st.planet}
+                          </p>
+                          <div style={{
                             backgroundColor: '#000',
                             borderRadius: '6px',
                             padding: '0.5rem 0.6rem',
-                            opacity: 1,
                             position: 'relative',
                             overflow: 'hidden',
                           }}>
@@ -250,7 +251,7 @@ function WaxPortfolioContent() {
                             />
                             <div style={{ position: 'relative', zIndex: 1 }}>
                               <p style={{ color: '#ff8800', fontSize: '0.7rem', margin: 0, fontWeight: 600 }}>
-                                ${st.symbol} <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400, fontSize: '0.6rem' }}>{st.planet}</span>
+                                ${st.symbol}
                               </p>
                               <p style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', margin: '0.15rem 0 0 0', fontWeight: 500 }}>
                                 {st.liquid.toFixed(2)}
@@ -268,8 +269,8 @@ function WaxPortfolioContent() {
                               ))}
                             </div>
                           </div>
-                        )
-                      })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
