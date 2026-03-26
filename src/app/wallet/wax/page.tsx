@@ -232,7 +232,7 @@ function WaxPortfolioContent() {
                             backgroundColor: '#000',
                             borderRadius: '6px',
                             padding: '0.5rem 0.6rem',
-                            opacity: hasAny ? 1 : 0.4,
+                            opacity: 1,
                             position: 'relative',
                             overflow: 'hidden',
                           }}>
