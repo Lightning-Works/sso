@@ -233,24 +233,40 @@ function WaxPortfolioContent() {
                             borderRadius: '6px',
                             padding: '0.5rem 0.6rem',
                             opacity: hasAny ? 1 : 0.4,
+                            position: 'relative',
+                            overflow: 'hidden',
                           }}>
-                            <p style={{ color: '#ff8800', fontSize: '0.7rem', margin: 0, fontWeight: 600 }}>
-                              ${st.symbol} <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400, fontSize: '0.6rem' }}>{st.planet}</span>
-                            </p>
-                            <p style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', margin: '0.15rem 0 0 0', fontWeight: 500 }}>
-                              {st.liquid.toFixed(2)}
-                            </p>
-                            {st.staked > 0 && (
-                              <p style={{ color: '#34A853', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
-                                Staked: {st.staked.toFixed(2)}
-                                {st.stakeDelay != null && ` (${Math.round(st.stakeDelay / 86400)}d lock)`}
+                            {/* Planet video background */}
+                            <video
+                              src={`/planets/${st.planet}.mp4`}
+                              autoPlay loop muted playsInline
+                              style={{
+                                position: 'absolute', inset: 0,
+                                width: '100%', height: '100%',
+                                objectFit: 'cover',
+                                opacity: 0.25,
+                                pointerEvents: 'none',
+                              }}
+                            />
+                            <div style={{ position: 'relative', zIndex: 1 }}>
+                              <p style={{ color: '#ff8800', fontSize: '0.7rem', margin: 0, fontWeight: 600 }}>
+                                ${st.symbol} <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400, fontSize: '0.6rem' }}>{st.planet}</span>
                               </p>
-                            )}
-                            {st.pendingUnstakes.length > 0 && st.pendingUnstakes.map((u, i) => (
-                              <p key={i} style={{ color: '#ff8800', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
-                                Unstaking: {u.amount.toFixed(2)} ({new Date(u.releaseTime + 'Z').toLocaleDateString()})
+                              <p style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', margin: '0.15rem 0 0 0', fontWeight: 500 }}>
+                                {st.liquid.toFixed(2)}
                               </p>
-                            ))}
+                              {st.staked > 0 && (
+                                <p style={{ color: '#34A853', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
+                                  Staked: {st.staked.toFixed(2)}
+                                  {st.stakeDelay != null && ` (${Math.round(st.stakeDelay / 86400)}d lock)`}
+                                </p>
+                              )}
+                              {st.pendingUnstakes.length > 0 && st.pendingUnstakes.map((u, i) => (
+                                <p key={i} style={{ color: '#ff8800', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
+                                  Unstaking: {u.amount.toFixed(2)} ({new Date(u.releaseTime + 'Z').toLocaleDateString()})
+                                </p>
+                              ))}
+                            </div>
                           </div>
                         )
                       })}
