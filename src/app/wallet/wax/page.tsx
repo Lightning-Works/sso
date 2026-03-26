@@ -229,7 +229,7 @@ function WaxPortfolioContent() {
                         const hasAny = st.liquid > 0 || st.staked > 0 || st.pendingUnstakes.length > 0
                         return (
                           <div key={st.symbol} style={{
-                            backgroundColor: 'rgba(0,0,0,0.25)',
+                            backgroundColor: '#000',
                             borderRadius: '6px',
                             padding: '0.5rem 0.6rem',
                             opacity: hasAny ? 1 : 0.4,
@@ -244,7 +244,7 @@ function WaxPortfolioContent() {
                                 position: 'absolute', inset: 0,
                                 width: '100%', height: '100%',
                                 objectFit: 'cover',
-                                opacity: 0.5,
+                                opacity: 0.7,
                                 pointerEvents: 'none',
                               }}
                             />
