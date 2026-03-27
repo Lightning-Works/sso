@@ -3,6 +3,31 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { formatUsd, getTokenLogoUrl } from '@/lib/wallets/balances/prices'
+
+function formatTokenAmount(balance: string): string {
+  const num = parseFloat(balance)
+  if (isNaN(num) || num === 0) return '0'
+
+  const intDigits = Math.floor(Math.abs(num)).toString().length
+
+  if (num < 1) {
+    // For very small numbers, show up to 6 significant digits
+    const s = num.toFixed(10)
+    const match = s.match(/^0\.(0*)([1-9]\d*)/)
+    if (match) {
+      const leadingZeros = match[1].length
+      const sigDigits = Math.min(match[2].length, 4)
+      return parseFloat(num.toFixed(leadingZeros + sigDigits)).toString()
+    }
+    return parseFloat(num.toFixed(6)).toString()
+  }
+
+  const decimals = Math.max(0, 6 - intDigits)
+  return parseFloat(num.toFixed(decimals)).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  })
+}
 import type { WalletToken } from '@/lib/wallets/types'
 
 interface TokenGridProps {
@@ -286,7 +311,7 @@ export function TokenGrid({
                   </span>
                 </div>
                 <p className="token-balance">
-                  {parseFloat(parseFloat(t.balance).toFixed(4)).toLocaleString()}
+                  {formatTokenAmount(t.balance)}
                 </p>
                 {hasValue && (
                   <p className="token-usd">({formatUsd(usdValue!)} USD)</p>
