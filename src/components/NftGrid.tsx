@@ -82,6 +82,7 @@ export function NftGrid({
 }: NftGridProps) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [refreshedThumbs, setRefreshedThumbs] = useState<Record<string, string>>({})
   const [tags, setTags] = useState<NftTagData>({ spam: new Set(), favorite: new Set(), hidden: new Set() })
   const [viewMode, setViewMode] = useState<'all' | 'spam'>('all')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -687,8 +688,8 @@ export function NftGrid({
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
-                {nft.thumbUrl ? (
-                  <img src={nft.thumbUrl} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
+                {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
+                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
                 ) : nft.videoUrl ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
@@ -749,7 +750,7 @@ export function NftGrid({
                   })
                   const data = await res.json()
                   if (data.thumbUrl) {
-                    nft.thumbUrl = data.thumbUrl
+                    setRefreshedThumbs(prev => ({ ...prev, [nft.id]: data.thumbUrl }))
                   }
                 } catch { /* ignore */ }
                 setSelected(new Set())

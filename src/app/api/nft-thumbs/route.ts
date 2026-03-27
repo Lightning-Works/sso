@@ -4,9 +4,9 @@ import sharp from 'sharp'
 
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
-const MAX_ANIMATED_SIZE = 500
 const WEBP_QUALITY = 80
 const BATCH_SIZE = 10
+const DOWNLOAD_TIMEOUT = 8000
 
 interface ThumbRequest {
   id: string
@@ -15,7 +15,6 @@ interface ThumbRequest {
 }
 
 function thumbPath(chain: string, id: string): string {
-  // Sanitize id for use as filename
   const safe = id.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 200)
   return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.webp`
 }
@@ -23,7 +22,7 @@ function thumbPath(chain: string, id: string): string {
 async function downloadImage(url: string): Promise<Buffer | null> {
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
+    const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT)
     const res = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'LightningWorks-SSO/1.0' },
@@ -31,10 +30,8 @@ async function downloadImage(url: string): Promise<Buffer | null> {
     clearTimeout(timeout)
     if (!res.ok) return null
     const contentType = res.headers.get('content-type') || ''
-    // Skip video files — we can't thumbnail them with sharp
     if (contentType.startsWith('video/')) return null
     const buffer = Buffer.from(await res.arrayBuffer())
-    // Skip if too small (likely error page) or too large (>20MB)
     if (buffer.length < 100 || buffer.length > 20_000_000) return null
     return buffer
   } catch {
@@ -42,64 +39,71 @@ async function downloadImage(url: string): Promise<Buffer | null> {
   }
 }
 
-async function generateThumb(imageBuffer: Buffer): Promise<Buffer> {
-  const meta = await sharp(imageBuffer).metadata()
-  const isAnimated = (meta.pages && meta.pages > 1) || false
-  const maxSize = isAnimated ? MAX_ANIMATED_SIZE : MAX_STATIC_SIZE
-
-  const pipeline = sharp(imageBuffer, { animated: isAnimated })
-    .resize({
-      width: maxSize,
-      height: maxSize,
-      fit: 'inside',
-      withoutEnlargement: true,
-    })
-
-  if (isAnimated) {
-    // For animated: extract first frame only for grid thumbnail
-    return sharp(imageBuffer, { animated: false, pages: 1 })
-      .resize({ width: maxSize, height: maxSize, fit: 'inside', withoutEnlargement: true })
+async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
+  try {
+    return await sharp(imageBuffer)
+      .resize({
+        width: MAX_STATIC_SIZE,
+        height: MAX_STATIC_SIZE,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
       .webp({ quality: WEBP_QUALITY })
       .toBuffer()
+  } catch {
+    return null
   }
-
-  return pipeline.webp({ quality: WEBP_QUALITY }).toBuffer()
 }
 
-// POST /api/nft-thumbs — generate thumbnails for a batch of NFTs
 export async function POST(request: Request) {
   const supabase = await createClient()
 
-  const body = await request.json()
-  const action = body.action || 'generate'
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
 
+  const action = (body.action as string) || 'generate'
+
+  // ── Single NFT refresh ──
   if (action === 'refresh') {
-    // Single NFT refresh
-    const nft: ThumbRequest = body.nft
+    const nft = body.nft as ThumbRequest | undefined
     if (!nft?.imageUrl) {
       return NextResponse.json({ error: 'No image URL' }, { status: 400 })
     }
 
-    const path = thumbPath(nft.chain, nft.id)
-    const imageBuffer = await downloadImage(nft.imageUrl)
-    if (!imageBuffer) {
-      return NextResponse.json({ error: 'Failed to download image' }, { status: 502 })
+    try {
+      const path = thumbPath(nft.chain, nft.id)
+      const imageBuffer = await downloadImage(nft.imageUrl)
+      if (!imageBuffer) {
+        return NextResponse.json({ error: 'Failed to download image' }, { status: 502 })
+      }
+
+      const thumb = await generateThumb(imageBuffer)
+      if (!thumb) {
+        return NextResponse.json({ error: 'Failed to process image' }, { status: 502 })
+      }
+
+      const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, {
+        contentType: 'image/webp',
+        upsert: true,
+      })
+      if (error) {
+        return NextResponse.json({ error: 'Failed to upload thumbnail' }, { status: 500 })
+      }
+
+      const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+      return NextResponse.json({ thumbUrl: urlData.publicUrl + '?v=' + Date.now() })
+    } catch (e) {
+      console.error('Thumb refresh error:', e)
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 })
     }
-
-    const thumb = await generateThumb(imageBuffer)
-    await supabase.storage.from(BUCKET).upload(path, thumb, {
-      contentType: 'image/webp',
-      upsert: true,
-    })
-
-    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
-    return NextResponse.json({ thumbUrl: urlData.publicUrl + '?v=' + Date.now() })
   }
 
-  // Generate thumbnails for a batch
-  const nfts: ThumbRequest[] = body.nfts || []
-  const walletAddress: string = body.walletAddress || ''
-
+  // ── Batch generate ──
+  const nfts = (body.nfts as ThumbRequest[]) || []
   if (nfts.length === 0) {
     return NextResponse.json({ thumbs: {} })
   }
@@ -107,21 +111,18 @@ export async function POST(request: Request) {
   const thumbs: Record<string, string> = {}
 
   // Check which thumbnails already exist
-  const paths = nfts.filter(n => n.imageUrl).map(n => thumbPath(n.chain, n.id))
   const existingSet = new Set<string>()
-
-  // List files in each chain subdirectory
   const chainDirs = [...new Set(nfts.map(n => n.chain.toLowerCase().replace(/[^a-z0-9]/g, '')))]
   for (const dir of chainDirs) {
-    const { data: files } = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 })
-    if (files) {
-      for (const f of files) {
-        existingSet.add(`${dir}/${f.name}`)
+    try {
+      const { data: files } = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 })
+      if (files) {
+        for (const f of files) existingSet.add(`${dir}/${f.name}`)
       }
-    }
+    } catch { /* bucket may not exist yet */ }
   }
 
-  // Return existing thumb URLs immediately, queue missing ones
+  // Return existing thumb URLs, queue missing ones
   const toGenerate: ThumbRequest[] = []
   for (const nft of nfts) {
     if (!nft.imageUrl) continue
@@ -143,8 +144,9 @@ export async function POST(request: Request) {
         if (!imageBuffer) return
 
         const thumb = await generateThumb(imageBuffer)
-        const path = thumbPath(nft.chain, nft.id)
+        if (!thumb) return
 
+        const path = thumbPath(nft.chain, nft.id)
         const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, {
           contentType: 'image/webp',
           upsert: true,
@@ -155,25 +157,13 @@ export async function POST(request: Request) {
           thumbs[nft.id] = urlData.publicUrl
         }
       } catch {
-        // Skip failed thumbnails
+        // Skip failed thumbnails silently
       }
     }))
   }
 
-  // Cleanup: remove thumbnails for NFTs no longer in wallet
-  if (walletAddress) {
-    for (const dir of chainDirs) {
-      const { data: files } = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 })
-      if (!files) continue
-      const currentPaths = new Set(nfts.filter(n => n.imageUrl).map(n => thumbPath(n.chain, n.id)))
-      const toDelete = files
-        .map(f => `${dir}/${f.name}`)
-        .filter(p => !currentPaths.has(p))
-      if (toDelete.length > 0) {
-        await supabase.storage.from(BUCKET).remove(toDelete)
-      }
-    }
-  }
+  // No cleanup here — cleanup should be a separate admin action,
+  // not per-request, to avoid deleting valid thumbs from other views/pages
 
   return NextResponse.json({ thumbs })
 }
