@@ -12,8 +12,8 @@ type ChainConfig = AlchemyChain | BlockscoutChain
 
 const CHAINS: Record<string, ChainConfig> = {
   ethereum: {
-    type: 'alchemy',
-    url: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+    type: 'blockscout',
+    url: 'https://eth.blockscout.com/api/v2',
     name: 'Ethereum',
   },
   polygon: {
