@@ -545,12 +545,33 @@ function WaxPortfolioContent() {
         <div
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
-            backgroundColor: 'rgba(0,0,0,0.85)',
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.95), rgba(5, 3, 20, 0.97) 60%, rgba(2, 1, 10, 0.98))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '5vh 0',
+            overflow: 'hidden',
           }}
           onClick={(e) => { if (e.target === e.currentTarget) setPlanetModal(null) }}
         >
+          {/* Twinkling stars */}
+          <style>{`
+            @keyframes twinkle {
+              0%, 100% { opacity: 0.15; }
+              50% { opacity: 0.9; }
+            }
+          `}</style>
+          {Array.from({ length: 100 }, (_, i) => (
+            <div key={`star-${i}`} style={{
+              position: 'absolute',
+              left: `${Math.sin(i * 137.508) * 50 + 50}%`,
+              top: `${Math.cos(i * 73.137) * 50 + 50}%`,
+              width: `${1 + (i % 3)}px`,
+              height: `${1 + (i % 3)}px`,
+              borderRadius: '50%',
+              backgroundColor: i % 7 === 0 ? '#aaccff' : i % 11 === 0 ? '#ffddaa' : '#ffffff',
+              animation: `twinkle ${2 + (i % 4) * 1.5}s ease-in-out ${(i * 0.37) % 5}s infinite`,
+              pointerEvents: 'none',
+            }} />
+          ))}
           {/* Left arrow */}
           <button
             onClick={(e) => { e.stopPropagation(); navigatePlanet(-1) }}
