@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getWaxBalances, getSyndicateTokens, type SyndicateToken, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
 import { useCallback } from 'react'
 import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
+import { TokenGrid } from '@/components/TokenGrid'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
 import type { WalletToken } from '@/lib/wallets/types'
@@ -230,29 +231,13 @@ function WaxPortfolioContent() {
               <h2 className="lw-section-title">Tokens</h2>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 {/* WAX & TLM tokens */}
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  {tokens.map(t => (
-                    <div key={t.symbol} style={{
-                      backgroundColor: 'var(--lw-wallet-row-bg)',
-                      borderRadius: 'var(--lw-radius-sm)',
-                      padding: '0.75rem 1.25rem',
-                      minWidth: '120px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{ color: '#ff8800', fontSize: '0.75rem', margin: 0, fontWeight: 600, letterSpacing: '0.05em' }}>
-                        ${t.symbol}{t.symbol === 'TLM' ? ' - Trilium' : ''}
-                      </p>
-                      <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: '0.2rem 0 0 0' }}>
-                        {parseFloat(parseFloat(t.balance).toFixed(2)).toLocaleString()}
-                      </p>
-                      {prices[t.symbol] && (
-                        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.15rem 0 0 0' }}>
-                          ({formatUsd(parseFloat(t.balance) * prices[t.symbol])} USD)
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <TokenGrid
+                  tokens={tokens}
+                  prices={prices}
+                  nativeSymbol="WAX"
+                  labelOverrides={{ TLM: ' - Trilium' }}
+                  storageKey={`token-spam-wax-${account}`}
+                />
 
                 {/* Syndicate Tokens */}
                 {syndicateTokens.length > 0 && (

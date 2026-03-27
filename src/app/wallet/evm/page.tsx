@@ -5,8 +5,9 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { getEvmBalances } from '@/lib/wallets/balances/evm-balances'
 import { getEvmNfts, type EvmNft } from '@/lib/wallets/balances/evm-nfts'
-import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
+import { getTokenPrices } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
 import type { WalletToken } from '@/lib/wallets/types'
 
@@ -114,39 +115,12 @@ function EvmPortfolioContent() {
             {/* Token Balances */}
             <div className="lw-section">
               <h2 className="lw-section-title">Tokens</h2>
-              {tokens.length === 0 ? (
-                <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No tokens found</p>
-              ) : (
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  {tokens.map((t, i) => {
-                    const usdValue = prices[t.symbol] ? parseFloat(t.balance) * prices[t.symbol] : null
-                    return (
-                      <div key={`${t.symbol}-${i}`} style={{
-                        backgroundColor: 'var(--lw-wallet-row-bg)',
-                        borderRadius: 'var(--lw-radius-sm)',
-                        padding: '0.75rem 1.25rem',
-                        minWidth: '120px',
-                        textAlign: 'center',
-                      }}>
-                        <p style={{ color: '#ff8800', fontSize: '0.75rem', margin: 0, fontWeight: 600, letterSpacing: '0.05em' }}>
-                          ${t.symbol}
-                        </p>
-                        <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: '0.2rem 0 0 0' }}>
-                          {parseFloat(parseFloat(t.balance).toFixed(4)).toLocaleString()}
-                        </p>
-                        {usdValue != null && usdValue > 0.01 && (
-                          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.15rem 0 0 0' }}>
-                            ({formatUsd(usdValue)} USD)
-                          </p>
-                        )}
-                        {t.name && t.name !== t.symbol && (
-                          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>{t.name}</p>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <TokenGrid
+                tokens={tokens}
+                prices={prices}
+                nativeSymbol="ETH"
+                storageKey={`token-spam-evm-${address}`}
+              />
             </div>
 
             {/* NFTs */}
