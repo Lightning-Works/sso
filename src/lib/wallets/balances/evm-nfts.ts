@@ -40,33 +40,45 @@ export async function getEvmNfts(address: string, chain?: string): Promise<EvmNf
     Object.entries(chains).map(async ([chainKey, config]) => {
       if (!config) return
       try {
-        const params = new URLSearchParams({
-          owner: address,
-          withMetadata: 'true',
-          pageSize: '100',
-        })
-        const res = await fetch(`${config.url}/getNFTsForOwner?${params}`)
-        if (!res.ok) return
+        let pageKey: string | undefined
+        let pages = 0
+        const MAX_PAGES = 5  // Up to 500 NFTs per chain
 
-        const data = await res.json()
-        const nfts = data.ownedNfts || []
-
-        for (const nft of nfts) {
-          const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl ||
-            nft.image?.pngUrl || nft.image?.originalUrl || null
-
-          allNfts.push({
-            tokenId: nft.tokenId || '',
-            name: nft.name || nft.contract?.name || `#${nft.tokenId || '?'}`,
-            description: nft.description || null,
-            imageUrl: image,
-            collectionName: nft.contract?.name || nft.collection?.name || 'Unknown',
-            contractAddress: nft.contract?.address || '',
-            chain: config.name,
-            tokenType: nft.tokenType || 'ERC721',
-            floorPrice: nft.contract?.openSeaMetadata?.floorPrice || null,
+        do {
+          const params = new URLSearchParams({
+            owner: address,
+            withMetadata: 'true',
+            pageSize: '100',
           })
-        }
+          if (pageKey) params.set('pageKey', pageKey)
+
+          const res = await fetch(`${config.url}/getNFTsForOwner?${params}`)
+          if (!res.ok) break
+
+          const data = await res.json()
+          const nfts = data.ownedNfts || []
+
+          for (const nft of nfts) {
+            const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl ||
+              nft.image?.pngUrl || nft.image?.originalUrl || null
+
+            allNfts.push({
+              tokenId: nft.tokenId || '',
+              name: nft.name || nft.contract?.name || `#${nft.tokenId || '?'}`,
+              description: nft.description || null,
+              imageUrl: image,
+              collectionName: nft.contract?.name || nft.collection?.name || 'Unknown',
+              contractAddress: nft.contract?.address || '',
+              chain: config.name,
+              tokenType: nft.tokenType || 'ERC721',
+              floorPrice: nft.contract?.openSeaMetadata?.floorPrice || null,
+            })
+          }
+
+          pageKey = data.pageKey || undefined
+          pages++
+        } while (pageKey && pages < MAX_PAGES)
+
       } catch {
         // silently skip failed chain
       }
