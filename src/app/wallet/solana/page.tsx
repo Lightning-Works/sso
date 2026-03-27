@@ -7,6 +7,7 @@ import { getSolanaBalances } from '@/lib/wallets/balances/solana-balances'
 import { getSolanaNfts, type SolanaNft } from '@/lib/wallets/balances/solana-nfts'
 import { getTokenPrices, getSolanaPricesAndLogos } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
 import type { WalletToken } from '@/lib/wallets/types'
@@ -36,6 +37,7 @@ function SolanaPortfolioContent() {
   const [loadingNfts, setLoadingNfts] = useState(false)
   const [filterCompressed, setFilterCompressed] = useState<boolean | null>(null)
   const [isSuperadmin, setIsSuperadmin] = useState(false)
+  const { fetchThumbs, applyThumbs } = useThumbnails()
 
   useEffect(() => {
     const supabase = createClient()
@@ -79,6 +81,8 @@ function SolanaPortfolioContent() {
       const nftData = await getSolanaNfts(address)
       setNfts(nftData)
       setLoadingNfts(false)
+      const nftItems = solanaToNftItems(nftData)
+      fetchThumbs(nftItems, address)
     }
     load()
   }, [address])
@@ -160,7 +164,7 @@ function SolanaPortfolioContent() {
               )}
 
               <NftGrid
-                nfts={solanaToNftItems(filteredNfts)}
+                nfts={applyThumbs(solanaToNftItems(filteredNfts))}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found"
                 storageKey={`nft-tags-sol-${address}`}

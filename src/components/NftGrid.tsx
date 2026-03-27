@@ -7,6 +7,7 @@ export interface NftItem {
   id: string
   name: string
   imageUrl: string | null
+  thumbUrl?: string | null
   videoUrl?: string | null
   collection: string
   description?: string | null
@@ -686,7 +687,9 @@ export function NftGrid({
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
-                {nft.videoUrl ? (
+                {nft.thumbUrl ? (
+                  <img src={nft.thumbUrl} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
+                ) : nft.videoUrl ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
                   <img src={nft.imageUrl} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
@@ -734,6 +737,25 @@ export function NftGrid({
               )}
               <button className="nft-context-item" onClick={() => applyTag('favorite')}>
                 &#9829; {selected.size === 1 && tags.favorite.has([...selected][0]) ? 'Remove Favorite' : 'Favorite'}
+              </button>
+              <button className="nft-context-item" onClick={async () => {
+                const nft = nfts.find(n => selected.has(n.id))
+                if (!nft?.imageUrl) return
+                try {
+                  const res = await fetch('/api/nft-thumbs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'refresh', nft: { id: nft.id, imageUrl: nft.imageUrl, chain: nft.chain || '' } }),
+                  })
+                  const data = await res.json()
+                  if (data.thumbUrl) {
+                    nft.thumbUrl = data.thumbUrl
+                  }
+                } catch { /* ignore */ }
+                setSelected(new Set())
+                setContextMenu(null)
+              }}>
+                &#x21BB; Refresh Image
               </button>
               {!confirmDelete ? (
                 <button className="nft-context-item nft-context-item--danger" onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}>

@@ -7,6 +7,7 @@ import { getEvmBalances } from '@/lib/wallets/balances/evm-balances'
 import { getEvmNfts, type EvmNft } from '@/lib/wallets/balances/evm-nfts'
 import { getTokenPrices } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
 import type { WalletToken } from '@/lib/wallets/types'
@@ -40,6 +41,7 @@ function EvmPortfolioContent() {
   const [loadingNfts, setLoadingNfts] = useState(false)
   const [selectedChain, setSelectedChain] = useState<string | null>(null)
   const [isSuperadmin, setIsSuperadmin] = useState(false)
+  const { fetchThumbs, applyThumbs } = useThumbnails()
 
   useEffect(() => {
     const supabase = createClient()
@@ -74,6 +76,9 @@ function EvmPortfolioContent() {
       const nftData = await getEvmNfts(address)
       setNfts(nftData)
       setLoadingNfts(false)
+      // Trigger thumbnail generation in background
+      const nftItems = evmToNftItems(nftData)
+      fetchThumbs(nftItems, address)
     }
     load()
   }, [address])
@@ -181,7 +186,7 @@ function EvmPortfolioContent() {
               )}
 
               <NftGrid
-                nfts={evmToNftItems(filteredNfts)}
+                nfts={applyThumbs(evmToNftItems(filteredNfts))}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found"
                 storageKey={`nft-tags-evm-${address}`}

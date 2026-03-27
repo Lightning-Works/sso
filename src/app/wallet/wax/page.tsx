@@ -10,6 +10,7 @@ import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
 import { TokenGrid } from '@/components/TokenGrid'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import type { WalletToken } from '@/lib/wallets/types'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
@@ -59,6 +60,7 @@ function WaxPortfolioContent() {
   const [schemaCounts, setSchemaCounts] = useState<Record<string, number>>({})
   const [planetModal, setPlanetModal] = useState<{ index: number; data: PlanetDaoData | null; loading: boolean } | null>(null)
   const [isSuperadmin, setIsSuperadmin] = useState(false)
+  const { fetchThumbs, applyThumbs } = useThumbnails()
 
   const openPlanet = useCallback(async (index: number) => {
     setPlanetModal({ index, data: null, loading: true })
@@ -151,6 +153,13 @@ function WaxPortfolioContent() {
     }
     loadCollection()
   }, [account, selectedCollection])
+
+  // Trigger thumbnail generation after NFTs load
+  useEffect(() => {
+    if (nfts.length > 0 && account) {
+      fetchThumbs(waxToNftItems(nfts), account)
+    }
+  }, [nfts, account, fetchThumbs])
 
   const loadMore = async () => {
     setLoadingMore(true)
@@ -410,7 +419,7 @@ function WaxPortfolioContent() {
               )}
 
               <NftGrid
-                nfts={waxToNftItems(selectedSchema ? nfts.filter(n => n.schemaName === selectedSchema) : nfts)}
+                nfts={applyThumbs(waxToNftItems(selectedSchema ? nfts.filter(n => n.schemaName === selectedSchema) : nfts))}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found in this collection"
                 aspectRatio="5 / 7"
