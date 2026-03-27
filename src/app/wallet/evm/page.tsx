@@ -78,6 +78,19 @@ function EvmPortfolioContent() {
     load()
   }, [address])
 
+  // Read spam IDs from localStorage to compute accurate counts
+  const [spamIds, setSpamIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`nft-tags-evm-${address}`)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        setSpamIds(new Set([...(parsed.spam || []), ...(parsed.hidden || [])]))
+      }
+    } catch { /* ignore */ }
+  }, [address, nfts])
+
+  const nftId = (nft: EvmNft) => `${nft.contractAddress}-${nft.tokenId}`
   const chains = [...new Set(nfts.map(n => n.chain))]
   const filteredNfts = selectedChain ? nfts.filter(n => n.chain === selectedChain) : nfts
 
@@ -130,25 +143,25 @@ function EvmPortfolioContent() {
             {/* NFTs */}
             <div className="lw-section" style={{ marginTop: '1.5rem' }}>
               <h2 className="lw-section-title">
-                NFTs {!loadingNfts && `(${filteredNfts.length})`}
+                NFTs {!loadingNfts && `(${nfts.length})`}
               </h2>
 
               {/* Chain filter tabs */}
-              {chains.length > 1 && (
+              {chains.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => setSelectedChain(null)}
                     style={{
                       padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none',
                       fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
-                      backgroundColor: selectedChain === null ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
-                      color: selectedChain === null ? '#fff' : 'var(--lw-text-muted)',
+                      backgroundColor: selectedChain === null ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.12)',
+                      color: selectedChain === null ? '#fff' : '#bab1a8',
                     }}
                   >
                     All [{nfts.length}]
                   </button>
                   {chains.map(chain => {
-                    const count = nfts.filter(n => n.chain === chain).length
+                    const count = nfts.filter(n => n.chain === chain && !spamIds.has(nftId(n))).length
                     return (
                       <button
                         key={chain}
@@ -156,8 +169,8 @@ function EvmPortfolioContent() {
                         style={{
                           padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none',
                           fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
-                          backgroundColor: selectedChain === chain ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
-                          color: selectedChain === chain ? '#fff' : 'var(--lw-text-muted)',
+                          backgroundColor: selectedChain === chain ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.12)',
+                          color: selectedChain === chain ? '#fff' : '#bab1a8',
                         }}
                       >
                         {chain} [{count}]
