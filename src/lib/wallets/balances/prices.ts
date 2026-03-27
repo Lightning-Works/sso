@@ -140,22 +140,50 @@ export async function getTokenPrice(symbol: string, mintAddress?: string, chain?
   return null
 }
 
-// Batch fetch Jupiter prices for Solana tokens and merge into a symbol-keyed map
-export async function getSolanaPricesByMint(tokens: { symbol: string; address?: string }[]): Promise<Record<string, number>> {
+// Batch fetch prices + logos for Solana tokens via DexScreener (free, no auth)
+export async function getSolanaPricesAndLogos(
+  tokens: { symbol: string; address?: string }[]
+): Promise<{ prices: Record<string, number>; logos: Record<string, string> }> {
   const mints = tokens.filter(t => t.address).map(t => t.address!)
-  if (mints.length === 0) return {}
+  if (mints.length === 0) return { prices: {}, logos: {} }
 
-  const jupPrices = await fetchJupiterPrices(mints)
+  const prices: Record<string, number> = {}
+  const logos: Record<string, string> = {}
 
-  // Map mint prices back to symbols
-  const result: Record<string, number> = {}
-  for (const t of tokens) {
-    if (t.address && jupPrices[t.address]) {
-      result[t.symbol] = jupPrices[t.address]
-      mintPriceCache[t.address] = jupPrices[t.address]
-    }
+  // DexScreener supports up to 30 addresses per call
+  const BATCH = 30
+  for (let i = 0; i < mints.length; i += BATCH) {
+    const batch = mints.slice(i, i + BATCH)
+    try {
+      const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${batch.join(',')}`)
+      if (!res.ok) continue
+      const data = await res.json()
+      if (!Array.isArray(data)) continue
+
+      const seen = new Set<string>()
+      for (const pair of data) {
+        const addr = pair.baseToken?.address
+        if (!addr || seen.has(addr)) continue
+        seen.add(addr)
+
+        const token = tokens.find(t => t.address === addr)
+        if (!token) continue
+
+        if (pair.priceUsd) {
+          const price = parseFloat(pair.priceUsd)
+          if (!isNaN(price)) {
+            prices[token.symbol] = price
+            mintPriceCache[addr] = price
+          }
+        }
+        if (pair.info?.imageUrl) {
+          logos[token.symbol] = pair.info.imageUrl
+        }
+      }
+    } catch { /* skip failed batch */ }
   }
-  return result
+
+  return { prices, logos }
 }
 
 const LOGO_CDN = 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images'

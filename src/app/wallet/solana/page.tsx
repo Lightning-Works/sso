@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { getSolanaBalances } from '@/lib/wallets/balances/solana-balances'
 import { getSolanaNfts, type SolanaNft } from '@/lib/wallets/balances/solana-nfts'
-import { getTokenPrices, getSolanaPricesByMint } from '@/lib/wallets/balances/prices'
+import { getTokenPrices, getSolanaPricesAndLogos } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
 import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
@@ -54,11 +54,19 @@ function SolanaPortfolioContent() {
         getSolanaBalances(address),
         getTokenPrices(),
       ])
-      setTokens(tokenData)
-      // Fetch Jupiter prices for all SPL tokens with mint addresses
+      // Fetch DexScreener prices + logos for all SPL tokens
       const splTokens = tokenData.filter(t => t.address).map(t => ({ symbol: t.symbol, address: t.address }))
-      const jupPrices = await getSolanaPricesByMint(splTokens)
-      setPrices({ ...priceData, ...jupPrices })
+      const { prices: dexPrices, logos } = await getSolanaPricesAndLogos(splTokens)
+
+      // Apply logos to tokens that don't already have one
+      for (const t of tokenData) {
+        if (!t.logoUrl && logos[t.symbol]) {
+          t.logoUrl = logos[t.symbol]
+        }
+      }
+
+      setTokens(tokenData)
+      setPrices({ ...priceData, ...dexPrices })
       setLoading(false)
     }
     load()

@@ -270,7 +270,7 @@ export function TokenGrid({
                 onContextMenu={(e) => handleContextMenu(e, t)}
               >
                 <div className="token-ticker-row">
-                  {(isNative || hasValue) && (() => {
+                  {(() => {
                     const logoUrl = t.logoUrl || getTokenLogoUrl(t.symbol)
                     return logoUrl ? (
                       <img
