@@ -42,6 +42,7 @@ export interface PlanetCandidate {
 }
 
 export interface PlanetDaoData {
+  error?: string
   planet: string
   symbol: string
   scope: string

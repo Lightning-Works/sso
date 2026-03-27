@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { getWaxBalances, getSyndicateTokens, type SyndicateToken, getPlanetDaoData, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
+import { getWaxBalances, getSyndicateTokens, type SyndicateToken, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
 import { useCallback } from 'react'
 import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
@@ -42,8 +42,14 @@ function WaxPortfolioContent() {
 
   const openPlanet = useCallback(async (index: number) => {
     setPlanetModal({ index, data: null, loading: true })
-    const data = await getPlanetDaoData(index)
-    setPlanetModal({ index, data, loading: false })
+    try {
+      const res = await fetch(`/api/planet?index=${index}`)
+      const data: PlanetDaoData = await res.json()
+      setPlanetModal({ index, data, loading: false })
+    } catch (e) {
+      console.error('Failed to load planet data:', e)
+      setPlanetModal({ index, data: null, loading: false })
+    }
   }, [])
 
   const navigatePlanet = useCallback((dir: -1 | 1) => {
@@ -598,6 +604,7 @@ function WaxPortfolioContent() {
             backgroundColor: '#0d0d10', borderRadius: '16px',
             width: '80%', maxWidth: '50rem', maxHeight: '90vh', overflow: 'auto',
             position: 'relative',
+            boxShadow: '0 0 60px 20px rgba(40, 20, 100, 0.3), 0 0 120px 40px rgba(20, 10, 60, 0.2), 0 0 200px 80px rgba(10, 5, 40, 0.15)',
           }}>
             {/* Close button */}
             <button
@@ -641,6 +648,10 @@ function WaxPortfolioContent() {
             {planetModal.loading ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--lw-text-muted)' }}>
                 Loading planet data...
+              </div>
+            ) : !planetModal.data || planetModal.data.error ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#ff4444' }}>
+                Failed to load planet data. Please try again.
               </div>
             ) : planetModal.data ? (
               <div style={{ padding: '1.5rem' }}>
