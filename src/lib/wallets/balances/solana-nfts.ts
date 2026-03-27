@@ -75,11 +75,15 @@ export async function getSolanaNfts(address: string): Promise<SolanaNft[]> {
           (g: { group_key: string; group_value: string; collection_metadata?: { name?: string } }) => g.group_key === 'collection'
         )
 
-        // Resolve image: prefer files, then links, then metadata
+        // Resolve image: prefer Helius CDN, then files, then links, then metadata
         let imageUrl: string | null = null
+
+        // Try Helius CDN cached version first (survives origin outages)
         if (files.length > 0) {
           const imgFile = files.find((f: { mime?: string }) => f.mime?.startsWith('image/'))
-          imageUrl = imgFile?.uri || files[0]?.uri || null
+          const cdnUrl = imgFile?.cdn_uri || (files[0] as { cdn_uri?: string })?.cdn_uri
+          if (cdnUrl) imageUrl = cdnUrl
+          if (!imageUrl) imageUrl = imgFile?.uri || files[0]?.uri || null
         }
         if (!imageUrl && links.image) imageUrl = links.image
         if (!imageUrl && metadata.image) imageUrl = metadata.image
@@ -105,7 +109,9 @@ export async function getSolanaNfts(address: string): Promise<SolanaNft[]> {
           isCompressed: item.compression?.compressed === true,
           royaltyPercent: item.royalty?.percent != null ? item.royalty.percent : null,
           attributes: attrs,
-          externalUrl: links.external_url || metadata.external_url || null,
+          externalUrl: (links.external_url && links.external_url.startsWith('http') ? links.external_url : null)
+            || (metadata.external_url && metadata.external_url.startsWith('http') ? metadata.external_url : null)
+            || null,
         })
       }
 
