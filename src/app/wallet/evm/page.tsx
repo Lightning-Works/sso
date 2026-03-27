@@ -16,12 +16,16 @@ function evmToNftItems(nfts: EvmNft[]): NftItem[] {
     id: `${nft.contractAddress}-${nft.tokenId}`,
     name: nft.name,
     imageUrl: nft.imageUrl,
+    videoUrl: nft.videoUrl,
     collection: nft.collectionName,
     description: nft.description,
     chain: nft.chain,
     tokenType: nft.tokenType,
     floorPrice: nft.floorPrice,
-    externalUrl: `https://opensea.io/assets/${nft.chain.toLowerCase() === 'ethereum' ? 'ethereum' : nft.chain.toLowerCase()}/${nft.contractAddress}/${nft.tokenId}`,
+    attributes: nft.attributes.length > 0 ? nft.attributes : undefined,
+    externalUrl: nft.chain === 'Ethereum' || nft.chain === 'Polygon' || nft.chain === 'Base'
+      ? `https://opensea.io/assets/${nft.chain.toLowerCase()}/${nft.contractAddress}/${nft.tokenId}`
+      : undefined,
   }))
 }
 
