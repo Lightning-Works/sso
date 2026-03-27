@@ -545,7 +545,7 @@ function WaxPortfolioContent() {
         <div
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.95), rgba(5, 3, 20, 0.97) 60%, rgba(2, 1, 10, 0.98))',
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.75), rgba(5, 3, 20, 0.8) 60%, rgba(2, 1, 10, 0.85))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '5vh 0',
             overflow: 'hidden',
