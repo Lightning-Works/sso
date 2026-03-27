@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getWaxBalances, getSyndicateTokens, type SyndicateToken } from '@/lib/wallets/balances/wax-balances'
+import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import type { WalletToken } from '@/lib/wallets/types'
 
@@ -25,6 +26,7 @@ function WaxPortfolioContent() {
 
   const [tokens, setTokens] = useState<WalletToken[]>([])
   const [syndicateTokens, setSyndicateTokens] = useState<SyndicateToken[]>([])
+  const [prices, setPrices] = useState<Record<string, number>>({})
   const [nfts, setNfts] = useState<WaxNft[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingNfts, setLoadingNfts] = useState(false)
@@ -63,12 +65,14 @@ function WaxPortfolioContent() {
     if (!account) return
     const load = async () => {
       setLoading(true)
-      const [tokenData, synData] = await Promise.all([
+      const [tokenData, synData, priceData] = await Promise.all([
         getWaxBalances(account),
         getSyndicateTokens(account),
+        getTokenPrices(),
       ])
       setTokens(tokenData)
       setSyndicateTokens(synData)
+      setPrices(priceData)
       setLoading(false)
     }
     load()
@@ -208,6 +212,11 @@ function WaxPortfolioContent() {
                       <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: '0.2rem 0 0 0' }}>
                         {parseFloat(parseFloat(t.balance).toFixed(2)).toLocaleString()}
                       </p>
+                      {prices[t.symbol] && (
+                        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.15rem 0 0 0' }}>
+                          ({formatUsd(parseFloat(t.balance) * prices[t.symbol])} USD)
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
