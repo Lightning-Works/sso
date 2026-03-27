@@ -425,7 +425,8 @@ function WaxPortfolioContent() {
                 nfts={waxToNftItems(selectedSchema ? nfts.filter(n => n.schemaName === selectedSchema) : nfts)}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found in this collection"
-                aspectRatio="card"
+                aspectRatio="5 / 7"
+                storageKey={`nft-tags-wax-${account}`}
               />
               {!loadingNfts && hasMore && (
                 <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>

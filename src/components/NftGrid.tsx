@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface NftItem {
@@ -21,6 +21,35 @@ export interface NftItem {
   attributes?: { key: string; value: string }[]
 }
 
+type NftTag = 'spam' | 'favorite' | 'hidden'
+
+interface NftTagData {
+  spam: Set<string>
+  favorite: Set<string>
+  hidden: Set<string>
+}
+
+function loadTags(storageKey: string): NftTagData {
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return { spam: new Set(), favorite: new Set(), hidden: new Set() }
+    const parsed = JSON.parse(raw)
+    return {
+      spam: new Set(parsed.spam || []),
+      favorite: new Set(parsed.favorite || []),
+      hidden: new Set(parsed.hidden || []),
+    }
+  } catch { return { spam: new Set(), favorite: new Set(), hidden: new Set() } }
+}
+
+function saveTags(storageKey: string, tags: NftTagData) {
+  localStorage.setItem(storageKey, JSON.stringify({
+    spam: [...tags.spam],
+    favorite: [...tags.favorite],
+    hidden: [...tags.hidden],
+  }))
+}
+
 interface NftGridProps {
   nfts: NftItem[]
   loading?: boolean
@@ -31,6 +60,8 @@ interface NftGridProps {
   gap?: string
   mobileGap?: string
   mobileBreakpoint?: number
+  /** Unique key for persisting spam/favorite/hidden state (e.g. wallet address) */
+  storageKey?: string
 }
 
 export function NftGrid({
@@ -43,20 +74,124 @@ export function NftGrid({
   gap = '1rem',
   mobileGap = '0.5rem',
   mobileBreakpoint = 768,
+  storageKey = 'nft-tags',
 }: NftGridProps) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [tags, setTags] = useState<NftTagData>({ spam: new Set(), favorite: new Set(), hidden: new Set() })
+  const [viewMode, setViewMode] = useState<'all' | 'spam'>('all')
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const lastClickedIndex = useRef<number>(-1)
 
-  // Keyboard: Escape closes lightbox
+  // Load tags from localStorage
+  useEffect(() => {
+    setTags(loadTags(storageKey))
+  }, [storageKey])
+
+  // Keyboard: Escape closes lightbox or context menu
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') setSelectedNft(null)
-  }, [])
+    if (e.key === 'Escape') {
+      if (contextMenu) { setContextMenu(null); setConfirmDelete(false) }
+      else if (selectedNft) setSelectedNft(null)
+      else if (selected.size > 0) setSelected(new Set())
+    }
+  }, [contextMenu, selectedNft, selected])
 
   useEffect(() => {
-    if (selectedNft) {
-      document.addEventListener('keydown', handleKeyDown)
-      return () => document.removeEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
+  // Close context menu on any click
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => { setContextMenu(null); setConfirmDelete(false) }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [contextMenu])
+
+  const applyTag = useCallback((tag: NftTag) => {
+    const next = { spam: new Set(tags.spam), favorite: new Set(tags.favorite), hidden: new Set(tags.hidden) }
+    selected.forEach(id => {
+      if (tag === 'spam') {
+        next.spam.add(id)
+        next.favorite.delete(id)
+      } else if (tag === 'favorite') {
+        next.favorite.has(id) ? next.favorite.delete(id) : next.favorite.add(id)
+        next.spam.delete(id)
+      } else if (tag === 'hidden') {
+        next.hidden.add(id)
+      }
+    })
+    setTags(next)
+    saveTags(storageKey, next)
+    setSelected(new Set())
+    setContextMenu(null)
+    setConfirmDelete(false)
+  }, [tags, selected, storageKey])
+
+  const unspamSelected = useCallback(() => {
+    const next = { ...tags, spam: new Set(tags.spam) }
+    selected.forEach(id => next.spam.delete(id))
+    setTags(next)
+    saveTags(storageKey, next)
+    setSelected(new Set())
+    setContextMenu(null)
+  }, [tags, selected, storageKey])
+
+  // Filter and sort NFTs
+  const visibleNfts = nfts.filter(nft => {
+    if (tags.hidden.has(nft.id)) return false
+    if (viewMode === 'spam') return tags.spam.has(nft.id)
+    return !tags.spam.has(nft.id)
+  })
+
+  // Sort favorites to top (only in 'all' view)
+  if (viewMode === 'all') {
+    visibleNfts.sort((a, b) => {
+      const aFav = tags.favorite.has(a.id) ? 0 : 1
+      const bFav = tags.favorite.has(b.id) ? 0 : 1
+      return aFav - bFav
+    })
+  }
+
+  const spamCount = nfts.filter(n => tags.spam.has(n.id) && !tags.hidden.has(n.id)).length
+
+  const handleCardClick = (nft: NftItem, index: number, e: React.MouseEvent) => {
+    if (e.shiftKey && lastClickedIndex.current >= 0) {
+      // Shift-click: select range
+      const start = Math.min(lastClickedIndex.current, index)
+      const end = Math.max(lastClickedIndex.current, index)
+      const next = new Set(selected)
+      for (let i = start; i <= end; i++) {
+        next.add(visibleNfts[i].id)
+      }
+      setSelected(next)
+    } else if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd-click: toggle single
+      const next = new Set(selected)
+      next.has(nft.id) ? next.delete(nft.id) : next.add(nft.id)
+      setSelected(next)
+    } else if (selected.size > 0) {
+      // If items are selected, clicking without modifier deselects all
+      setSelected(new Set())
+    } else {
+      // Normal click: open lightbox
+      setSelectedNft(nft)
     }
-  }, [selectedNft, handleKeyDown])
+    lastClickedIndex.current = index
+  }
+
+  const handleContextMenu = (e: React.MouseEvent, nft: NftItem) => {
+    e.preventDefault()
+    // If right-clicked item isn't in selection, select only it
+    if (!selected.has(nft.id)) {
+      setSelected(new Set([nft.id]))
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY })
+    setConfirmDelete(false)
+  }
 
   return (
     <>
@@ -84,9 +219,23 @@ export function NftGrid({
           border-radius: var(--nft-card-radius, var(--lw-radius-sm, 4px));
           overflow: hidden;
           cursor: pointer;
-          transition: transform 0.15s;
+          transition: transform 0.15s, outline 0.1s;
+          position: relative;
+          outline: 2px solid transparent;
+          user-select: none;
         }
         .nft-card:hover { transform: scale(1.03); }
+        .nft-card--selected { outline: 2px solid var(--lw-purple, #6a24fa); }
+
+        .nft-card-heart {
+          position: absolute;
+          top: 6px;
+          left: 6px;
+          z-index: 2;
+          font-size: 0.9rem;
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+          pointer-events: none;
+        }
 
         .nft-card-thumb {
           width: 100%;
@@ -152,6 +301,67 @@ export function NftGrid({
         .nft-card-placeholder {
           color: var(--lw-text-muted, #7a7572);
           font-size: 0.7rem;
+        }
+
+        /* ── View Tabs ── */
+        .nft-view-tabs {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.5rem;
+          margin-bottom: 0.75rem;
+        }
+        .nft-view-tab {
+          padding: 0.3rem 0.7rem;
+          border-radius: 6px;
+          border: none;
+          font-size: 0.7rem;
+          font-weight: 500;
+          cursor: pointer;
+        }
+
+        /* ── Context Menu ── */
+        .nft-context-menu {
+          position: fixed;
+          z-index: 10000;
+          background: #1a1a2e;
+          border: 1px solid rgba(106, 36, 250, 0.3);
+          border-radius: 8px;
+          padding: 4px 0;
+          min-width: 160px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .nft-context-item {
+          display: block;
+          width: 100%;
+          padding: 0.5rem 1rem;
+          background: none;
+          border: none;
+          color: var(--lw-text-white, #fff);
+          font-size: 0.8rem;
+          text-align: left;
+          cursor: pointer;
+        }
+        .nft-context-item:hover {
+          background: rgba(106, 36, 250, 0.2);
+        }
+        .nft-context-item--danger {
+          color: #ff4444;
+        }
+        .nft-context-item--danger:hover {
+          background: rgba(255, 68, 68, 0.15);
+        }
+        .nft-context-confirm {
+          display: flex;
+          gap: 0.25rem;
+          padding: 0.35rem 0.75rem;
+        }
+        .nft-context-confirm button {
+          flex: 1;
+          padding: 0.3rem;
+          border: none;
+          border-radius: 4px;
+          font-size: 0.7rem;
+          cursor: pointer;
         }
 
         /* ── Lightbox Overlay ── */
@@ -287,14 +497,52 @@ export function NftGrid({
         }
       `}</style>
 
+      {/* View tabs */}
+      {!loading && nfts.length > 0 && (
+        <div className="nft-view-tabs">
+          {selected.size > 0 && (
+            <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', marginRight: 'auto' }}>
+              {selected.size} selected — right-click for options
+            </span>
+          )}
+          <button
+            className="nft-view-tab"
+            onClick={() => { setViewMode('all'); setSelected(new Set()) }}
+            style={{
+              backgroundColor: viewMode === 'all' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
+              color: viewMode === 'all' ? '#fff' : 'var(--lw-text-muted)',
+            }}
+          >
+            NFTs
+          </button>
+          <button
+            className="nft-view-tab"
+            onClick={() => { setViewMode('spam'); setSelected(new Set()) }}
+            style={{
+              backgroundColor: viewMode === 'spam' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
+              color: viewMode === 'spam' ? '#fff' : 'var(--lw-text-muted)',
+              opacity: spamCount > 0 ? 1 : 0.4,
+            }}
+          >
+            Spam {spamCount > 0 && `(${spamCount})`}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2rem 0' }}>Loading NFTs...</p>
-      ) : nfts.length === 0 ? (
-        <p className="nft-card-placeholder">{emptyMessage}</p>
+      ) : visibleNfts.length === 0 ? (
+        <p className="nft-card-placeholder">{viewMode === 'spam' ? 'No spam NFTs' : emptyMessage}</p>
       ) : (
         <div className="nft-grid">
-          {nfts.map((nft, i) => (
-            <div key={`${nft.id}-${i}`} className="nft-card" onClick={() => setSelectedNft(nft)}>
+          {visibleNfts.map((nft, i) => (
+            <div
+              key={`${nft.id}-${i}`}
+              className={`nft-card${selected.has(nft.id) ? ' nft-card--selected' : ''}`}
+              onClick={(e) => handleCardClick(nft, i, e)}
+              onContextMenu={(e) => handleContextMenu(e, nft)}
+            >
+              {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
                 {nft.videoUrl ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
@@ -325,7 +573,38 @@ export function NftGrid({
         </div>
       )}
 
-      {/* Lightbox — rendered via portal to ensure viewport centering */}
+      {/* Context menu */}
+      {contextMenu && typeof document !== 'undefined' && createPortal(
+        <div className="nft-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+          {viewMode === 'spam' ? (
+            <button className="nft-context-item" onClick={() => unspamSelected()}>
+              &#x2716; Remove from Spam
+            </button>
+          ) : (
+            <>
+              <button className="nft-context-item" onClick={() => applyTag('spam')}>
+                &#x26A0; Mark as Spam
+              </button>
+              <button className="nft-context-item" onClick={() => applyTag('favorite')}>
+                &#9829; {selected.size === 1 && tags.favorite.has([...selected][0]) ? 'Remove Favorite' : 'Favorite'}
+              </button>
+              {!confirmDelete ? (
+                <button className="nft-context-item nft-context-item--danger" onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}>
+                  &#x2716; Hide
+                </button>
+              ) : (
+                <div className="nft-context-confirm">
+                  <button style={{ background: '#ff4444', color: '#fff' }} onClick={() => applyTag('hidden')}>Confirm Hide</button>
+                  <button style={{ background: '#3a3938', color: '#aaa' }} onClick={(e) => { e.stopPropagation(); setConfirmDelete(false) }}>Cancel</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* Lightbox */}
       {selectedNft && typeof document !== 'undefined' && createPortal(
         <div className="nft-lightbox-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelectedNft(null) }}>
           <div className="nft-lightbox-panel">

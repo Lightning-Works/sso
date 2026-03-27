@@ -164,6 +164,7 @@ function SolanaPortfolioContent() {
                 nfts={solanaToNftItems(filteredNfts)}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found"
+                storageKey={`nft-tags-sol-${address}`}
               />
             </div>
           </>

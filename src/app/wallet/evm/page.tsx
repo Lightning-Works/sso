@@ -182,7 +182,7 @@ function EvmPortfolioContent() {
                 nfts={evmToNftItems(filteredNfts)}
                 loading={loadingNfts}
                 emptyMessage="No NFTs found"
-                aspectRatio="square"
+                storageKey={`nft-tags-evm-${address}`}
               />
             </div>
           </>
