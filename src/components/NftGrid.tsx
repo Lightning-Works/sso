@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface NftItem {
   id: string
@@ -156,8 +157,11 @@ export function NftGrid({
         /* ── Lightbox Overlay ── */
         .nft-lightbox-overlay {
           position: fixed;
-          inset: 0;
-          z-index: var(--nft-lightbox-z, 1000);
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: var(--nft-lightbox-z, 9999);
           background: var(--nft-lightbox-bg, rgba(0, 0, 0, 0.8));
           display: flex;
           align-items: center;
@@ -174,6 +178,10 @@ export function NftGrid({
           max-height: 90vh;
           overflow: auto;
           position: relative;
+          box-shadow:
+            0 0 60px 20px rgba(40, 20, 100, 0.3),
+            0 0 120px 40px rgba(20, 10, 60, 0.2),
+            0 0 200px 80px rgba(10, 5, 40, 0.15);
         }
         .nft-lightbox-close {
           position: sticky;
@@ -316,8 +324,8 @@ export function NftGrid({
         </div>
       )}
 
-      {/* Lightbox */}
-      {selectedNft && (
+      {/* Lightbox — rendered via portal to ensure viewport centering */}
+      {selectedNft && typeof document !== 'undefined' && createPortal(
         <div className="nft-lightbox-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelectedNft(null) }}>
           <div className="nft-lightbox-panel">
             <button className="nft-lightbox-close" onClick={() => setSelectedNft(null)} aria-label="Close">&#x2715;</button>
@@ -400,7 +408,8 @@ export function NftGrid({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
