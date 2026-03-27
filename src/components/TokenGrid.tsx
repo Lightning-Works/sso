@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { formatUsd } from '@/lib/wallets/balances/prices'
+import { formatUsd, getTokenLogoUrl } from '@/lib/wallets/balances/prices'
 import type { WalletToken } from '@/lib/wallets/types'
 
 interface TokenGridProps {
@@ -140,6 +140,23 @@ export function TokenGrid({
         .token-card--valued {
           background: rgba(30, 28, 40, 1);
         }
+        .token-ticker-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+        }
+        .token-logo {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .token-logo--native {
+          width: 22px;
+          height: 22px;
+        }
         .token-ticker {
           color: var(--nft-accent, #ff8800);
           margin: 0;
@@ -252,9 +269,22 @@ export function TokenGrid({
                 onClick={(e) => handleClick(t, i, e)}
                 onContextMenu={(e) => handleContextMenu(e, t)}
               >
-                <p className={`token-ticker ${isNative ? 'token-ticker--native' : hasValue ? 'token-ticker--valued' : 'token-ticker--default'}`}>
-                  ${t.symbol}{label || ''}
-                </p>
+                <div className="token-ticker-row">
+                  {(isNative || hasValue) && (() => {
+                    const logoUrl = getTokenLogoUrl(t.symbol)
+                    return logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt={t.symbol}
+                        className={`token-logo${isNative ? ' token-logo--native' : ''}`}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : null
+                  })()}
+                  <span className={`token-ticker ${isNative ? 'token-ticker--native' : hasValue ? 'token-ticker--valued' : 'token-ticker--default'}`}>
+                    ${t.symbol}{label || ''}
+                  </span>
+                </div>
                 <p className="token-balance">
                   {parseFloat(parseFloat(t.balance).toFixed(4)).toLocaleString()}
                 </p>

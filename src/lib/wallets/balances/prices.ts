@@ -4,7 +4,7 @@
  * Falls back to DexScreener for anything not found
  */
 
-const COINGECKO_IDS: Record<string, string> = {
+export const COINGECKO_IDS: Record<string, string> = {
   'ETH': 'ethereum',
   'POL': 'matic-network',
   'SOL': 'solana',
@@ -138,6 +138,14 @@ export async function getTokenPrice(symbol: string, mintAddress?: string, chain?
   }
 
   return null
+}
+
+const LOGO_CDN = 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images'
+
+export function getTokenLogoUrl(symbol: string): string | null {
+  const geckoId = COINGECKO_IDS[symbol]
+  if (!geckoId) return null
+  return `${LOGO_CDN}/${geckoId}/small.png`
 }
 
 export function formatUsd(amount: number): string {
