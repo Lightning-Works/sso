@@ -62,6 +62,8 @@ interface NftGridProps {
   mobileBreakpoint?: number
   /** Unique key for persisting spam/favorite/hidden state (e.g. wallet address) */
   storageKey?: string
+  /** If true, shows "Global Spam" option in context menu (superadmin) */
+  isSuperadmin?: boolean
 }
 
 export function NftGrid({
@@ -75,6 +77,7 @@ export function NftGrid({
   mobileGap = '0.5rem',
   mobileBreakpoint = 768,
   storageKey = 'nft-tags',
+  isSuperadmin = false,
 }: NftGridProps) {
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -82,12 +85,21 @@ export function NftGrid({
   const [viewMode, setViewMode] = useState<'all' | 'spam'>('all')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [globalBlacklist, setGlobalBlacklist] = useState<Set<string>>(new Set())
   const lastClickedIndex = useRef<number>(-1)
 
   // Load tags from localStorage
   useEffect(() => {
     setTags(loadTags(storageKey))
   }, [storageKey])
+
+  // Fetch global blacklist
+  useEffect(() => {
+    fetch('/api/nft-blacklist')
+      .then(r => r.json())
+      .then(data => setGlobalBlacklist(new Set(data.ids || [])))
+      .catch(() => {})
+  }, [])
 
   // Keyboard: Escape closes lightbox or context menu
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -140,10 +152,34 @@ export function NftGrid({
     setContextMenu(null)
   }, [tags, selected, storageKey])
 
+  const addToGlobalBlacklist = useCallback(async () => {
+    const items = nfts
+      .filter(n => selected.has(n.id))
+      .map(n => ({
+        nft_id: n.id,
+        chain: n.chain || '',
+        contract: '',
+        collection: n.collection || '',
+      }))
+    try {
+      await fetch('/api/nft-blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      const next = new Set(globalBlacklist)
+      items.forEach(i => next.add(i.nft_id))
+      setGlobalBlacklist(next)
+    } catch { /* ignore */ }
+    // Also mark as local spam
+    applyTag('spam')
+  }, [nfts, selected, globalBlacklist, applyTag])
+
   // Filter and sort NFTs
   const visibleNfts = nfts.filter(nft => {
     if (tags.hidden.has(nft.id)) return false
-    if (viewMode === 'spam') return tags.spam.has(nft.id)
+    if (globalBlacklist.has(nft.id) && viewMode !== 'spam') return false
+    if (viewMode === 'spam') return tags.spam.has(nft.id) || globalBlacklist.has(nft.id)
     return !tags.spam.has(nft.id)
   })
 
@@ -156,7 +192,7 @@ export function NftGrid({
     })
   }
 
-  const spamCount = nfts.filter(n => tags.spam.has(n.id) && !tags.hidden.has(n.id)).length
+  const spamCount = nfts.filter(n => (tags.spam.has(n.id) || globalBlacklist.has(n.id)) && !tags.hidden.has(n.id)).length
 
   const handleCardClick = (nft: NftItem, index: number, e: React.MouseEvent) => {
     if (e.shiftKey && lastClickedIndex.current >= 0) {
@@ -585,6 +621,11 @@ export function NftGrid({
               <button className="nft-context-item" onClick={() => applyTag('spam')}>
                 &#x26A0; Mark as Spam
               </button>
+              {isSuperadmin && (
+                <button className="nft-context-item" onClick={() => addToGlobalBlacklist()} style={{ color: '#ff8800' }}>
+                  &#x26A0; Global Spam (all users)
+                </button>
+              )}
               <button className="nft-context-item" onClick={() => applyTag('favorite')}>
                 &#9829; {selected.size === 1 && tags.favorite.has([...selected][0]) ? 'Remove Favorite' : 'Favorite'}
               </button>

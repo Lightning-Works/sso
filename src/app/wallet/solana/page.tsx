@@ -7,6 +7,7 @@ import { getSolanaBalances } from '@/lib/wallets/balances/solana-balances'
 import { getSolanaNfts, type SolanaNft } from '@/lib/wallets/balances/solana-nfts'
 import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { createClient } from '@/lib/supabase/client'
 import type { WalletToken } from '@/lib/wallets/types'
 
 function solanaToNftItems(nfts: SolanaNft[]): NftItem[] {
@@ -33,6 +34,16 @@ function SolanaPortfolioContent() {
   const [loading, setLoading] = useState(true)
   const [loadingNfts, setLoadingNfts] = useState(false)
   const [filterCompressed, setFilterCompressed] = useState<boolean | null>(null)
+  const [isSuperadmin, setIsSuperadmin] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      if (profile?.role === 'superadmin') setIsSuperadmin(true)
+    })
+  }, [])
 
   useEffect(() => {
     if (!address) return
@@ -165,6 +176,7 @@ function SolanaPortfolioContent() {
                 loading={loadingNfts}
                 emptyMessage="No NFTs found"
                 storageKey={`nft-tags-sol-${address}`}
+                isSuperadmin={isSuperadmin}
               />
             </div>
           </>

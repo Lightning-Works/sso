@@ -57,6 +57,7 @@ function WaxPortfolioContent() {
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null)
   const [schemaCounts, setSchemaCounts] = useState<Record<string, number>>({})
   const [planetModal, setPlanetModal] = useState<{ index: number; data: PlanetDaoData | null; loading: boolean } | null>(null)
+  const [isSuperadmin, setIsSuperadmin] = useState(false)
 
   const openPlanet = useCallback(async (index: number) => {
     setPlanetModal({ index, data: null, loading: true })
@@ -90,11 +91,13 @@ function WaxPortfolioContent() {
       if (data?.chat_api_key) setAshChatKey(data.chat_api_key)
       if (data?.app_side_img) setAshSideImg(`${STORAGE_BASE}/app_side_image/${data.app_side_img}`)
     })
-    // Get user identity for chat
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    // Get user identity for chat + superadmin check
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         setUserId(user.id)
         setUserName(user.user_metadata?.display_name || user.user_metadata?.username || '')
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+        if (profile?.role === 'superadmin') setIsSuperadmin(true)
       }
     })
   }, [])
@@ -427,6 +430,7 @@ function WaxPortfolioContent() {
                 emptyMessage="No NFTs found in this collection"
                 aspectRatio="5 / 7"
                 storageKey={`nft-tags-wax-${account}`}
+                isSuperadmin={isSuperadmin}
               />
               {!loadingNfts && hasMore && (
                 <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
