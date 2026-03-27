@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { getWaxBalances, getSyndicateTokens, type SyndicateToken } from '@/lib/wallets/balances/wax-balances'
+import { getWaxBalances, getSyndicateTokens, type SyndicateToken, getPlanetDaoData, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
+import { useCallback } from 'react'
 import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
 import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import type { WalletToken } from '@/lib/wallets/types'
@@ -37,6 +38,20 @@ function WaxPortfolioContent() {
   const [selectedCollection, setSelectedCollection] = useState(COLLECTIONS[0].slug)
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null)
   const [schemaCounts, setSchemaCounts] = useState<Record<string, number>>({})
+  const [planetModal, setPlanetModal] = useState<{ index: number; data: PlanetDaoData | null; loading: boolean } | null>(null)
+
+  const openPlanet = useCallback(async (index: number) => {
+    setPlanetModal({ index, data: null, loading: true })
+    const data = await getPlanetDaoData(index)
+    setPlanetModal({ index, data, loading: false })
+  }, [])
+
+  const navigatePlanet = useCallback((dir: -1 | 1) => {
+    if (!planetModal) return
+    const next = (planetModal.index + dir + SYNDICATE_PLANETS.length) % SYNDICATE_PLANETS.length
+    openPlanet(next)
+  }, [planetModal, openPlanet])
+
   const [ashChatOpen, setAshChatOpen] = useState(false)
   const [ashChatKey, setAshChatKey] = useState('')
   const [ashSideImg, setAshSideImg] = useState('')
@@ -234,8 +249,8 @@ function WaxPortfolioContent() {
                       Syndicate Tokens
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem 0.5rem' }}>
-                      {syndicateTokens.map(st => (
-                        <div key={st.symbol}>
+                      {syndicateTokens.map((st, idx) => (
+                        <div key={st.symbol} onClick={() => openPlanet(idx)} style={{ cursor: 'pointer' }}>
                           <p style={{ color: '#fff', fontSize: '0.72rem', margin: '0 0 0.25rem 0', fontWeight: 600 }}>
                             {st.planet}
                           </p>
@@ -521,6 +536,201 @@ function WaxPortfolioContent() {
               allow="clipboard-write"
               title="Character Chat"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Planet DAO Modal */}
+      {planetModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '5vh 10vw',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setPlanetModal(null) }}
+        >
+          {/* Left arrow */}
+          <button
+            onClick={(e) => { e.stopPropagation(); navigatePlanet(-1) }}
+            style={{
+              position: 'absolute', left: '2vw', top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff',
+              width: '44px', height: '44px', borderRadius: '50%', cursor: 'pointer',
+              fontSize: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >&#8249;</button>
+
+          {/* Right arrow */}
+          <button
+            onClick={(e) => { e.stopPropagation(); navigatePlanet(1) }}
+            style={{
+              position: 'absolute', right: '2vw', top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff',
+              width: '44px', height: '44px', borderRadius: '50%', cursor: 'pointer',
+              fontSize: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >&#8250;</button>
+
+          <div style={{
+            backgroundColor: '#0d0d10', borderRadius: '16px',
+            width: '100%', maxHeight: '90vh', overflow: 'auto',
+            position: 'relative',
+          }}>
+            {/* Close button */}
+            <button
+              onClick={() => setPlanetModal(null)}
+              style={{
+                position: 'sticky', top: '12px', float: 'right', marginRight: '12px',
+                background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff',
+                width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.1rem', lineHeight: 1, zIndex: 10,
+              }}
+            >&#x2715;</button>
+
+            {/* Video header */}
+            <div style={{
+              width: '100%', height: '200px', position: 'relative',
+              overflow: 'hidden', borderRadius: '16px 16px 0 0',
+            }}>
+              <video
+                key={SYNDICATE_PLANETS[planetModal.index].planet}
+                src={`/planets/${SYNDICATE_PLANETS[planetModal.index].planet}.mp4`}
+                autoPlay loop muted playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                padding: '2rem 1.5rem 1rem',
+                background: 'linear-gradient(transparent, rgba(13,13,16,0.95))',
+              }}>
+                <h2 style={{ color: '#fff', margin: 0, fontSize: '1.8rem', fontWeight: 700 }}>
+                  {SYNDICATE_PLANETS[planetModal.index].planet}
+                </h2>
+                <p style={{ color: '#ff8800', margin: '0.25rem 0 0 0', fontSize: '0.9rem', fontWeight: 600 }}>
+                  ${SYNDICATE_PLANETS[planetModal.index].symbol}
+                </p>
+              </div>
+            </div>
+
+            {/* Content */}
+            {planetModal.loading ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--lw-text-muted)' }}>
+                Loading planet data...
+              </div>
+            ) : planetModal.data ? (
+              <div style={{ padding: '1.5rem' }}>
+                {/* Stats row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  {[
+                    { label: 'Total Supply', value: planetModal.data.totalSupply.split(' ')[0] ? parseFloat(planetModal.data.totalSupply.split(' ')[0]).toLocaleString() : '0' },
+                    { label: 'Election Cycle', value: planetModal.data.periodLength >= 86400 ? `${Math.round(planetModal.data.periodLength / 86400)} days` : `${Math.round(planetModal.data.periodLength / 3600)} hrs` },
+                    { label: 'Proposal Budget', value: planetModal.data.proposalBudget ? `${parseFloat(planetModal.data.proposalBudget.split(' ')[0] || '0').toLocaleString()} TLM` : 'N/A' },
+                    { label: 'Candidate Lockup', value: planetModal.data.lockupAsset || 'N/A' },
+                  ].map(s => (
+                    <div key={s.label} style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem' }}>
+                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</p>
+                      <p style={{ color: '#fff', fontSize: '0.85rem', margin: '0.25rem 0 0 0', fontWeight: 500 }}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Staking info */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem', flex: 1 }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Staking</p>
+                    <p style={{ color: planetModal.data.stakingEnabled ? '#34A853' : '#ff4444', fontSize: '0.85rem', margin: '0.25rem 0 0 0', fontWeight: 500 }}>
+                      {planetModal.data.stakingEnabled ? 'Enabled' : 'Disabled'}
+                    </p>
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem', flex: 1 }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min Lock</p>
+                    <p style={{ color: '#fff', fontSize: '0.85rem', margin: '0.25rem 0 0 0', fontWeight: 500 }}>{Math.round(planetModal.data.minStakeTime / 86400)} days</p>
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem', flex: 1 }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Max Lock</p>
+                    <p style={{ color: '#fff', fontSize: '0.85rem', margin: '0.25rem 0 0 0', fontWeight: 500 }}>{Math.round(planetModal.data.maxStakeTime / 86400)} days</p>
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '0.75rem', flex: 1 }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Max Votes</p>
+                    <p style={{ color: '#fff', fontSize: '0.85rem', margin: '0.25rem 0 0 0', fontWeight: 500 }}>{planetModal.data.maxVotes}</p>
+                  </div>
+                </div>
+
+                {/* Custodians */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#fff', fontSize: '1rem', margin: '0 0 0.75rem 0' }}>
+                    Custodians ({planetModal.data.custodians.length}/{planetModal.data.numElected})
+                  </h3>
+                  {planetModal.data.custodians.length === 0 ? (
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No elected custodians — this planet&apos;s DAO is currently inactive.</p>
+                  ) : (
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      {planetModal.data.custodians.map((c, i) => (
+                        <div key={c.name} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          backgroundColor: 'rgba(106, 36, 250, 0.1)', borderRadius: '8px',
+                          padding: '0.6rem 0.75rem',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ color: '#ff8800', fontSize: '0.85rem', fontWeight: 700, minWidth: '1.5rem' }}>#{i + 1}</span>
+                            <span style={{ color: '#fff', fontSize: '0.85rem', fontFamily: 'monospace' }}>{c.name}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', margin: 0 }}>Vote Power</p>
+                              <p style={{ color: '#fff', fontSize: '0.75rem', margin: 0 }}>{(Number(BigInt(c.totalVotePower) / BigInt(1000000000))).toLocaleString()}B</p>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', margin: 0 }}>Voters</p>
+                              <p style={{ color: '#fff', fontSize: '0.75rem', margin: 0 }}>{c.numVoters}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Candidates */}
+                {planetModal.data.candidates.length > 0 && (
+                  <div>
+                    <h3 style={{ color: '#fff', fontSize: '1rem', margin: '0 0 0.75rem 0' }}>
+                      Active Candidates ({planetModal.data.candidates.length})
+                    </h3>
+                    <div style={{ display: 'grid', gap: '0.4rem' }}>
+                      {planetModal.data.candidates.map(c => {
+                        const isCustodian = planetModal.data!.custodians.some(cu => cu.name === c.name)
+                        return (
+                          <div key={c.name} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            backgroundColor: isCustodian ? 'rgba(106, 36, 250, 0.08)' : 'rgba(255,255,255,0.03)',
+                            borderRadius: '6px', padding: '0.5rem 0.75rem',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ color: isCustodian ? '#6a24fa' : '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}>{c.name}</span>
+                              {isCustodian && <span style={{ color: '#6a24fa', fontSize: '0.6rem', fontWeight: 600 }}>ELECTED</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                              <div style={{ textAlign: 'right' }}>
+                                <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: 0 }}>Votes</p>
+                                <p style={{ color: '#fff', fontSize: '0.7rem', margin: 0 }}>{(Number(BigInt(c.totalVotePower) / BigInt(1000000000))).toLocaleString()}B</p>
+                              </div>
+                              <div style={{ textAlign: 'right', minWidth: '2.5rem' }}>
+                                <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: 0 }}>Voters</p>
+                                <p style={{ color: '#fff', fontSize: '0.7rem', margin: 0 }}>{c.numVoters}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
