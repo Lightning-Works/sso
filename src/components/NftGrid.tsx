@@ -179,9 +179,10 @@ export function NftGrid({
           overflow: auto;
           position: relative;
           box-shadow:
-            0 0 60px 20px rgba(40, 20, 100, 0.3),
-            0 0 120px 40px rgba(20, 10, 60, 0.2),
-            0 0 200px 80px rgba(10, 5, 40, 0.15);
+            0 0 15px 5px rgba(80, 40, 200, 0.5),
+            0 0 40px 15px rgba(60, 30, 160, 0.35),
+            0 0 80px 30px rgba(40, 20, 120, 0.25),
+            0 0 160px 60px rgba(20, 10, 60, 0.15);
         }
         .nft-lightbox-close {
           position: sticky;
