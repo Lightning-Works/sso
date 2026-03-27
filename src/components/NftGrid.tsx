@@ -347,10 +347,10 @@ export function NftGrid({
           margin-bottom: 0.75rem;
         }
         .nft-view-tab {
-          padding: 0.3rem 0.7rem;
+          padding: 0.35rem 0.75rem;
           border-radius: 6px;
           border: none;
-          font-size: 0.7rem;
+          font-size: 0.75rem;
           font-weight: 500;
           cursor: pointer;
         }
@@ -545,8 +545,8 @@ export function NftGrid({
             className="nft-view-tab"
             onClick={() => { setViewMode('all'); setSelected(new Set()) }}
             style={{
-              backgroundColor: viewMode === 'all' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
-              color: viewMode === 'all' ? '#fff' : 'var(--lw-text-muted)',
+              backgroundColor: viewMode === 'all' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.12)',
+              color: viewMode === 'all' ? '#fff' : '#bab1a8',
             }}
           >
             NFTs
@@ -555,8 +555,8 @@ export function NftGrid({
             className="nft-view-tab"
             onClick={() => { setViewMode('spam'); setSelected(new Set()) }}
             style={{
-              backgroundColor: viewMode === 'spam' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.08)',
-              color: viewMode === 'spam' ? '#fff' : 'var(--lw-text-muted)',
+              backgroundColor: viewMode === 'spam' ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.12)',
+              color: viewMode === 'spam' ? '#fff' : '#bab1a8',
               opacity: spamCount > 0 ? 1 : 0.4,
             }}
           >
