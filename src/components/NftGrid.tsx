@@ -86,6 +86,8 @@ export function NftGrid({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [globalBlacklist, setGlobalBlacklist] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchIncludeSpam, setSearchIncludeSpam] = useState(false)
   const lastClickedIndex = useRef<number>(-1)
 
   // Load tags from localStorage
@@ -175,24 +177,59 @@ export function NftGrid({
     applyTag('spam')
   }, [nfts, selected, globalBlacklist, applyTag])
 
-  // Filter and sort NFTs
-  const visibleNfts = nfts.filter(nft => {
-    if (tags.hidden.has(nft.id)) return false
-    if (globalBlacklist.has(nft.id) && viewMode !== 'spam') return false
-    if (viewMode === 'spam') return tags.spam.has(nft.id) || globalBlacklist.has(nft.id)
-    return !tags.spam.has(nft.id)
-  })
+  const isSpam = (id: string) => tags.spam.has(id) || globalBlacklist.has(id)
 
-  // Sort favorites to top (only in 'all' view)
-  if (viewMode === 'all') {
-    visibleNfts.sort((a, b) => {
-      const aFav = tags.favorite.has(a.id) ? 0 : 1
-      const bFav = tags.favorite.has(b.id) ? 0 : 1
-      return aFav - bFav
-    })
+  // Search scoring
+  const searchNfts = (items: NftItem[], query: string): NftItem[] => {
+    if (!query) return items
+    const q = query.toLowerCase()
+    const scored = items
+      .map(nft => {
+        const name = (nft.name || '').toLowerCase()
+        const desc = (nft.description || '').toLowerCase()
+        let score = 0
+        // Title starts with query: highest priority
+        if (name.startsWith(q)) score += 100
+        // Title contains query: 3x weight
+        if (name.includes(q)) score += 30
+        // Description contains query: 1x weight
+        if (desc.includes(q)) score += 10
+        return { nft, score }
+      })
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+    return scored.map(s => s.nft)
   }
 
-  const spamCount = nfts.filter(n => (tags.spam.has(n.id) || globalBlacklist.has(n.id)) && !tags.hidden.has(n.id)).length
+  // Filter NFTs by view mode
+  let visibleNfts: NftItem[]
+  if (searchQuery) {
+    // When searching, include all non-hidden NFTs (optionally including spam)
+    const pool = nfts.filter(nft => {
+      if (tags.hidden.has(nft.id)) return false
+      if (!searchIncludeSpam && isSpam(nft.id)) return false
+      return true
+    })
+    visibleNfts = searchNfts(pool, searchQuery)
+  } else {
+    visibleNfts = nfts.filter(nft => {
+      if (tags.hidden.has(nft.id)) return false
+      if (globalBlacklist.has(nft.id) && viewMode !== 'spam') return false
+      if (viewMode === 'spam') return isSpam(nft.id)
+      return !tags.spam.has(nft.id)
+    })
+
+    // Sort favorites to top (only in 'all' view, not when searching)
+    if (viewMode === 'all') {
+      visibleNfts.sort((a, b) => {
+        const aFav = tags.favorite.has(a.id) ? 0 : 1
+        const bFav = tags.favorite.has(b.id) ? 0 : 1
+        return aFav - bFav
+      })
+    }
+  }
+
+  const spamCount = nfts.filter(n => isSpam(n.id) && !tags.hidden.has(n.id)).length
 
   const handleCardClick = (nft: NftItem, index: number, e: React.MouseEvent) => {
     if (e.shiftKey && lastClickedIndex.current >= 0) {
@@ -340,6 +377,47 @@ export function NftGrid({
         }
 
         /* ── View Tabs ── */
+        /* ── Search Bar ── */
+        .nft-search-bar {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
+        }
+        .nft-search-input {
+          flex: 1;
+          padding: 0.4rem 0.75rem;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.3);
+          color: var(--lw-text-white, #fff);
+          font-size: 0.8rem;
+          outline: none;
+          transition: border-color 0.15s;
+        }
+        .nft-search-input:focus {
+          border-color: var(--lw-purple, #6a24fa);
+        }
+        .nft-search-input::placeholder {
+          color: var(--lw-text-muted, #7a7572);
+        }
+        .nft-search-spam-label {
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          font-size: 0.7rem;
+          color: var(--lw-text-muted, #7a7572);
+          cursor: pointer;
+          white-space: nowrap;
+          user-select: none;
+        }
+        .nft-search-spam-label input {
+          accent-color: var(--lw-purple, #6a24fa);
+          width: 13px;
+          height: 13px;
+          cursor: pointer;
+        }
+
         .nft-view-tabs {
           display: flex;
           justify-content: flex-end;
@@ -533,8 +611,36 @@ export function NftGrid({
         }
       `}</style>
 
-      {/* View tabs */}
+      {/* Search bar */}
       {!loading && nfts.length > 0 && (
+        <div className="nft-search-bar">
+          <input
+            className="nft-search-input"
+            type="text"
+            placeholder="Search NFTs..."
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); setViewMode('all') }}
+          />
+          {searchQuery && (
+            <label className="nft-search-spam-label">
+              <input
+                type="checkbox"
+                checked={searchIncludeSpam}
+                onChange={e => setSearchIncludeSpam(e.target.checked)}
+              />
+              Include Spam
+            </label>
+          )}
+          {searchQuery && (
+            <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+              {visibleNfts.length} result{visibleNfts.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* View tabs */}
+      {!loading && nfts.length > 0 && !searchQuery && (
         <div className="nft-view-tabs">
           {selected.size > 0 && (
             <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', marginRight: 'auto' }}>
