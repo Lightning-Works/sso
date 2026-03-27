@@ -140,6 +140,24 @@ export async function getTokenPrice(symbol: string, mintAddress?: string, chain?
   return null
 }
 
+// Batch fetch Jupiter prices for Solana tokens and merge into a symbol-keyed map
+export async function getSolanaPricesByMint(tokens: { symbol: string; address?: string }[]): Promise<Record<string, number>> {
+  const mints = tokens.filter(t => t.address).map(t => t.address!)
+  if (mints.length === 0) return {}
+
+  const jupPrices = await fetchJupiterPrices(mints)
+
+  // Map mint prices back to symbols
+  const result: Record<string, number> = {}
+  for (const t of tokens) {
+    if (t.address && jupPrices[t.address]) {
+      result[t.symbol] = jupPrices[t.address]
+      mintPriceCache[t.address] = jupPrices[t.address]
+    }
+  }
+  return result
+}
+
 const LOGO_CDN = 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images'
 
 export function getTokenLogoUrl(symbol: string): string | null {

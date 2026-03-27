@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { getSolanaBalances } from '@/lib/wallets/balances/solana-balances'
 import { getSolanaNfts, type SolanaNft } from '@/lib/wallets/balances/solana-nfts'
-import { getTokenPrices } from '@/lib/wallets/balances/prices'
+import { getTokenPrices, getSolanaPricesByMint } from '@/lib/wallets/balances/prices'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
 import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
@@ -55,7 +55,10 @@ function SolanaPortfolioContent() {
         getTokenPrices(),
       ])
       setTokens(tokenData)
-      setPrices(priceData)
+      // Fetch Jupiter prices for all SPL tokens with mint addresses
+      const splTokens = tokenData.filter(t => t.address).map(t => ({ symbol: t.symbol, address: t.address }))
+      const jupPrices = await getSolanaPricesByMint(splTokens)
+      setPrices({ ...priceData, ...jupPrices })
       setLoading(false)
     }
     load()
