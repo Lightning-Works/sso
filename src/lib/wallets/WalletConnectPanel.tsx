@@ -344,22 +344,37 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', margin: '2px 0' }}>
-          {chain === 'wax' ? (
-            <a
-              href={`/wallet/wax?account=${encodeURIComponent(addr)}`}
-              style={{
-                color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
-                fontSize: '0.7rem',
-                fontFamily: 'monospace',
-                fontWeight: isActive ? 600 : 400,
-                textDecoration: 'none',
-              }}
-              onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-              onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-              title="View WAX portfolio & NFTs"
-            >
-              ✓ {shortenAddress(addr)}
-            </a>
+          {chain === 'wax' || chain === 'evm' ? (
+            <>
+              <a
+                href={chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
+                style={{
+                  color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
+                  fontSize: '0.7rem',
+                  fontFamily: 'monospace',
+                  fontWeight: isActive ? 600 : 400,
+                  textDecoration: 'none',
+                }}
+                onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                title={chain === 'wax' ? 'View WAX portfolio & NFTs' : 'View EVM portfolio & NFTs'}
+              >
+                ✓ {shortenAddress(addr)}
+              </a>
+              {chain === 'evm' && (
+                <a
+                  href={`/wallet/evm?address=${encodeURIComponent(addr)}`}
+                  style={{
+                    marginLeft: '0.35rem', fontSize: '0.6rem', color: 'rgb(99, 176, 79)',
+                    textDecoration: 'none', padding: '1px 5px',
+                    border: '1px solid rgba(99, 176, 79, 0.3)', borderRadius: '4px',
+                  }}
+                  title="Open wallet"
+                >
+                  wallet
+                </a>
+              )}
+            </>
           ) : (
             <span style={{
               color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
