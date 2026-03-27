@@ -202,8 +202,8 @@ function WaxPortfolioContent() {
                       minWidth: '120px',
                       textAlign: 'center',
                     }}>
-                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: 0, fontWeight: 600, letterSpacing: '0.05em' }}>
-                        ${t.symbol}
+                      <p style={{ color: '#ff8800', fontSize: '0.75rem', margin: 0, fontWeight: 600, letterSpacing: '0.05em' }}>
+                        ${t.symbol}{t.symbol === 'TLM' ? ' - Trilium' : ''}
                       </p>
                       <p style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '1.1rem', margin: '0.2rem 0 0 0' }}>
                         {parseFloat(parseFloat(t.balance).toFixed(2)).toLocaleString()}
