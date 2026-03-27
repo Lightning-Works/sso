@@ -63,60 +63,73 @@ export interface PlanetDaoData {
 
 export async function getPlanetDaoData(planetIndex: number): Promise<PlanetDaoData> {
   const p = SYNDICATE_PLANETS[planetIndex]
-
-  const [custRows, candRows, globRows, statRows, stakeConfigRows] = await Promise.all([
-    getTableRows('dao.worlds', 'custodians1', p.scope),
-    getTableRows('dao.worlds', 'candidates', p.scope),
-    getTableRows('dao.worlds', 'dacglobals', p.scope),
-    getTableRows('token.worlds', 'stat', p.symbol),
-    getTableRows('token.worlds', 'stakeconfig', p.scope),
-  ])
-
-  // Parse globals key-value pairs
-  const globals: Record<string, unknown> = {}
-  const globData = (globRows[0]?.data || []) as { key: string; value: unknown }[]
-  for (const item of globData) {
-    const val = item.value
-    globals[item.key] = Array.isArray(val) ? val[1] : val
+  const empty: PlanetDaoData = {
+    planet: p.planet, symbol: p.symbol, scope: p.scope,
+    custodians: [], candidates: [], numElected: 5, periodLength: 604800,
+    lastPeriodTime: '', totalSupply: '0', maxSupply: '0',
+    proposalBudget: '0', spendingsBudget: '0', maxVotes: 2,
+    lockupAsset: '', minStakeTime: 172800, maxStakeTime: 15552000, stakingEnabled: false,
   }
 
-  const custodians: PlanetCustodian[] = custRows.map(r => ({
-    name: r.cust_name as string,
-    totalVotePower: String(r.total_vote_power || '0'),
-    numVoters: (r.number_voters as number) || 0,
-    requestedPay: (r.requestedpay as string) || '0.0000 TLM',
-    rank: (r.rank as number) || 0,
-  })).sort((a, b) => BigInt(b.totalVotePower) > BigInt(a.totalVotePower) ? -1 : BigInt(b.totalVotePower) < BigInt(a.totalVotePower) ? 1 : 0)
+  try {
+    const safe = (p: Promise<Record<string, unknown>[]>) => p.catch(() => [] as Record<string, unknown>[])
+    const [custRows, candRows, globRows, statRows, stakeConfigRows] = await Promise.all([
+      safe(getTableRows('dao.worlds', 'custodians1', p.scope)),
+      safe(getTableRows('dao.worlds', 'candidates', p.scope)),
+      safe(getTableRows('dao.worlds', 'dacglobals', p.scope)),
+      safe(getTableRows('token.worlds', 'stat', p.symbol)),
+      safe(getTableRows('token.worlds', 'stakeconfig', p.scope)),
+    ])
 
-  const candidates: PlanetCandidate[] = candRows.map(r => ({
-    name: (r.candidate_name as string) || '',
-    isActive: (r.is_active as number) === 1,
-    totalVotePower: String(r.total_vote_power || '0'),
-    numVoters: (r.number_voters as number) || 0,
-    requestedPay: (r.requestedpay as string) || '0.0000 TLM',
-  })).sort((a, b) => BigInt(b.totalVotePower) > BigInt(a.totalVotePower) ? -1 : BigInt(b.totalVotePower) < BigInt(a.totalVotePower) ? 1 : 0)
+    // Parse globals key-value pairs
+    const globals: Record<string, unknown> = {}
+    const globData = (globRows[0]?.data || []) as { key: string; value: unknown }[]
+    for (const item of globData) {
+      const val = item.value
+      globals[item.key] = Array.isArray(val) ? val[1] : val
+    }
 
-  const stat = statRows[0] || {}
-  const stakeConfig = stakeConfigRows[0] || {}
+    const custodians: PlanetCustodian[] = custRows.map(r => ({
+      name: r.cust_name as string,
+      totalVotePower: String(r.total_vote_power || '0'),
+      numVoters: (r.number_voters as number) || 0,
+      requestedPay: (r.requestedpay as string) || '0.0000 TLM',
+      rank: (r.rank as number) || 0,
+    })).sort((a, b) => parseFloat(b.totalVotePower) - parseFloat(a.totalVotePower))
 
-  return {
-    planet: p.planet,
-    symbol: p.symbol,
-    scope: p.scope,
-    custodians,
-    candidates: candidates.filter(c => c.isActive),
-    numElected: (globals.numelected as number) || 5,
-    periodLength: (globals.periodlength as number) || 604800,
-    lastPeriodTime: (globals.lastperiodtime as string) || '',
-    totalSupply: (stat.supply as string) || '0',
-    maxSupply: (stat.max_supply as string) || '0',
-    proposalBudget: (globals.prop_budget_amount as string) || '0',
-    spendingsBudget: (globals.spendings_budget_amount as string) || '0',
-    maxVotes: (globals.maxvotes as number) || 2,
-    lockupAsset: (globals.lockupasset as string) || '',
-    minStakeTime: (stakeConfig.min_stake_time as number) || 172800,
-    maxStakeTime: (stakeConfig.max_stake_time as number) || 15552000,
-    stakingEnabled: (stakeConfig.enabled as number) === 1,
+    const candidates: PlanetCandidate[] = candRows.map(r => ({
+      name: (r.candidate_name as string) || '',
+      isActive: (r.is_active as number) === 1,
+      totalVotePower: String(r.total_vote_power || '0'),
+      numVoters: (r.number_voters as number) || 0,
+      requestedPay: (r.requestedpay as string) || '0.0000 TLM',
+    })).sort((a, b) => parseFloat(b.totalVotePower) - parseFloat(a.totalVotePower))
+
+    const stat = statRows[0] || {}
+    const stakeConfig = stakeConfigRows[0] || {}
+
+    return {
+      planet: p.planet,
+      symbol: p.symbol,
+      scope: p.scope,
+      custodians,
+      candidates: candidates.filter(c => c.isActive),
+      numElected: (globals.numelected as number) || 5,
+      periodLength: (globals.periodlength as number) || 604800,
+      lastPeriodTime: (globals.lastperiodtime as string) || '',
+      totalSupply: (stat.supply as string) || '0',
+      maxSupply: (stat.max_supply as string) || '0',
+      proposalBudget: (globals.prop_budget_amount as string) || '0',
+      spendingsBudget: (globals.spendings_budget_amount as string) || '0',
+      maxVotes: (globals.maxvotes as number) || 2,
+      lockupAsset: (globals.lockupasset as string) || '',
+      minStakeTime: (stakeConfig.min_stake_time as number) || 172800,
+      maxStakeTime: (stakeConfig.max_stake_time as number) || 15552000,
+      stakingEnabled: (stakeConfig.enabled as number) === 1,
+    }
+  } catch (e) {
+    console.error('getPlanetDaoData error:', e)
+    return empty
   }
 }
 

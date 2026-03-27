@@ -547,7 +547,7 @@ function WaxPortfolioContent() {
             position: 'fixed', inset: 0, zIndex: 1000,
             backgroundColor: 'rgba(0,0,0,0.85)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '5vh 10vw',
+            padding: '5vh 0',
           }}
           onClick={(e) => { if (e.target === e.currentTarget) setPlanetModal(null) }}
         >
@@ -575,7 +575,7 @@ function WaxPortfolioContent() {
 
           <div style={{
             backgroundColor: '#0d0d10', borderRadius: '16px',
-            width: '100%', maxHeight: '90vh', overflow: 'auto',
+            width: '80%', maxWidth: '50rem', maxHeight: '90vh', overflow: 'auto',
             position: 'relative',
           }}>
             {/* Close button */}
@@ -592,14 +592,15 @@ function WaxPortfolioContent() {
 
             {/* Video header */}
             <div style={{
-              width: '100%', height: '200px', position: 'relative',
+              width: '100%', aspectRatio: '16 / 9', position: 'relative',
               overflow: 'hidden', borderRadius: '16px 16px 0 0',
+              backgroundColor: '#000',
             }}>
               <video
                 key={SYNDICATE_PLANETS[planetModal.index].planet}
                 src={`/planets/${SYNDICATE_PLANETS[planetModal.index].planet}.mp4`}
                 autoPlay loop muted playsInline
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -681,7 +682,7 @@ function WaxPortfolioContent() {
                           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                             <div style={{ textAlign: 'right' }}>
                               <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', margin: 0 }}>Vote Power</p>
-                              <p style={{ color: '#fff', fontSize: '0.75rem', margin: 0 }}>{(Number(BigInt(c.totalVotePower) / BigInt(1000000000))).toLocaleString()}B</p>
+                              <p style={{ color: '#fff', fontSize: '0.75rem', margin: 0 }}>{Math.round(parseFloat(c.totalVotePower) / 1e9).toLocaleString()}B</p>
                             </div>
                             <div style={{ textAlign: 'right' }}>
                               <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', margin: 0 }}>Voters</p>
@@ -716,7 +717,7 @@ function WaxPortfolioContent() {
                             <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                               <div style={{ textAlign: 'right' }}>
                                 <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: 0 }}>Votes</p>
-                                <p style={{ color: '#fff', fontSize: '0.7rem', margin: 0 }}>{(Number(BigInt(c.totalVotePower) / BigInt(1000000000))).toLocaleString()}B</p>
+                                <p style={{ color: '#fff', fontSize: '0.7rem', margin: 0 }}>{Math.round(parseFloat(c.totalVotePower) / 1e9).toLocaleString()}B</p>
                               </div>
                               <div style={{ textAlign: 'right', minWidth: '2.5rem' }}>
                                 <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: 0 }}>Voters</p>
