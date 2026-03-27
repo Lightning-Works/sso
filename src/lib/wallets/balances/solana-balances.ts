@@ -77,7 +77,7 @@ export async function getSolanaBalances(address: string): Promise<WalletToken[]>
         const metaRes = await fetch(`https://api.helius.xyz/v0/token-metadata?api-key=${HELIUS_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mintAccounts: mints }),
+          body: JSON.stringify({ mintAccounts: mints, includeOffChain: true }),
         })
         const metaData = await metaRes.json()
         if (Array.isArray(metaData)) {
@@ -86,6 +86,10 @@ export async function getSolanaBalances(address: string): Promise<WalletToken[]>
             if (token && meta.onChainMetadata?.metadata?.data) {
               token.name = meta.onChainMetadata.metadata.data.name.replace(/\0/g, '').trim()
               token.symbol = meta.onChainMetadata.metadata.data.symbol.replace(/\0/g, '').trim()
+            }
+            if (token) {
+              const offChainImg = meta.offChainMetadata?.metadata?.image
+              if (offChainImg) token.logoUrl = offChainImg
             }
           }
         }

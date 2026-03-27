@@ -15,6 +15,7 @@ export interface WalletToken {
   balance: string
   decimals: number
   address?: string  // token contract address (null for native)
+  logoUrl?: string  // token logo image URL
   chain: WalletChain
   walletAddress: string
 }

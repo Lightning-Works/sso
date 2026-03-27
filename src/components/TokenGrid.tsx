@@ -271,7 +271,7 @@ export function TokenGrid({
               >
                 <div className="token-ticker-row">
                   {(isNative || hasValue) && (() => {
-                    const logoUrl = getTokenLogoUrl(t.symbol)
+                    const logoUrl = t.logoUrl || getTokenLogoUrl(t.symbol)
                     return logoUrl ? (
                       <img
                         src={logoUrl}
