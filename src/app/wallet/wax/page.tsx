@@ -285,6 +285,11 @@ function WaxPortfolioContent() {
                               </p>
                               <p style={{ color: 'var(--lw-text-white)', fontSize: '0.85rem', margin: '0.15rem 0 0 0', fontWeight: 500 }}>
                                 {st.liquid.toFixed(2)}
+                                {prices['TLM'] && st.liquid > 0 && (
+                                  <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.6rem', marginLeft: '0.3rem' }}>
+                                    ({formatUsd(st.liquid * prices['TLM'])})
+                                  </span>
+                                )}
                               </p>
                               {st.staked > 0 && (
                                 <p style={{ color: '#34A853', fontSize: '0.6rem', margin: '0.1rem 0 0 0' }}>
