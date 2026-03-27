@@ -344,10 +344,10 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', margin: '2px 0' }}>
-          {chain === 'wax' || chain === 'evm' ? (
+          {chain === 'wax' || chain === 'evm' || chain === 'solana' ? (
             <>
               <a
-                href={chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
+                href={chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
                 style={{
                   color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
                   fontSize: '0.7rem',
@@ -357,13 +357,13 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                 }}
                 onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
                 onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                title={chain === 'wax' ? 'View WAX portfolio & NFTs' : 'View EVM portfolio & NFTs'}
+                title={chain === 'wax' ? 'View WAX portfolio & NFTs' : chain === 'solana' ? 'View Solana portfolio & NFTs' : 'View EVM portfolio & NFTs'}
               >
                 ✓ {shortenAddress(addr)}
               </a>
-              {chain === 'evm' && (
+              {(chain === 'evm' || chain === 'solana') && (
                 <a
-                  href={`/wallet/evm?address=${encodeURIComponent(addr)}`}
+                  href={chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
                   style={{
                     marginLeft: '0.35rem', fontSize: '0.6rem', color: 'rgb(99, 176, 79)',
                     textDecoration: 'none', padding: '1px 5px',
