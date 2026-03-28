@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
+import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -37,7 +38,7 @@ export default function AdminPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const [activeTab, setActiveTab] = useState<'companies' | 'apps' | 'characters'>('companies')
+  const [activeTab, setActiveTab] = useState<'companies' | 'apps' | 'characters' | 'nft-contracts'>('companies')
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [editingApp, setEditingApp] = useState<App | null>(null)
   const [editingCharacter, setEditingCharacter] = useState<CharacterData | null>(null)
@@ -628,9 +629,16 @@ export default function AdminPage() {
             <button
               onClick={() => setActiveTab('characters')}
               className="lw-btn"
-              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'characters' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+              style={{ borderRadius: '0', background: activeTab === 'characters' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Characters
+            </button>
+            <button
+              onClick={() => setActiveTab('nft-contracts')}
+              className="lw-btn"
+              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'nft-contracts' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              LW NFTs
             </button>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '2rem' }}>
@@ -823,6 +831,13 @@ export default function AdminPage() {
                   )}
                 </div>
               ))}
+          </>
+        )}
+
+        {activeTab === 'nft-contracts' && (
+          <>
+            <h2 className="lw-section-title" style={{ marginBottom: '1rem' }}>LightningWorks NFT Contracts</h2>
+            <LwNftContractsPanel />
           </>
         )}
 
