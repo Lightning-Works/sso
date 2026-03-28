@@ -6,6 +6,14 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { blockscoutFetch, SOLANA_RPC, ATOMIC_API, EVM_CHAINS, SKALE_CHAINS } from './rpc'
 
+const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
+
+const ALCHEMY_NFT_CHAINS: Record<string, string> = {
+  ethereum: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+  polygon: `https://polygon-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+  base: `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+}
+
 function getServiceSupabase() {
   return createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -51,6 +59,48 @@ async function fetchEvmContractNfts(blockscoutApi: string, contractAddress: stri
     nextParams = np ? `unique_token=${np.unique_token}` : ''
     pages++
   } while (nextParams && pages < 50)
+
+  return nfts
+}
+
+// Alchemy fallback for EVM chains where Blockscout has incomplete indexing
+async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: string): Promise<Record<string, unknown>[]> {
+  const nfts: Record<string, unknown>[] = []
+  let startToken = ''
+  let pages = 0
+
+  do {
+    const params = new URLSearchParams({
+      contractAddress,
+      withMetadata: 'true',
+      limit: '100',
+    })
+    if (startToken) params.set('startToken', startToken)
+
+    try {
+      const res = await fetch(`${alchemyNftUrl}/getNFTsForContract?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) break
+      const data = await res.json()
+      const items = data.nfts || []
+      if (items.length === 0) break
+
+      for (const nft of items) {
+        const meta = nft.raw?.metadata || {}
+        nfts.push({
+          token_id: nft.tokenId || '',
+          name: nft.name || meta.name || `#${nft.tokenId || '?'}`,
+          description: nft.description || meta.description || null,
+          image_url: nft.image?.cachedUrl || nft.image?.originalUrl || meta.image || null,
+          animation_url: meta.animation_url || null,
+          attributes: meta.attributes || [],
+          owner: null, // getNFTsForContract doesn't return owner
+        })
+      }
+
+      startToken = data.pageKey || ''
+      pages++
+    } catch { break }
+  } while (startToken && pages < 50)
 
   return nfts
 }
@@ -154,9 +204,25 @@ export async function syncContract(contractId: number): Promise<{ nft_count: num
   } else if (chain === 'Solana' || chain.includes('Solana')) {
     nfts = await fetchSolanaCollectionNfts(contract.contract_address)
   } else {
+    // EVM: try Blockscout first, fall back to Alchemy if incomplete
     const blockscoutApi = getBlockscoutApi(chain)
-    if (!blockscoutApi) throw new Error(`No Blockscout API for chain: ${chain}`)
-    nfts = await fetchEvmContractNfts(blockscoutApi, contract.contract_address)
+    if (blockscoutApi) {
+      nfts = await fetchEvmContractNfts(blockscoutApi, contract.contract_address)
+    }
+
+    // If Blockscout returned very few results, try Alchemy as fallback
+    const chainKey = chain.toLowerCase().replace(/\s+/g, '')
+    const alchemyUrl = ALCHEMY_NFT_CHAINS[chainKey]
+    if (nfts.length < 10 && alchemyUrl && ALCHEMY_KEY) {
+      const alchemyNfts = await fetchAlchemyContractNfts(alchemyUrl, contract.contract_address)
+      if (alchemyNfts.length > nfts.length) {
+        nfts = alchemyNfts
+      }
+    }
+
+    if (nfts.length === 0 && !blockscoutApi && !alchemyUrl) {
+      throw new Error(`No API available for chain: ${chain}`)
+    }
   }
 
   // Clear old data
