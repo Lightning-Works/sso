@@ -130,18 +130,15 @@ Checks whether a user's connected wallets satisfy one or more token gating rules
 
 **CORS:** Enabled (all origins)
 
+**Authentication:** A valid JWT token is **always required**. The gate only checks wallets belonging to the authenticated user.
+
 **Request:**
 ```json
 {
-  "token": "jwt-token",
+  "token": "jwt-token-from-sso-login",
   "rules": [ ... ]
 }
 ```
-
-User can be identified by one of:
-- `"token": "jwt-token"` — JWT from SSO login
-- `"user_id": "uuid"` — direct user ID
-- `"username": "gandalfskywalker"` — username lookup
 
 **Response (200):**
 ```json
@@ -149,13 +146,28 @@ User can be identified by one of:
   "user_id": "uuid",
   "pass": true,
   "results": [
-    { "rule": "token_balance", "pass": true, "balance": 150000, "detail": "150000 TLM (required: 100000)" },
+    { "rule": "token_balance", "pass": true, "detail": "Balance check: TLM (required: 100000)" },
     { "rule": "nft_ownership", "pass": true, "detail": "NFT found" }
-  ]
+  ],
+  "timestamp": "2026-03-28T...",
+  "signature": "hmac-sha256-hex"
 }
 ```
 
-`pass` is `true` only if ALL rules pass. Each rule returns its own result with details.
+`pass` is `true` only if ALL rules pass. Each rule returns its own result.
+
+**Response signature:** If `GATE_SIGNING_SECRET` is configured, the response includes an HMAC-SHA256 `signature` field. Game servers should verify this signature to confirm the response was not tampered with. Details for balance/count are intentionally omitted from the response to prevent information leakage.
+
+**Security:**
+- JWT token required on every request (no unauthenticated access)
+- Only the authenticated user's wallets are checked
+- No user-supplied RPC URLs accepted (SSRF prevention)
+- Maximum 10 rules per request (DoS prevention)
+- All inputs validated (addresses, decimals, min values)
+- 8-second timeout per external RPC call
+- Signed responses for server-to-server verification
+
+**Important:** For game servers, **always verify the gate result server-to-server**. Do not trust client-side gate checks — call this API from your backend, not from the game client's browser.
 
 ---
 
@@ -214,15 +226,15 @@ Check if the user holds a minimum amount of a token.
 
 ---
 
-#### 2. `custom_token` — Any Token on Any Chain
+#### 2. `custom_token` — Any ERC-20 on a Supported Chain
 
-For tokens not in our default chain list. Provide your own RPC URL.
+For ERC-20 tokens on any of our supported chains. Specify the chain and contract address.
 
 ```json
 {
   "type": "custom_token",
   "chain": "evm",
-  "rpc_url": "https://rpc.ankr.com/avalanche",
+  "evm_chain": "avalanche",
   "token_address": "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB",
   "token_symbol": "WETH.e",
   "decimals": 18,
@@ -230,7 +242,9 @@ For tokens not in our default chain list. Provide your own RPC URL.
 }
 ```
 
-Works with any EVM-compatible chain or Solana SPL token. Just provide the RPC URL.
+**Supported `evm_chain` values:** `ethereum`, `polygon`, `base`, `bsc`, `arbitrum`, `optimism`, `avalanche`, `core`
+
+Note: Custom RPC URLs are not accepted for security reasons. Contact us to add support for additional chains.
 
 ---
 

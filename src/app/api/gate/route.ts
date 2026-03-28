@@ -1,9 +1,31 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 
-const HELIUS_KEY = process.env.NEXT_PUBLIC_HELIUS_API_KEY
-const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY
+const HELIUS_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_API_KEY
+const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY
+const GATE_SIGNING_SECRET = process.env.GATE_SIGNING_SECRET || ''
 const WAX_RPC = 'https://wax.greymass.com'
+const MAX_RULES = 10
+
+// ── Allowed RPC URLs (prevent SSRF) ──
+
+const ALLOWED_RPC: Record<string, string> = {
+  ethereum: `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+  polygon: `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+  base: `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+  bsc: 'https://bsc-dataseed.binance.org',
+  arbitrum: `https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+  optimism: `https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+  avalanche: `https://api.avax.network/ext/bc/C/rpc`,
+  core: 'https://rpc.coredao.org',
+}
+
+const ALLOWED_NFT_RPC: Record<string, string> = {
+  ethereum: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+  polygon: `https://polygon-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+  base: `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+}
 
 // ── Helpers ──
 
@@ -15,143 +37,174 @@ async function getUserWallets(userId: string, chain?: string) {
   return (data || []) as { chain_type: string; wallet_address: string; wallet_provider: string }[]
 }
 
+function validateAddress(address: string, chain: string): boolean {
+  if (chain === 'evm') return /^0x[0-9a-fA-F]{40}$/.test(address)
+  if (chain === 'solana') return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)
+  if (chain === 'wax') return /^[a-z1-5.]{1,13}$/.test(address)
+  return true
+}
+
+function signResponse(payload: Record<string, unknown>): string {
+  if (!GATE_SIGNING_SECRET) return ''
+  const data = JSON.stringify(payload)
+  return crypto.createHmac('sha256', GATE_SIGNING_SECRET).update(data).digest('hex')
+}
+
 async function fetchEvmBalance(rpcUrl: string, contractAddress: string, walletAddress: string, decimals: number): Promise<number> {
-  // ERC-20 balanceOf(address)
+  if (decimals < 0 || decimals > 30) return 0
   const data = '0x70a08231' + walletAddress.slice(2).padStart(64, '0')
-  const res = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: contractAddress, data }, 'latest'] }),
-  })
-  const result = await res.json()
-  if (!result.result || result.result === '0x') return 0
-  return parseInt(result.result, 16) / Math.pow(10, decimals)
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: contractAddress, data }, 'latest'] }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const result = await res.json()
+    if (!result.result || result.result === '0x') return 0
+    return parseInt(result.result, 16) / Math.pow(10, decimals)
+  } catch { return 0 }
 }
 
 async function fetchEvmNativeBalance(rpcUrl: string, walletAddress: string): Promise<number> {
-  const res = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [walletAddress, 'latest'] }),
-  })
-  const result = await res.json()
-  if (!result.result) return 0
-  return parseInt(result.result, 16) / 1e18
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [walletAddress, 'latest'] }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const result = await res.json()
+    if (!result.result) return 0
+    return parseInt(result.result, 16) / 1e18
+  } catch { return 0 }
 }
 
 async function fetchSolanaBalance(mintAddress: string, walletAddress: string): Promise<number> {
-  const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', id: 1,
-      method: 'getTokenAccountsByOwner',
-      params: [walletAddress, { mint: mintAddress }, { encoding: 'jsonParsed' }],
-    }),
-  })
-  const data = await res.json()
-  const accounts = data.result?.value || []
-  let total = 0
-  for (const acc of accounts) {
-    total += parseFloat(acc.account.data.parsed.info.tokenAmount.uiAmountString || '0')
-  }
-  return total
+  try {
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'getTokenAccountsByOwner',
+        params: [walletAddress, { mint: mintAddress }, { encoding: 'jsonParsed' }],
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await res.json()
+    let total = 0
+    for (const acc of data.result?.value || []) {
+      total += parseFloat(acc.account.data.parsed.info.tokenAmount.uiAmountString || '0')
+    }
+    return total
+  } catch { return 0 }
 }
 
 async function fetchSolanaNativeBalance(walletAddress: string): Promise<number> {
-  const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [walletAddress] }),
-  })
-  const data = await res.json()
-  return (data.result?.value || 0) / 1e9
+  try {
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [walletAddress] }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await res.json()
+    return (data.result?.value || 0) / 1e9
+  } catch { return 0 }
 }
 
 async function fetchWaxBalance(account: string, contract: string, symbol: string): Promise<number> {
-  const res = await fetch(`${WAX_RPC}/v1/chain/get_currency_balance`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: contract, account, symbol }),
-  })
-  const data = await res.json()
-  if (Array.isArray(data) && data.length > 0) {
-    return parseFloat(data[0].split(' ')[0])
-  }
-  return 0
+  try {
+    const res = await fetch(`${WAX_RPC}/v1/chain/get_currency_balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: contract, account, symbol }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await res.json()
+    if (Array.isArray(data) && data.length > 0) return parseFloat(data[0].split(' ')[0])
+    return 0
+  } catch { return 0 }
 }
 
-async function fetchEvmNfts(rpcUrl: string, contractAddress: string, walletAddress: string): Promise<string[]> {
-  // Use Alchemy getNFTsForOwner filtered by contract
-  const params = new URLSearchParams({
-    owner: walletAddress,
-    'contractAddresses[]': contractAddress,
-    withMetadata: 'true',
-    pageSize: '100',
-  })
-  const res = await fetch(`${rpcUrl}/getNFTsForOwner?${params}`)
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.ownedNfts || []).map((n: Record<string, unknown>) => {
-    const meta = (n.raw as Record<string, unknown>)?.metadata as Record<string, unknown> || {}
-    return JSON.stringify({
-      tokenId: n.tokenId,
-      name: n.name || `#${n.tokenId}`,
-      attributes: (meta.attributes || []) as Record<string, unknown>[],
+async function fetchEvmNfts(nftRpcUrl: string, contractAddress: string, walletAddress: string): Promise<Record<string, unknown>[]> {
+  try {
+    const params = new URLSearchParams({
+      owner: walletAddress,
+      'contractAddresses[]': contractAddress,
+      withMetadata: 'true',
+      pageSize: '100',
     })
-  })
+    const res = await fetch(`${nftRpcUrl}/getNFTsForOwner?${params}`, { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.ownedNfts || []).map((n: Record<string, unknown>) => {
+      const raw = (n.raw || {}) as Record<string, unknown>
+      const meta = (raw.metadata || {}) as Record<string, unknown>
+      return { tokenId: n.tokenId, name: n.name, attributes: meta.attributes || [] }
+    })
+  } catch { return [] }
 }
 
 async function fetchSolanaNfts(walletAddress: string, collectionAddress?: string): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', id: 1,
-      method: 'getAssetsByOwner',
-      params: { ownerAddress: walletAddress, page: 1, limit: 1000, displayOptions: { showCollectionMetadata: true } },
-    }),
-  })
-  const data = await res.json()
-  let items = (data.result?.items || []) as Record<string, unknown>[]
-  // Filter fungible tokens
-  items = items.filter((i: Record<string, unknown>) => i.interface !== 'FungibleToken' && i.interface !== 'FungibleAsset')
-  // Filter by collection if specified
-  if (collectionAddress) {
-    items = items.filter((i: Record<string, unknown>) => {
-      const groups = (i.grouping || []) as { group_key: string; group_value: string }[]
-      return groups.some(g => g.group_key === 'collection' && g.group_value === collectionAddress)
+  try {
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'getAssetsByOwner',
+        params: { ownerAddress: walletAddress, page: 1, limit: 1000, displayOptions: { showCollectionMetadata: true } },
+      }),
+      signal: AbortSignal.timeout(15000),
     })
-  }
-  return items
+    const data = await res.json()
+    let items = (data.result?.items || []) as Record<string, unknown>[]
+    items = items.filter((i: Record<string, unknown>) => i.interface !== 'FungibleToken' && i.interface !== 'FungibleAsset')
+    if (collectionAddress) {
+      items = items.filter((i: Record<string, unknown>) => {
+        const groups = (i.grouping || []) as { group_key: string; group_value: string }[]
+        return groups.some(g => g.group_key === 'collection' && g.group_value === collectionAddress)
+      })
+    }
+    return items
+  } catch { return [] }
 }
 
 async function fetchWaxNfts(account: string, collection: string, schema?: string): Promise<Record<string, unknown>[]> {
-  const params = new URLSearchParams({
-    owner: account,
-    collection_name: collection,
-    limit: '1000',
-  })
-  if (schema) params.set('schema_name', schema)
-  const res = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?${params}`)
-  const data = await res.json()
-  return data.data || []
+  try {
+    const params = new URLSearchParams({ owner: account, collection_name: collection, limit: '1000' })
+    if (schema) params.set('schema_name', schema)
+    const res = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?${params}`, { signal: AbortSignal.timeout(10000) })
+    const data = await res.json()
+    return data.data || []
+  } catch { return [] }
 }
 
-// ── Default RPC URLs for common chains ──
-const DEFAULT_RPC: Record<string, string> = {
-  ethereum: `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
-  polygon: `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
-  base: `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
-  bsc: 'https://bsc-dataseed.binance.org',
-  arbitrum: `https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
-  optimism: `https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+// ── Types ──
+
+interface GateRule {
+  type: 'token_balance' | 'nft_ownership' | 'nft_trait' | 'nft_collection_count' | 'custom_token'
+  chain?: 'evm' | 'solana' | 'wax'
+  symbol?: string
+  contract?: string
+  min_balance?: number
+  evm_chain?: string
+  token_address?: string
+  token_symbol?: string
+  decimals?: number
+  collection?: string
+  schema?: string
+  trait_type?: string
+  trait_value?: string
+  min_count?: number
 }
 
-const DEFAULT_NFT_RPC: Record<string, string> = {
-  ethereum: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
-  polygon: `https://polygon-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
-  base: `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+interface GateResult {
+  rule: string
+  pass: boolean
+  detail?: string
 }
 
 // ── Main Gate Endpoint ──
@@ -167,53 +220,85 @@ export async function POST(request: Request) {
   }
 
   const token = body.token as string | undefined
-  const userId = body.user_id as string | undefined
-  const username = body.username as string | undefined
   const rules = body.rules as GateRule[] | undefined
 
+  // ── Authentication: ALWAYS require a valid JWT token ──
+  if (!token) {
+    return NextResponse.json({ error: 'token is required' }, { status: 401 })
+  }
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
+  }
+
+  const resolvedUserId = user.id
+
+  // ── Validate rules ──
   if (!rules || !Array.isArray(rules) || rules.length === 0) {
     return NextResponse.json({ error: 'rules array is required' }, { status: 400 })
   }
-
-  // Resolve user
-  let resolvedUserId: string | null = null
-
-  if (token) {
-    const { data: { user }, error } = await supabase.auth.getUser(token)
-    if (error || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    resolvedUserId = user.id
-  } else if (userId) {
-    resolvedUserId = userId
-  } else if (username) {
-    const { data } = await supabase.from('profiles').select('id').eq('username', username).single()
-    if (!data) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    resolvedUserId = data.id
-  } else {
-    return NextResponse.json({ error: 'token, user_id, or username is required' }, { status: 400 })
+  if (rules.length > MAX_RULES) {
+    return NextResponse.json({ error: `Maximum ${MAX_RULES} rules per request` }, { status: 400 })
   }
 
-  // Evaluate each rule
+  // Validate rule parameters
+  for (const rule of rules) {
+    if (rule.min_balance !== undefined && (typeof rule.min_balance !== 'number' || rule.min_balance < 0)) {
+      return NextResponse.json({ error: 'min_balance must be a non-negative number' }, { status: 400 })
+    }
+    if (rule.min_count !== undefined && (typeof rule.min_count !== 'number' || rule.min_count < 1)) {
+      return NextResponse.json({ error: 'min_count must be a positive integer' }, { status: 400 })
+    }
+    if (rule.decimals !== undefined && (typeof rule.decimals !== 'number' || rule.decimals < 0 || rule.decimals > 30)) {
+      return NextResponse.json({ error: 'decimals must be 0-30' }, { status: 400 })
+    }
+    if (rule.type === 'custom_token') {
+      // custom_token: validate evm_chain is in our allowed list (no custom RPC URLs)
+      if (!rule.evm_chain || !ALLOWED_RPC[rule.evm_chain]) {
+        return NextResponse.json({
+          error: `custom_token requires evm_chain from: ${Object.keys(ALLOWED_RPC).join(', ')}`,
+        }, { status: 400 })
+      }
+      if (!rule.token_address) {
+        return NextResponse.json({ error: 'custom_token requires token_address' }, { status: 400 })
+      }
+    }
+    if (rule.contract && rule.chain === 'evm' && !validateAddress(rule.contract, 'evm')) {
+      return NextResponse.json({ error: `Invalid EVM contract address: ${rule.contract}` }, { status: 400 })
+    }
+    if (rule.token_address && !validateAddress(rule.token_address, 'evm')) {
+      return NextResponse.json({ error: `Invalid token address: ${rule.token_address}` }, { status: 400 })
+    }
+  }
+
+  // ── Evaluate rules ──
   const results: GateResult[] = []
 
   for (const rule of rules) {
     try {
-      const result = await evaluateRule(resolvedUserId!, rule)
+      const result = await evaluateRule(resolvedUserId, rule)
       results.push(result)
-    } catch (e) {
-      results.push({
-        rule: rule.type,
-        pass: false,
-        detail: `Error: ${(e as Error).message}`,
-      })
+    } catch {
+      results.push({ rule: rule.type, pass: false, detail: 'Evaluation failed' })
     }
   }
 
   const allPass = results.every(r => r.pass)
 
-  return NextResponse.json({
+  const payload = {
     user_id: resolvedUserId,
     pass: allPass,
     results,
+    timestamp: new Date().toISOString(),
+  }
+
+  // Sign the response so game servers can verify it wasn't tampered with
+  const signature = signResponse(payload)
+
+  return NextResponse.json({
+    ...payload,
+    ...(signature ? { signature } : {}),
   }, {
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -233,40 +318,6 @@ export async function OPTIONS() {
   })
 }
 
-// ── Types ──
-
-interface GateRule {
-  type: 'token_balance' | 'nft_ownership' | 'nft_trait' | 'nft_collection_count' | 'custom_token'
-  chain?: 'evm' | 'solana' | 'wax'
-
-  // For token_balance
-  symbol?: string
-  contract?: string
-  min_balance?: number
-
-  // For custom_token (any chain, any token)
-  rpc_url?: string
-  token_address?: string
-  token_symbol?: string
-  decimals?: number
-  evm_chain?: string
-
-  // For NFT rules
-  collection?: string       // contract address (EVM), collection address (Solana), collection name (WAX)
-  schema?: string           // WAX schema filter
-  trait_type?: string        // attribute key to check
-  trait_value?: string       // required attribute value
-  min_count?: number         // minimum number of matching NFTs
-}
-
-interface GateResult {
-  rule: string
-  pass: boolean
-  detail?: string
-  balance?: number
-  count?: number
-}
-
 // ── Rule Evaluator ──
 
 async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult> {
@@ -278,14 +329,14 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
         return { rule: rule.type, pass: false, detail: 'symbol or contract required' }
       }
       const minBalance = rule.min_balance ?? 0
-
       let totalBalance = 0
+
       for (const w of wallets) {
         if (w.chain_type === 'evm' && rule.contract) {
-          const rpcUrl = rule.rpc_url || DEFAULT_RPC[rule.evm_chain || 'ethereum'] || DEFAULT_RPC.ethereum
+          const rpcUrl = ALLOWED_RPC[rule.evm_chain || 'ethereum'] || ALLOWED_RPC.ethereum
           totalBalance += await fetchEvmBalance(rpcUrl, rule.contract, w.wallet_address, rule.decimals ?? 18)
         } else if (w.chain_type === 'evm' && rule.symbol === 'ETH') {
-          const rpcUrl = DEFAULT_RPC[rule.evm_chain || 'ethereum'] || DEFAULT_RPC.ethereum
+          const rpcUrl = ALLOWED_RPC[rule.evm_chain || 'ethereum'] || ALLOWED_RPC.ethereum
           totalBalance += await fetchEvmNativeBalance(rpcUrl, w.wallet_address)
         } else if (w.chain_type === 'solana' && rule.contract) {
           totalBalance += await fetchSolanaBalance(rule.contract, w.wallet_address)
@@ -302,31 +353,31 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
       return {
         rule: rule.type,
         pass: totalBalance >= minBalance,
-        balance: totalBalance,
-        detail: `${totalBalance} ${rule.symbol || ''} (required: ${minBalance})`,
+        detail: `Balance check: ${rule.symbol || rule.contract} (required: ${minBalance})`,
       }
     }
 
     case 'custom_token': {
-      if (!rule.rpc_url || !rule.token_address) {
-        return { rule: rule.type, pass: false, detail: 'rpc_url and token_address required' }
+      if (!rule.evm_chain || !rule.token_address) {
+        return { rule: rule.type, pass: false, detail: 'evm_chain and token_address required' }
+      }
+      const rpcUrl = ALLOWED_RPC[rule.evm_chain]
+      if (!rpcUrl) {
+        return { rule: rule.type, pass: false, detail: 'Unsupported chain' }
       }
       const minBalance = rule.min_balance ?? 0
       let totalBalance = 0
 
       for (const w of wallets) {
         if (w.chain_type === 'evm') {
-          totalBalance += await fetchEvmBalance(rule.rpc_url, rule.token_address, w.wallet_address, rule.decimals ?? 18)
-        } else if (w.chain_type === 'solana') {
-          totalBalance += await fetchSolanaBalance(rule.token_address, w.wallet_address)
+          totalBalance += await fetchEvmBalance(rpcUrl, rule.token_address, w.wallet_address, rule.decimals ?? 18)
         }
       }
 
       return {
         rule: rule.type,
         pass: totalBalance >= minBalance,
-        balance: totalBalance,
-        detail: `${totalBalance} ${rule.token_symbol || ''} (required: ${minBalance})`,
+        detail: `Balance check: ${rule.token_symbol || rule.token_address} (required: ${minBalance})`,
       }
     }
 
@@ -334,12 +385,10 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
       if (!rule.collection) {
         return { rule: rule.type, pass: false, detail: 'collection required' }
       }
-
       let found = false
       for (const w of wallets) {
         if (w.chain_type === 'evm') {
-          const chain = rule.evm_chain || 'ethereum'
-          const nftRpc = DEFAULT_NFT_RPC[chain]
+          const nftRpc = ALLOWED_NFT_RPC[rule.evm_chain || 'ethereum']
           if (!nftRpc) continue
           const nfts = await fetchEvmNfts(nftRpc, rule.collection, w.wallet_address)
           if (nfts.length > 0) { found = true; break }
@@ -351,7 +400,6 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
           if (nfts.length > 0) { found = true; break }
         }
       }
-
       return { rule: rule.type, pass: found, detail: found ? 'NFT found' : 'No matching NFT' }
     }
 
@@ -359,17 +407,14 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
       if (!rule.collection || !rule.trait_type) {
         return { rule: rule.type, pass: false, detail: 'collection and trait_type required' }
       }
-
       let found = false
       for (const w of wallets) {
         let nftData: Record<string, unknown>[] = []
 
         if (w.chain_type === 'evm') {
-          const chain = rule.evm_chain || 'ethereum'
-          const nftRpc = DEFAULT_NFT_RPC[chain]
+          const nftRpc = ALLOWED_NFT_RPC[rule.evm_chain || 'ethereum']
           if (!nftRpc) continue
-          const raw = await fetchEvmNfts(nftRpc, rule.collection, w.wallet_address)
-          nftData = raw.map((r: string) => JSON.parse(r))
+          nftData = await fetchEvmNfts(nftRpc, rule.collection, w.wallet_address)
         } else if (w.chain_type === 'solana') {
           const items = await fetchSolanaNfts(w.wallet_address, rule.collection)
           nftData = items.map(i => {
@@ -379,10 +424,8 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
         } else if (w.chain_type === 'wax') {
           const items = await fetchWaxNfts(w.wallet_address, rule.collection, rule.schema)
           nftData = items.map(i => {
-            const data = (i.data || i.immutable_data || {}) as Record<string, unknown>
-            return {
-              attributes: Object.entries(data).map(([k, v]) => ({ trait_type: k, value: v })),
-            }
+            const d = (i.data || i.immutable_data || {}) as Record<string, unknown>
+            return { attributes: Object.entries(d).map(([k, v]) => ({ trait_type: k, value: v })) }
           })
         }
 
@@ -413,8 +456,7 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
 
       for (const w of wallets) {
         if (w.chain_type === 'evm') {
-          const chain = rule.evm_chain || 'ethereum'
-          const nftRpc = DEFAULT_NFT_RPC[chain]
+          const nftRpc = ALLOWED_NFT_RPC[rule.evm_chain || 'ethereum']
           if (!nftRpc) continue
           const nfts = await fetchEvmNfts(nftRpc, rule.collection, w.wallet_address)
           totalCount += nfts.length
@@ -430,12 +472,11 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
       return {
         rule: rule.type,
         pass: totalCount >= minCount,
-        count: totalCount,
-        detail: `${totalCount} NFTs (required: ${minCount})`,
+        detail: `Collection count: ${totalCount} (required: ${minCount})`,
       }
     }
 
     default:
-      return { rule: 'unknown', pass: false, detail: `Unknown rule type: ${rule.type}` }
+      return { rule: 'unknown', pass: false, detail: 'Unknown rule type' }
   }
 }
