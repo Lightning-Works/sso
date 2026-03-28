@@ -1,5 +1,12 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServerClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+
+function createServiceClient() {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 import { getEvmTokens, getSolanaTokens, getWaxTokens } from '@/lib/blockchain/tokens'
 import { fetchCoinGeckoPrices, fetchDexScreenerPrices } from '@/lib/blockchain/prices'
 import { upsertBalances, clearStaleBalances } from '@/lib/blockchain/cache'
@@ -14,7 +21,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const startTime = Date.now()
 
   // Get all connected wallets

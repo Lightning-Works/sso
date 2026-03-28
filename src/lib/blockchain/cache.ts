@@ -3,7 +3,14 @@
  * Tables: token_balances_cache, nft_cache
  */
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+function getSupabase() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 import type { TokenBalance } from './tokens'
 import type { BlockchainNft } from './nfts'
 
@@ -25,7 +32,7 @@ export interface CachedBalance {
 }
 
 export async function getCachedBalances(walletAddress: string): Promise<CachedBalance[]> {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const { data } = await supabase
     .from('token_balances_cache')
     .select('*')
@@ -39,7 +46,7 @@ export async function upsertBalances(
   prices: Record<string, number>,
 ): Promise<void> {
   if (balances.length === 0) return
-  const supabase = await createClient()
+  const supabase = getSupabase()
 
   const rows = balances.map(b => {
     const price = prices[b.symbol] || (b.contractAddress ? prices[b.contractAddress] : null) || null
@@ -69,7 +76,7 @@ export async function upsertBalances(
 }
 
 export async function clearStaleBalances(walletAddress: string, currentSymbols: Set<string>): Promise<void> {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const { data: existing } = await supabase
     .from('token_balances_cache')
     .select('id, symbol, chain')
@@ -110,7 +117,7 @@ export interface CachedNft {
 }
 
 export async function getCachedNfts(walletAddress: string): Promise<CachedNft[]> {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const { data } = await supabase
     .from('nft_cache')
     .select('*')
@@ -121,7 +128,7 @@ export async function getCachedNfts(walletAddress: string): Promise<CachedNft[]>
 
 export async function upsertNfts(nfts: BlockchainNft[]): Promise<void> {
   if (nfts.length === 0) return
-  const supabase = await createClient()
+  const supabase = getSupabase()
 
   const rows = nfts.map(n => ({
     wallet_address: n.walletAddress,
@@ -153,7 +160,7 @@ export async function upsertNfts(nfts: BlockchainNft[]): Promise<void> {
 }
 
 export async function clearStaleNfts(walletAddress: string, currentNftIds: Set<string>): Promise<void> {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const { data: existing } = await supabase
     .from('nft_cache')
     .select('id, nft_id')
