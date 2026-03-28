@@ -19,17 +19,8 @@ export interface LwNftContract {
 }
 
 const CHAIN_OPTIONS = [
-  'Ethereum',
-  'Polygon',
-  'Base',
-  'BSC',
-  'Arbitrum',
-  'Optimism',
-  'Avalanche',
-  'Core',
-  'SKALE Nebula',
-  'Solana',
-  'WAX',
+  'Ethereum', 'Polygon', 'Base', 'BSC', 'Arbitrum', 'Optimism',
+  'Avalanche', 'Core', 'SKALE Nebula', 'Solana', 'WAX',
 ]
 
 export function LwNftContractsPanel() {
@@ -54,39 +45,27 @@ export function LwNftContractsPanel() {
   }
 
   const saveContract = async (contract: LwNftContract) => {
-    if (!contract.contract_address || !contract.chain || !contract.collection_name) {
-      setMessage('Chain, contract address, and collection name are required')
+    if (!contract.contract_address || !contract.chain) {
+      setMessage('Chain and contract address are required')
       return
     }
 
+    const payload = {
+      chain: contract.chain,
+      contract_address: contract.contract_address,
+      collection_name: contract.collection_name,
+      symbol: contract.symbol,
+      token_type: contract.token_type,
+      total_supply: contract.total_supply,
+      description: contract.description,
+      metadata_base_uri: contract.metadata_base_uri,
+    }
+
     if (contract.id) {
-      const { error } = await supabase
-        .from('lw_nft_contracts')
-        .update({
-          chain: contract.chain,
-          contract_address: contract.contract_address,
-          collection_name: contract.collection_name,
-          symbol: contract.symbol,
-          token_type: contract.token_type,
-          total_supply: contract.total_supply,
-          description: contract.description,
-          metadata_base_uri: contract.metadata_base_uri,
-        })
-        .eq('id', contract.id)
+      const { error } = await supabase.from('lw_nft_contracts').update(payload).eq('id', contract.id)
       if (error) { setMessage(`Error: ${error.message}`); return }
     } else {
-      const { error } = await supabase
-        .from('lw_nft_contracts')
-        .insert({
-          chain: contract.chain,
-          contract_address: contract.contract_address,
-          collection_name: contract.collection_name,
-          symbol: contract.symbol,
-          token_type: contract.token_type,
-          total_supply: contract.total_supply,
-          description: contract.description,
-          metadata_base_uri: contract.metadata_base_uri,
-        })
+      const { error } = await supabase.from('lw_nft_contracts').insert(payload)
       if (error) { setMessage(`Error: ${error.message}`); return }
     }
 
@@ -98,7 +77,7 @@ export function LwNftContractsPanel() {
   }
 
   const deleteContract = async (id: number) => {
-    if (!confirm('Delete this contract?')) return
+    if (!confirm('Delete this contract and all its cached NFT data?')) return
     await supabase.from('lw_nft_contracts').delete().eq('id', id)
     loadContracts()
   }
@@ -116,7 +95,7 @@ export function LwNftContractsPanel() {
       if (data.error) {
         setMessage(`Sync error: ${data.error}`)
       } else {
-        setMessage(`Synced ${data.nft_count} NFTs for ${contract.collection_name}`)
+        setMessage(`Synced ${data.nft_count} NFTs for ${contract.collection_name || contract.contract_address}`)
         loadContracts()
       }
     } catch (e) {
@@ -131,7 +110,7 @@ export function LwNftContractsPanel() {
     contract_address: '',
     collection_name: '',
     symbol: '',
-    token_type: 'ERC721',
+    token_type: '',
     total_supply: null,
     description: '',
     metadata_base_uri: '',
@@ -141,6 +120,48 @@ export function LwNftContractsPanel() {
 
   const ContractForm = ({ contract, onSave, onCancel }: { contract: LwNftContract; onSave: (c: LwNftContract) => void; onCancel: () => void }) => {
     const [form, setForm] = useState(contract)
+    const [looking, setLooking] = useState(false)
+    const [populated, setPopulated] = useState(!!contract.id)
+
+    const lookupContract = async () => {
+      if (!form.contract_address || !form.chain) {
+        setMessage('Enter chain and contract address first')
+        return
+      }
+      setLooking(true)
+      try {
+        const res = await fetch('/api/admin/lookup-contract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chain: form.chain, address: form.contract_address }),
+        })
+        const data = await res.json()
+        if (data.error) {
+          setMessage(`Lookup: ${data.error}`)
+        } else {
+          setForm(prev => ({
+            ...prev,
+            collection_name: data.collection_name || prev.collection_name,
+            symbol: data.symbol || prev.symbol,
+            token_type: data.token_type || prev.token_type,
+            total_supply: data.total_supply ?? prev.total_supply,
+            description: data.description || prev.description,
+          }))
+          setPopulated(true)
+          setMessage('Contract info loaded from blockchain')
+        }
+      } catch {
+        setMessage('Lookup failed')
+      }
+      setLooking(false)
+      setTimeout(() => setMessage(''), 3000)
+    }
+
+    const disabledStyle = {
+      opacity: populated ? 1 : 0.4,
+      pointerEvents: populated ? 'auto' as const : 'none' as const,
+    }
+
     return (
       <div style={{ backgroundColor: 'rgba(106,36,250,0.08)', borderRadius: '8px', padding: '1rem', marginBottom: '0.75rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -148,80 +169,72 @@ export function LwNftContractsPanel() {
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Chain *</label>
             <select
               value={form.chain}
-              onChange={e => setForm({ ...form, chain: e.target.value })}
+              onChange={e => { setForm({ ...form, chain: e.target.value }); setPopulated(false) }}
               className="lw-input"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             >
               {CHAIN_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Token Type</label>
-            <select
-              value={form.token_type}
-              onChange={e => setForm({ ...form, token_type: e.target.value })}
-              className="lw-input"
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem' }}>
+            <button
+              onClick={lookupContract}
+              disabled={looking || !form.contract_address}
+              className="lw-btn lw-btn-primary"
+              style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
             >
-              <option value="ERC721">ERC-721</option>
-              <option value="ERC1155">ERC-1155</option>
-              <option value="AtomicAssets">AtomicAssets (WAX)</option>
-              <option value="Metaplex">Metaplex (Solana)</option>
-              <option value="cNFT">Compressed NFT (Solana)</option>
-            </select>
+              {looking ? 'Looking up...' : 'Lookup Contract'}
+            </button>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Contract Address *</label>
             <input
               value={form.contract_address}
-              onChange={e => setForm({ ...form, contract_address: e.target.value })}
+              onChange={e => { setForm({ ...form, contract_address: e.target.value }); setPopulated(false) }}
               className="lw-input"
               placeholder="0x... or WAX collection name or Solana address"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', fontFamily: 'monospace' }}
             />
           </div>
-          <div>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Collection Name *</label>
+          <div style={disabledStyle}>
+            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Collection Name</label>
             <input
               value={form.collection_name}
               onChange={e => setForm({ ...form, collection_name: e.target.value })}
               className="lw-input"
-              placeholder="e.g. Ancient Enemies"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             />
           </div>
-          <div>
+          <div style={disabledStyle}>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Symbol</label>
             <input
               value={form.symbol}
               onChange={e => setForm({ ...form, symbol: e.target.value })}
               className="lw-input"
-              placeholder="e.g. AE"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             />
           </div>
-          <div>
+          <div style={disabledStyle}>
+            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Token Type</label>
+            <input
+              value={form.token_type}
+              onChange={e => setForm({ ...form, token_type: e.target.value })}
+              className="lw-input"
+              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              readOnly={!populated}
+            />
+          </div>
+          <div style={disabledStyle}>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Total Supply</label>
             <input
               type="number"
               value={form.total_supply || ''}
               onChange={e => setForm({ ...form, total_supply: e.target.value ? parseInt(e.target.value) : null })}
               className="lw-input"
-              placeholder="e.g. 10000"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             />
           </div>
-          <div>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Metadata Base URI</label>
-            <input
-              value={form.metadata_base_uri}
-              onChange={e => setForm({ ...form, metadata_base_uri: e.target.value })}
-              className="lw-input"
-              placeholder="https://..."
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-            />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div style={{ ...disabledStyle, gridColumn: '1 / -1' }}>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Description</label>
             <textarea
               value={form.description}
@@ -229,6 +242,16 @@ export function LwNftContractsPanel() {
               className="lw-input"
               rows={2}
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', resize: 'vertical' }}
+            />
+          </div>
+          <div style={{ ...disabledStyle, gridColumn: '1 / -1' }}>
+            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Metadata Base URI</label>
+            <input
+              value={form.metadata_base_uri}
+              onChange={e => setForm({ ...form, metadata_base_uri: e.target.value })}
+              className="lw-input"
+              placeholder="https://..."
+              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             />
           </div>
         </div>
@@ -248,7 +271,7 @@ export function LwNftContractsPanel() {
 
   return (
     <div>
-      {message && <p className="lw-error" style={{ marginBottom: '0.75rem', color: message.startsWith('Error') || message.startsWith('Sync error') ? '#ff4444' : '#34A853' }}>{message}</p>}
+      {message && <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: message.startsWith('Error') || message.startsWith('Sync error') || message.startsWith('Lookup:') ? '#ff4444' : '#34A853' }}>{message}</p>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem', margin: 0 }}>
@@ -288,9 +311,9 @@ export function LwNftContractsPanel() {
           justifyContent: 'space-between',
         }}>
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <span style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '0.95rem' }}>
-                {c.collection_name}
+                {c.collection_name || c.contract_address.slice(0, 12) + '...'}
               </span>
               {c.symbol && <span style={{ color: 'var(--nft-accent, #ff8800)', fontSize: '0.75rem' }}>${c.symbol}</span>}
               <span style={{
@@ -302,7 +325,7 @@ export function LwNftContractsPanel() {
               }}>
                 {c.chain}
               </span>
-              <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>{c.token_type}</span>
+              {c.token_type && <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>{c.token_type}</span>}
             </div>
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0', fontFamily: 'monospace' }}>
               {c.contract_address}
@@ -310,7 +333,7 @@ export function LwNftContractsPanel() {
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
               {c.nft_count != null && (
                 <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>
-                  {c.nft_count} NFTs cached
+                  {c.nft_count.toLocaleString()} NFTs cached
                 </span>
               )}
               {c.last_synced && (
