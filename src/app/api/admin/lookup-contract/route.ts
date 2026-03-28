@@ -79,13 +79,19 @@ export async function POST(request: Request) {
     }
 
     const data = await blockscoutFetch(`${blockscoutApi}/tokens/${address}`)
-    if (!data) return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
+    if (!data) return NextResponse.json({ error: 'Contract not found on this chain. Check the address and chain selection.' }, { status: 404 })
+
+    // Also get instance count
+    const instances = await blockscoutFetch(`${blockscoutApi}/tokens/${address}/instances`)
+    const instanceCount = (instances?.items as unknown[] || []).length
 
     return NextResponse.json({
       collection_name: (data.name || '') as string,
       symbol: (data.symbol || '') as string,
       token_type: (data.type || 'ERC-721') as string,
       total_supply: data.total_supply ? parseInt(String(data.total_supply)) : null,
+      holders_count: (data.holders_count || '0') as string,
+      instance_count: instanceCount,
       description: '',
       icon_url: (data.icon_url || null) as string | null,
     })

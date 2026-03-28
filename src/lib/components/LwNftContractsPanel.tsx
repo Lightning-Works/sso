@@ -18,6 +18,16 @@ export interface LwNftContract {
   created_at?: string
 }
 
+interface LookupResult {
+  collection_name: string
+  symbol: string
+  token_type: string
+  total_supply: number | null
+  description: string
+  holders_count?: string
+  icon_url?: string | null
+}
+
 const CHAIN_OPTIONS = [
   'Ethereum', 'Polygon', 'Base', 'BSC', 'Arbitrum', 'Optimism',
   'Avalanche', 'Core', 'SKALE Nebula', 'Solana', 'WAX',
@@ -29,10 +39,17 @@ export function LwNftContractsPanel() {
   const [editing, setEditing] = useState<LwNftContract | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success')
   const [syncing, setSyncing] = useState<number | null>(null)
   const supabase = createClient()
 
   useEffect(() => { loadContracts() }, [])
+
+  const showMsg = (msg: string, type: 'success' | 'error' = 'success') => {
+    setMessage(msg)
+    setMessageType(type)
+    setTimeout(() => setMessage(''), 5000)
+  }
 
   const loadContracts = async () => {
     setLoading(true)
@@ -46,7 +63,7 @@ export function LwNftContractsPanel() {
 
   const saveContract = async (contract: LwNftContract) => {
     if (!contract.contract_address || !contract.chain) {
-      setMessage('Chain and contract address are required')
+      showMsg('Chain and contract address are required', 'error')
       return
     }
 
@@ -63,17 +80,16 @@ export function LwNftContractsPanel() {
 
     if (contract.id) {
       const { error } = await supabase.from('lw_nft_contracts').update(payload).eq('id', contract.id)
-      if (error) { setMessage(`Error: ${error.message}`); return }
+      if (error) { showMsg(`Error: ${error.message}`, 'error'); return }
     } else {
       const { error } = await supabase.from('lw_nft_contracts').insert(payload)
-      if (error) { setMessage(`Error: ${error.message}`); return }
+      if (error) { showMsg(`Error: ${error.message}`, 'error'); return }
     }
 
     setEditing(null)
     setShowNew(false)
-    setMessage('Saved')
+    showMsg('Contract saved')
     loadContracts()
-    setTimeout(() => setMessage(''), 3000)
   }
 
   const deleteContract = async (id: number) => {
@@ -93,16 +109,15 @@ export function LwNftContractsPanel() {
       })
       const data = await res.json()
       if (data.error) {
-        setMessage(`Sync error: ${data.error}`)
+        showMsg(`Sync error: ${data.error}`, 'error')
       } else {
-        setMessage(`Synced ${data.nft_count} NFTs for ${contract.collection_name || contract.contract_address}`)
+        showMsg(`Synced ${data.nft_count} NFTs for ${contract.collection_name || contract.contract_address}`)
         loadContracts()
       }
     } catch (e) {
-      setMessage(`Sync failed: ${(e as Error).message}`)
+      showMsg(`Sync failed: ${(e as Error).message}`, 'error')
     }
     setSyncing(null)
-    setTimeout(() => setMessage(''), 5000)
   }
 
   const emptyContract: LwNftContract = {
@@ -121,14 +136,19 @@ export function LwNftContractsPanel() {
   const ContractForm = ({ contract, onSave, onCancel }: { contract: LwNftContract; onSave: (c: LwNftContract) => void; onCancel: () => void }) => {
     const [form, setForm] = useState(contract)
     const [looking, setLooking] = useState(false)
-    const [populated, setPopulated] = useState(!!contract.id)
+    const [lookupResult, setLookupResult] = useState<LookupResult | null>(null)
+    const [lookupError, setLookupError] = useState('')
+    const isEditing = !!contract.id
+    const hasResult = !!lookupResult || isEditing
 
     const lookupContract = async () => {
       if (!form.contract_address || !form.chain) {
-        setMessage('Enter chain and contract address first')
+        setLookupError('Enter chain and contract address first')
         return
       }
       setLooking(true)
+      setLookupError('')
+      setLookupResult(null)
       try {
         const res = await fetch('/api/admin/lookup-contract', {
           method: 'POST',
@@ -137,8 +157,11 @@ export function LwNftContractsPanel() {
         })
         const data = await res.json()
         if (data.error) {
-          setMessage(`Lookup: ${data.error}`)
+          setLookupError(data.error)
+        } else if (!data.collection_name && !data.symbol) {
+          setLookupError('Contract found but no metadata available')
         } else {
+          setLookupResult(data)
           setForm(prev => ({
             ...prev,
             collection_name: data.collection_name || prev.collection_name,
@@ -147,117 +170,152 @@ export function LwNftContractsPanel() {
             total_supply: data.total_supply ?? prev.total_supply,
             description: data.description || prev.description,
           }))
-          setPopulated(true)
-          setMessage('Contract info loaded from blockchain')
         }
       } catch {
-        setMessage('Lookup failed')
+        setLookupError('Network error — could not reach the blockchain')
       }
       setLooking(false)
-      setTimeout(() => setMessage(''), 3000)
     }
 
     const disabledStyle = {
-      opacity: populated ? 1 : 0.4,
-      pointerEvents: populated ? 'auto' as const : 'none' as const,
+      opacity: hasResult ? 1 : 0.35,
+      pointerEvents: hasResult ? 'auto' as const : 'none' as const,
     }
 
     return (
       <div style={{ backgroundColor: 'rgba(106,36,250,0.08)', borderRadius: '8px', padding: '1rem', marginBottom: '0.75rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        {/* Step 1: Chain + Address + Lookup */}
+        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
           <div>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Chain *</label>
             <select
               value={form.chain}
-              onChange={e => { setForm({ ...form, chain: e.target.value }); setPopulated(false) }}
+              onChange={e => { setForm({ ...form, chain: e.target.value }); setLookupResult(null); setLookupError('') }}
               className="lw-input"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
             >
               {CHAIN_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem' }}>
-            <button
-              onClick={lookupContract}
-              disabled={looking || !form.contract_address}
-              className="lw-btn lw-btn-primary"
-              style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-            >
-              {looking ? 'Looking up...' : 'Lookup Contract'}
-            </button>
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div>
             <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Contract Address *</label>
             <input
               value={form.contract_address}
-              onChange={e => { setForm({ ...form, contract_address: e.target.value }); setPopulated(false) }}
+              onChange={e => { setForm({ ...form, contract_address: e.target.value }); setLookupResult(null); setLookupError('') }}
               className="lw-input"
               placeholder="0x... or WAX collection name or Solana address"
               style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', fontFamily: 'monospace' }}
             />
           </div>
-          <div style={disabledStyle}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Collection Name</label>
-            <input
-              value={form.collection_name}
-              onChange={e => setForm({ ...form, collection_name: e.target.value })}
-              className="lw-input"
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-            />
+          <button
+            onClick={lookupContract}
+            disabled={looking || !form.contract_address}
+            className="lw-btn lw-btn-primary"
+            style={{ width: 'auto', padding: '0.4rem 1.25rem', fontSize: '0.8rem', whiteSpace: 'nowrap', height: 'fit-content' }}
+          >
+            {looking ? 'Looking up...' : 'Lookup'}
+          </button>
+        </div>
+
+        {/* Lookup error */}
+        {lookupError && (
+          <p style={{ color: '#ff4444', fontSize: '0.8rem', margin: '0.5rem 0 0 0', padding: '0.4rem 0.75rem', backgroundColor: 'rgba(255,68,68,0.1)', borderRadius: '4px' }}>
+            {lookupError}
+          </p>
+        )}
+
+        {/* Lookup result confirmation */}
+        {lookupResult && !isEditing && (
+          <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(52,168,83,0.1)', borderRadius: '6px', border: '1px solid rgba(52,168,83,0.2)' }}>
+            <p style={{ color: '#34A853', fontSize: '0.8rem', fontWeight: 600, margin: '0 0 0.5rem 0' }}>Contract found on {form.chain}:</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.8rem' }}>
+              <span style={{ color: 'var(--lw-text-muted)' }}>Name:</span>
+              <span style={{ color: 'var(--lw-text-white)', fontWeight: 500 }}>{lookupResult.collection_name || '—'}</span>
+              <span style={{ color: 'var(--lw-text-muted)' }}>Symbol:</span>
+              <span style={{ color: 'var(--nft-accent, #ff8800)' }}>{lookupResult.symbol ? `$${lookupResult.symbol}` : '—'}</span>
+              <span style={{ color: 'var(--lw-text-muted)' }}>Type:</span>
+              <span style={{ color: 'var(--lw-text-white)' }}>{lookupResult.token_type || '—'}</span>
+              {lookupResult.total_supply != null && lookupResult.total_supply > 0 && (
+                <>
+                  <span style={{ color: 'var(--lw-text-muted)' }}>Supply:</span>
+                  <span style={{ color: 'var(--lw-text-white)' }}>{lookupResult.total_supply.toLocaleString()}</span>
+                </>
+              )}
+            </div>
           </div>
-          <div style={disabledStyle}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Symbol</label>
-            <input
-              value={form.symbol}
-              onChange={e => setForm({ ...form, symbol: e.target.value })}
-              className="lw-input"
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-            />
-          </div>
-          <div style={disabledStyle}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Token Type</label>
-            <input
-              value={form.token_type}
-              onChange={e => setForm({ ...form, token_type: e.target.value })}
-              className="lw-input"
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-              readOnly={!populated}
-            />
-          </div>
-          <div style={disabledStyle}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Total Supply</label>
-            <input
-              type="number"
-              value={form.total_supply || ''}
-              onChange={e => setForm({ ...form, total_supply: e.target.value ? parseInt(e.target.value) : null })}
-              className="lw-input"
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-            />
-          </div>
-          <div style={{ ...disabledStyle, gridColumn: '1 / -1' }}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Description</label>
-            <textarea
-              value={form.description}
-              onChange={e => setForm({ ...form, description: e.target.value })}
-              className="lw-input"
-              rows={2}
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', resize: 'vertical' }}
-            />
-          </div>
-          <div style={{ ...disabledStyle, gridColumn: '1 / -1' }}>
-            <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Metadata Base URI</label>
-            <input
-              value={form.metadata_base_uri}
-              onChange={e => setForm({ ...form, metadata_base_uri: e.target.value })}
-              className="lw-input"
-              placeholder="https://..."
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
-            />
+        )}
+
+        {/* Editable fields (greyed out until lookup succeeds) */}
+        <div style={{ ...disabledStyle, marginTop: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Collection Name</label>
+              <input
+                value={form.collection_name}
+                onChange={e => setForm({ ...form, collection_name: e.target.value })}
+                className="lw-input"
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              />
+            </div>
+            <div>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Symbol</label>
+              <input
+                value={form.symbol}
+                onChange={e => setForm({ ...form, symbol: e.target.value })}
+                className="lw-input"
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              />
+            </div>
+            <div>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Token Type</label>
+              <input
+                value={form.token_type}
+                onChange={e => setForm({ ...form, token_type: e.target.value })}
+                className="lw-input"
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              />
+            </div>
+            <div>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Total Supply</label>
+              <input
+                type="number"
+                value={form.total_supply || ''}
+                onChange={e => setForm({ ...form, total_supply: e.target.value ? parseInt(e.target.value) : null })}
+                className="lw-input"
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Description</label>
+              <textarea
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+                className="lw-input"
+                rows={2}
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', resize: 'vertical' }}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>Metadata Base URI</label>
+              <input
+                value={form.metadata_base_uri}
+                onChange={e => setForm({ ...form, metadata_base_uri: e.target.value })}
+                className="lw-input"
+                placeholder="https://..."
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem' }}
+              />
+            </div>
           </div>
         </div>
+
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-          <button onClick={() => onSave(form)} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.4rem 1.5rem' }}>
-            Save
+          <button
+            onClick={() => onSave(form)}
+            disabled={!hasResult}
+            className="lw-btn lw-btn-primary"
+            style={{ width: 'auto', padding: '0.4rem 1.5rem', opacity: hasResult ? 1 : 0.4 }}
+          >
+            {isEditing ? 'Save Changes' : 'Add Contract'}
           </button>
           <button onClick={onCancel} className="lw-btn" style={{ width: 'auto', padding: '0.4rem 1.5rem', backgroundColor: '#3a3938', color: '#aaa' }}>
             Cancel
@@ -271,7 +329,7 @@ export function LwNftContractsPanel() {
 
   return (
     <div>
-      {message && <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: message.startsWith('Error') || message.startsWith('Sync error') || message.startsWith('Lookup:') ? '#ff4444' : '#34A853' }}>{message}</p>}
+      {message && <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: messageType === 'error' ? '#ff4444' : '#34A853' }}>{message}</p>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem', margin: 0 }}>
