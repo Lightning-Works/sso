@@ -206,17 +206,40 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
     if (nfts.length > 0) return nfts
   }
 
-  // Slow path: enumerate token IDs and fetch metadata individually via RPC
-  let tokenIds: string[] = []
-
-  // Try Blockscout
+  // Slow path: try Blockscout with full metadata (paginated)
   const blockscoutApi = getBlockscoutApi(chain)
   if (blockscoutApi) {
-    const data = await blockscoutFetch(`${blockscoutApi}/tokens/${contractAddress}/instances`)
-    if (data?.items) {
-      tokenIds = (data.items as { id: string }[]).map(i => i.id)
-    }
+    const bsNfts: Record<string, unknown>[] = []
+    let nextParams = ''
+    let pages = 0
+    do {
+      const url = `${blockscoutApi}/tokens/${contractAddress}/instances?${nextParams}`
+      const data = await blockscoutFetch(url)
+      if (!data?.items) break
+      for (const item of data.items as Record<string, unknown>[]) {
+        const tokenId = String(item.id || '')
+        if (burnedIds.has(tokenId)) continue
+        const meta = (item.metadata || {}) as Record<string, unknown>
+        bsNfts.push({
+          token_id: tokenId,
+          name: meta.name || `#${tokenId}`,
+          description: meta.description || null,
+          image_url: normalizeUrl((item.image_url || meta.image || null) as string | null),
+          animation_url: normalizeUrl((meta.animation_url || null) as string | null),
+          attributes: meta.attributes || [],
+          owner: ((item.owner as Record<string, unknown>)?.hash || null) as string | null,
+        })
+      }
+      const np = data.next_page_params as Record<string, string> | undefined
+      nextParams = np ? `unique_token=${np.unique_token}` : ''
+      pages++
+    } while (nextParams && pages < 100)
+
+    if (bsNfts.length > 0) return bsNfts
   }
+
+  // Fallback: enumerate token IDs via RPC
+  let tokenIds: string[] = []
 
   // Fallback: enumerate by totalSupply via RPC
   if (tokenIds.length === 0 && rpcs.length > 0) {
