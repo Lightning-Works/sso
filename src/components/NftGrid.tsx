@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const lower = url.toLowerCase()
+  return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogv') || lower.endsWith('.mov')
+}
+
 function getRarityStyle(rarity: string): { color: string; border?: string; glow?: string } {
   const r = rarity.toLowerCase().trim()
   if (r === 'common') return { color: '#c4a84a', border: '1px solid rgba(196,168,74,0.4)' }
@@ -711,7 +717,7 @@ export function NftGrid({
               <div className="nft-card-thumb">
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
                   <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
-                ) : nft.videoUrl ? (
+                ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
                   <img src={nft.imageUrl} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
@@ -805,7 +811,7 @@ export function NftGrid({
             <button className="nft-lightbox-close" onClick={() => setSelectedNft(null)} aria-label="Close">&#x2715;</button>
 
             <div className="nft-lightbox-media">
-              {selectedNft.videoUrl ? (
+              {selectedNft.videoUrl && isVideoUrl(selectedNft.videoUrl) ? (
                 <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
               ) : selectedNft.imageUrl ? (
                 <img src={selectedNft.imageUrl} alt={selectedNft.name} />

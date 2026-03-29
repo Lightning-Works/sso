@@ -56,6 +56,12 @@ function getRarityStyle(rarity: string): { color: string; glow?: string; border?
   return { color: 'var(--lw-text-muted)' }
 }
 
+function isVideoUrl(url: string | null): boolean {
+  if (!url) return false
+  const lower = url.toLowerCase()
+  return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogv') || lower.endsWith('.mov')
+}
+
 function normalizeImageUrl(url: string | null | undefined): string | null {
   if (!url) return null
   if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/')
@@ -478,7 +484,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: '12px 12px 0 0', overflow: 'hidden',
             }}>
-              {selectedNft.animation_url ? (
+              {selectedNft.animation_url && isVideoUrl(selectedNft.animation_url) ? (
                 <video src={normalizeImageUrl(selectedNft.animation_url)!} poster={normalizeImageUrl(selectedNft.image_url) || undefined} autoPlay loop muted playsInline controls style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
               ) : selectedNft.image_url ? (
                 <img src={normalizeImageUrl(selectedNft.image_url)!} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
