@@ -631,36 +631,43 @@ export function LwNftContractsPanel() {
   const syncContract = async (contract: LwNftContract) => {
     if (!contract.id) return
     setSyncing(contract.id)
+    showMsg(`Syncing ${contract.collection_name || contract.contract_address}...`)
 
     try {
-      // First try full sync
+      // Try full sync first (fast for Alchemy-supported chains)
       const res = await fetch('/api/admin/sync-lw-nfts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contract_id: contract.id, chunk: 0, chunk_size: 500 }),
+        body: JSON.stringify({ contract_id: contract.id }),
       })
       const data = await res.json()
-      if (data.error) { showMsg(`Sync error: ${data.error}`, 'error'); setSyncing(null); return }
 
-      let totalSynced = data.nft_count
-      let chunk = 1
+      if (data.error) {
+        // If full sync fails/times out, try chunked
+        showMsg('Full sync timed out, trying chunked sync...')
+        let totalSynced = 0
+        let chunk = 0
+        let done = false
 
-      // If not done, keep syncing chunks
-      while (!data.done && chunk < 50) {
-        showMsg(`Syncing... chunk ${chunk + 1} (${totalSynced} so far of ~${data.total_ids})`)
-        const chunkRes = await fetch('/api/admin/sync-lw-nfts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contract_id: contract.id, chunk, chunk_size: 500 }),
-        })
-        const chunkData = await chunkRes.json()
-        if (chunkData.error) { showMsg(`Sync error at chunk ${chunk}: ${chunkData.error}`, 'error'); break }
-        totalSynced += chunkData.nft_count
-        if (chunkData.done) break
-        chunk++
+        while (!done && chunk < 100) {
+          showMsg(`Syncing chunk ${chunk + 1}... (${totalSynced} so far)`)
+          const chunkRes = await fetch('/api/admin/sync-lw-nfts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contract_id: contract.id, chunk, chunk_size: 500 }),
+          })
+          const chunkData = await chunkRes.json()
+          if (chunkData.error) { showMsg(`Sync error: ${chunkData.error}`, 'error'); break }
+          totalSynced += chunkData.nft_count
+          done = chunkData.done
+          chunk++
+        }
+
+        showMsg(`Synced ${totalSynced} NFTs for ${contract.collection_name || contract.contract_address}`)
+      } else {
+        showMsg(`Synced ${data.nft_count} NFTs for ${contract.collection_name || contract.contract_address}`)
       }
 
-      showMsg(`Synced ${totalSynced} NFTs for ${contract.collection_name || contract.contract_address}`)
       loadContracts()
     } catch (e) {
       showMsg(`Sync failed: ${(e as Error).message}`, 'error')

@@ -146,27 +146,79 @@ async function getBurnedIds(alchemyNftUrl: string | null, contractAddress: strin
   return burned
 }
 
-// ── EVM sync: free RPC primary, Alchemy for token ID enumeration ──
+// ── Fetch NFTs with metadata from Alchemy (fast, bulk) ──
+
+async function fetchAlchemyNftsWithMetadata(alchemyNftUrl: string, contractAddress: string, burnedIds: Set<string>): Promise<Record<string, unknown>[]> {
+  const nfts: Record<string, unknown>[] = []
+  let startToken = ''
+  let pages = 0
+
+  do {
+    const params = new URLSearchParams({ contractAddress, withMetadata: 'true', limit: '100' })
+    if (startToken) params.set('startToken', startToken)
+    try {
+      const res = await fetch(`${alchemyNftUrl}/getNFTsForContract?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) break
+      const data = await res.json()
+      const items = data.nfts || []
+      if (items.length === 0) break
+
+      for (const nft of items) {
+        if (burnedIds.has(nft.tokenId || '')) continue
+        const meta = nft.raw?.metadata || {}
+        // Use the live tokenURI image if it's from our server (not Alchemy cache)
+        const tokenUri = nft.tokenUri || ''
+        let imageUrl = meta.image || nft.image?.originalUrl || nft.image?.cachedUrl || null
+        // Prefer our server's image over Alchemy's cache for LW contracts
+        if (tokenUri.includes('lightningworks.io') || tokenUri.includes('nftdata.')) {
+          imageUrl = meta.image || imageUrl
+        }
+        nfts.push({
+          token_id: nft.tokenId || '',
+          name: meta.name || nft.name || `#${nft.tokenId || '?'}`,
+          description: meta.description || nft.description || null,
+          image_url: normalizeUrl(imageUrl),
+          animation_url: normalizeUrl(meta.animation_url || null),
+          attributes: meta.attributes || [],
+          owner: null,
+        })
+      }
+      startToken = data.pageKey || ''
+      pages++
+    } catch { break }
+  } while (startToken && pages < 100)
+
+  return nfts
+}
+
+// ── EVM sync: Alchemy with metadata when available, RPC fallback ──
 
 async function fetchEvmContractNfts(chain: string, contractAddress: string): Promise<Record<string, unknown>[]> {
   const rpcs = getChainRpcs(chain)
   const alchemyUrl = getAlchemyNftUrl(chain)
 
-  // Step 1: Get all token IDs
-  let tokenIds = await getTokenIds(alchemyUrl, contractAddress)
+  // Get burned IDs first
+  const burnedIds = await getBurnedIds(alchemyUrl, contractAddress)
 
-  // Fallback: try Blockscout
-  if (tokenIds.length === 0) {
-    const blockscoutApi = getBlockscoutApi(chain)
-    if (blockscoutApi) {
-      const data = await blockscoutFetch(`${blockscoutApi}/tokens/${contractAddress}/instances`)
-      if (data?.items) {
-        tokenIds = (data.items as { id: string }[]).map(i => i.id)
-      }
+  // Fast path: use Alchemy with metadata (handles burned filtering internally)
+  if (alchemyUrl && ALCHEMY_KEY) {
+    const nfts = await fetchAlchemyNftsWithMetadata(alchemyUrl, contractAddress, burnedIds)
+    if (nfts.length > 0) return nfts
+  }
+
+  // Slow path: enumerate token IDs and fetch metadata individually via RPC
+  let tokenIds: string[] = []
+
+  // Try Blockscout
+  const blockscoutApi = getBlockscoutApi(chain)
+  if (blockscoutApi) {
+    const data = await blockscoutFetch(`${blockscoutApi}/tokens/${contractAddress}/instances`)
+    if (data?.items) {
+      tokenIds = (data.items as { id: string }[]).map(i => i.id)
     }
   }
 
-  // Fallback: enumerate by totalSupply via RPC (sequential IDs starting from 1)
+  // Fallback: enumerate by totalSupply via RPC
   if (tokenIds.length === 0 && rpcs.length > 0) {
     const supplyResult = await rpcCall(rpcs, 'eth_call', [{ to: contractAddress, data: '0x18160ddd' }, 'latest'])
     if (supplyResult?.result) {
@@ -179,11 +231,8 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
 
   if (tokenIds.length === 0) return []
 
-  // Step 2: Get burned IDs and filter
-  const burnedIds = await getBurnedIds(alchemyUrl, contractAddress)
-  // For chains without Alchemy, check burned via RPC (ownerOf = 0x000...)
-  if (burnedIds.size === 0 && !alchemyUrl && rpcs.length > 0) {
-    // Sample check — for large collections, check in batches
+  // For chains without Alchemy burned detection, check via RPC
+  if (burnedIds.size === 0 && rpcs.length > 0) {
     const BURN_CHECK_BATCH = 50
     for (let i = 0; i < tokenIds.length; i += BURN_CHECK_BATCH) {
       const batch = tokenIds.slice(i, i + BURN_CHECK_BATCH)
@@ -194,7 +243,6 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
           const owner = '0x' + (result.result as string).slice(-40)
           if (owner === '0x0000000000000000000000000000000000000000') burnedIds.add(id)
         } else {
-          // ownerOf reverted — token doesn't exist or was burned
           burnedIds.add(id)
         }
       }))
@@ -202,21 +250,17 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
   }
   const liveIds = tokenIds.filter(id => !burnedIds.has(id))
 
-  // Step 3: Fetch metadata from tokenURI via free RPC (batched)
+  // Fetch metadata from tokenURI via free RPC
   const nfts: Record<string, unknown>[] = []
   const BATCH = 20
 
   for (let i = 0; i < liveIds.length; i += BATCH) {
     const batch = liveIds.slice(i, i + BATCH)
     const results = await Promise.all(batch.map(async (tokenId) => {
-      // Get tokenURI from contract
       const uri = await fetchTokenUri(rpcs, contractAddress, parseInt(tokenId, 10))
       if (!uri) return null
-
-      // Fetch metadata from URI
       const meta = await fetchMetadata(uri)
       if (!meta) return null
-
       return {
         token_id: tokenId,
         name: meta.name || `#${tokenId}`,
@@ -227,10 +271,7 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
         owner: null,
       }
     }))
-
-    for (const r of results) {
-      if (r) nfts.push(r)
-    }
+    for (const r of results) if (r) nfts.push(r)
   }
 
   return nfts
