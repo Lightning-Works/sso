@@ -120,6 +120,11 @@ export function NftGrid({
   const [globalBlacklist, setGlobalBlacklist] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIncludeSpam, setSearchIncludeSpam] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [fsZoom, setFsZoom] = useState(1)
+  const [fsPan, setFsPan] = useState({ x: 0, y: 0 })
+  const [fsDragging, setFsDragging] = useState(false)
+  const fsDragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
   const lastClickedIndex = useRef<number>(-1)
 
   // Load tags from localStorage
@@ -135,14 +140,20 @@ export function NftGrid({
       .catch(() => {})
   }, [])
 
-  // Keyboard: Escape closes lightbox or context menu
+  // Keyboard handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (fullscreen) {
+      if (e.key === 'Escape' || e.key === 'Enter') { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }); return }
+      if (e.key === '+' || e.key === '=') { setFsZoom(z => Math.min(z + 0.1, 5)); return }
+      if (e.key === '-') { setFsZoom(z => Math.max(z - 0.1, 0.5)); return }
+      return
+    }
     if (e.key === 'Escape') {
       if (contextMenu) { setContextMenu(null); setConfirmDelete(false) }
       else if (selectedNft) setSelectedNft(null)
       else if (selected.size > 0) setSelected(new Set())
     }
-  }, [contextMenu, selectedNft, selected])
+  }, [contextMenu, selectedNft, selected, fullscreen])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
@@ -356,9 +367,14 @@ export function NftGrid({
           width: 100%;
           height: 100%;
           object-fit: contain;
+        }
+        /* Block Pinterest browser extension on grid thumbnails only */
+        .nft-card-thumb {
           pointer-events: none;
         }
-        /* Block Pinterest browser extension overlay */
+        .nft-card {
+          pointer-events: auto;
+        }
         .nft-card-thumb [data-pin-href],
         .nft-card-thumb [data-pin-log] {
           display: none !important;
@@ -907,15 +923,121 @@ export function NftGrid({
                 </div>
               )}
 
-              {selectedNft.externalUrl && (
-                <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem' }}>
+                {selectedNft.externalUrl ? (
                   <a href={selectedNft.externalUrl} target="_blank" rel="noopener noreferrer" className="lw-link" style={{ fontSize: '0.85rem' }}>
                     View Details →
                   </a>
-                </div>
-              )}
+                ) : <span />}
+                {selectedNft.imageUrl && (
+                  <button
+                    onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+                    style={{
+                      background: 'rgba(106,36,250,0.2)', border: '1px solid rgba(106,36,250,0.3)',
+                      color: '#bab1a8', borderRadius: '6px', padding: '0.3rem 0.6rem',
+                      fontSize: '0.8rem', cursor: 'pointer',
+                    }}
+                  >
+                    [+] Fullscreen
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Fullscreen Image Viewer */}
+      {fullscreen && selectedNft?.imageUrl && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.97), rgba(5, 3, 20, 0.98) 60%, rgba(2, 1, 10, 0.99))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden', cursor: fsZoom > 1 ? (fsDragging ? 'grabbing' : 'grab') : 'default',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget && !fsDragging) { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) } }}
+          onMouseDown={(e) => {
+            if (fsZoom <= 1) return
+            setFsDragging(true)
+            fsDragStart.current = { x: e.clientX, y: e.clientY, panX: fsPan.x, panY: fsPan.y }
+          }}
+          onMouseMove={(e) => {
+            if (!fsDragging) return
+            setFsPan({
+              x: fsDragStart.current.panX + (e.clientX - fsDragStart.current.x),
+              y: fsDragStart.current.panY + (e.clientY - fsDragStart.current.y),
+            })
+          }}
+          onMouseUp={() => setFsDragging(false)}
+          onMouseLeave={() => setFsDragging(false)}
+        >
+          {/* Twinkling stars */}
+          <style>{`
+            @keyframes fs-twinkle {
+              0%, 100% { opacity: 0.15; }
+              50% { opacity: 0.9; }
+            }
+          `}</style>
+          {Array.from({ length: 80 }, (_, i) => (
+            <div key={`fs-star-${i}`} style={{
+              position: 'absolute',
+              left: `${Math.sin(i * 137.508) * 50 + 50}%`,
+              top: `${Math.cos(i * 73.137) * 50 + 50}%`,
+              width: `${1 + (i % 3)}px`,
+              height: `${1 + (i % 3)}px`,
+              borderRadius: '50%',
+              backgroundColor: i % 7 === 0 ? '#aaccff' : i % 11 === 0 ? '#ffddaa' : '#ffffff',
+              animation: `fs-twinkle ${2 + (i % 4) * 1.5}s ease-in-out ${(i * 0.37) % 5}s infinite`,
+              pointerEvents: 'none',
+            }} />
+          ))}
+
+          {/* Image */}
+          <img
+            src={selectedNft.imageUrl}
+            alt={selectedNft.name}
+            style={{
+              maxWidth: fsZoom === 1 ? '90vw' : undefined,
+              maxHeight: fsZoom === 1 ? '90vh' : undefined,
+              width: fsZoom !== 1 ? `${fsZoom * 90}vw` : undefined,
+              objectFit: 'contain',
+              transform: `translate(${fsPan.x}px, ${fsPan.y}px)`,
+              transition: fsDragging ? 'none' : 'transform 0.1s',
+              pointerEvents: 'none',
+              userSelect: 'none',
+            }}
+            draggable={false}
+          />
+
+          {/* Controls */}
+          <div style={{
+            position: 'absolute', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', gap: '0.5rem', alignItems: 'center',
+            background: 'rgba(0,0,0,0.6)', borderRadius: '8px', padding: '0.4rem 0.75rem',
+          }}>
+            <button onClick={(e) => { e.stopPropagation(); setFsZoom(z => Math.max(z - 0.1, 0.5)) }}
+              style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', padding: '0 0.4rem' }}>−</button>
+            <span style={{ color: '#bab1a8', fontSize: '0.8rem', minWidth: '3rem', textAlign: 'center' }}>{Math.round(fsZoom * 100)}%</span>
+            <button onClick={(e) => { e.stopPropagation(); setFsZoom(z => Math.min(z + 0.1, 5)) }}
+              style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', padding: '0 0.4rem' }}>+</button>
+            <span style={{ color: '#555', margin: '0 0.25rem' }}>|</span>
+            <button onClick={(e) => { e.stopPropagation(); setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+              style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '0.75rem', cursor: 'pointer' }}>ESC to close</button>
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={() => { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+            style={{
+              position: 'absolute', top: '1rem', right: '1rem',
+              background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff',
+              width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.2rem',
+            }}
+          >&#x2715;</button>
         </div>,
         document.body
       )}
