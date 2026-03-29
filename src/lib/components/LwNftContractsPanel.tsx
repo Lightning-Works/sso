@@ -530,12 +530,12 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                   <button
                     onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
                     style={{
-                      position: 'absolute', bottom: '6px', right: '6px',
-                      background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
-                      color: '#ccc', borderRadius: '4px', padding: '0.2rem 0.5rem',
+                      position: 'absolute', bottom: '-28px', right: '0px',
+                      background: 'rgba(106,36,250,0.2)', border: '1px solid rgba(106,36,250,0.3)',
+                      color: '#bab1a8', borderRadius: '4px', padding: '0.2rem 0.5rem',
                       fontSize: '0.75rem', cursor: 'pointer',
                     }}
-                  >[+]</button>
+                  >[+] Fullscreen</button>
                 </span>
               ) : (
                 <div style={{ padding: '4rem', color: '#555' }}>No image</div>
