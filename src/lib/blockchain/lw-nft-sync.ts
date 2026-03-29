@@ -32,7 +32,7 @@ function getChainRpcs(chain: string): string[] {
     if (k === key || v.name.toLowerCase().replace(/\s+/g, '') === key) return v.rpcs
   }
   for (const [k, v] of Object.entries(SKALE_CHAINS)) {
-    if (v.name.toLowerCase().replace(/\s+/g, '') === key) return [v.blockscoutApi.replace('/api/v2', '')]
+    if (v.name.toLowerCase().replace(/\s+/g, '') === key) return [v.rpc]
   }
   return []
 }
@@ -214,7 +214,7 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
     let pages = 0
     do {
       const url = `${blockscoutApi}/tokens/${contractAddress}/instances?${nextParams}`
-      const data = await blockscoutFetch(url)
+      const data = await blockscoutFetch(url, 15000)
       if (!data?.items) break
       for (const item of data.items as Record<string, unknown>[]) {
         const tokenId = String(item.id || '')

@@ -95,10 +95,11 @@ export const HELIUS_METADATA_URL = `https://api.helius.xyz/v0/token-metadata?api
 export const WAX_RPC = 'https://wax.greymass.com'
 export const ATOMIC_API = 'https://wax.api.atomicassets.io'
 
-export const SKALE_CHAINS: Record<string, { name: string; blockscoutApi: string }> = {
+export const SKALE_CHAINS: Record<string, { name: string; blockscoutApi: string; rpc: string }> = {
   nebula: {
     name: 'SKALE Nebula',
     blockscoutApi: 'https://green-giddy-denebola.explorer.mainnet.skalenodes.com/api/v2',
+    rpc: 'https://mainnet.skalenodes.com/v1/green-giddy-denebola',
   },
 }
 
@@ -130,9 +131,9 @@ export async function rpcCall(
 
 // ── Blockscout fetch with timeout ──
 
-export async function blockscoutFetch(url: string): Promise<Record<string, unknown> | null> {
+export async function blockscoutFetch(url: string, timeout = TIMEOUT): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeout) })
     if (!res.ok) return null
     return await res.json()
   } catch {

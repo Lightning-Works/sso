@@ -2,6 +2,15 @@
 
 import { useState, useEffect } from 'react'
 
+const CHAIN_ICONS: Record<string, string> = {
+  Polygon: 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/matic-network/small.png',
+  Ethereum: 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/ethereum/small.png',
+  Base: 'https://raw.githubusercontent.com/base-org/brand-kit/main/logo/symbol/Base_Symbol_Blue.png',
+  Core: 'https://scan.coredao.org/favicon.ico',
+  'SKALE Nebula': 'https://green-giddy-denebola.explorer.mainnet.skalenodes.com/favicon.ico',
+  Waterfall: 'https://waterfall.network/favicon.ico',
+}
+
 interface LwContract {
   id: number
   chain: string
@@ -99,6 +108,9 @@ export function LwWalletPanel({ walletAddresses }: LwWalletPanelProps) {
             <span style={{ color: 'var(--nft-accent, #ff8800)', fontSize: '0.8rem', fontWeight: 600 }}>
               {c.count}
             </span>
+            {CHAIN_ICONS[c.chain] && (
+              <img src={CHAIN_ICONS[c.chain]} alt={c.chain} style={{ width: '16px', height: '16px', borderRadius: '3px' }} />
+            )}
             <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>
               {c.chain}
             </span>
