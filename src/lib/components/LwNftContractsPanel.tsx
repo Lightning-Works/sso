@@ -299,6 +299,31 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                   </div>
                 ))}
               </div>
+
+              {/* Bottom pagination */}
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0.5rem 0 0', gap: '0.3rem' }}>
+                  <button
+                    onClick={() => loadNfts(nftPage - 1)}
+                    disabled={nftPage === 0}
+                    className="lw-btn"
+                    style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage === 0 ? '#555' : '#aaa' }}
+                  >
+                    Prev
+                  </button>
+                  <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', padding: '0 0.3rem' }}>
+                    {nftPage + 1}/{totalPages}
+                  </span>
+                  <button
+                    onClick={() => loadNfts(nftPage + 1)}
+                    disabled={nftPage >= totalPages - 1}
+                    className="lw-btn"
+                    style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage >= totalPages - 1 ? '#555' : '#aaa' }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

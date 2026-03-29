@@ -1,8 +1,8 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
@@ -31,14 +31,24 @@ interface App {
   companies?: Company | null
 }
 
-export default function AdminPage() {
+function AdminContent() {
   const [role, setRole] = useState('')
   const [adminUser, setAdminUser] = useState<{ id: string; email?: string; username?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const [activeTab, setActiveTab] = useState<'companies' | 'apps' | 'characters' | 'nft-contracts'>('companies')
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const validTabs = ['companies', 'apps', 'characters', 'nft-contracts'] as const
+  const initialTab = validTabs.includes(tabParam as typeof validTabs[number]) ? tabParam as typeof validTabs[number] : 'apps'
+  const [activeTab, setActiveTab] = useState<typeof validTabs[number]>(initialTab)
+
+  const switchTab = (tab: typeof validTabs[number]) => {
+    setActiveTab(tab)
+    const url = tab === 'apps' ? '/admin' : `/admin?tab=${tab}`
+    window.history.replaceState({}, '', url)
+  }
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [editingApp, setEditingApp] = useState<App | null>(null)
   const [editingCharacter, setEditingCharacter] = useState<CharacterData | null>(null)
@@ -613,28 +623,28 @@ export default function AdminPage() {
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: 0 }}>
             <button
-              onClick={() => setActiveTab('companies')}
+              onClick={() => switchTab('companies')}
               className="lw-btn"
               style={{ borderRadius: '4px 0 0 4px', background: activeTab === 'companies' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Companies
             </button>
             <button
-              onClick={() => setActiveTab('apps')}
+              onClick={() => switchTab('apps')}
               className="lw-btn"
               style={{ borderRadius: '0', background: activeTab === 'apps' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Apps
             </button>
             <button
-              onClick={() => setActiveTab('characters')}
+              onClick={() => switchTab('characters')}
               className="lw-btn"
               style={{ borderRadius: '0', background: activeTab === 'characters' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Characters
             </button>
             <button
-              onClick={() => setActiveTab('nft-contracts')}
+              onClick={() => switchTab('nft-contracts')}
               className="lw-btn"
               style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'nft-contracts' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
@@ -849,5 +859,13 @@ export default function AdminPage() {
 
       </div>
     </div>
+  )
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="lw-account-page"><p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '3rem' }}>Loading...</p></div>}>
+      <AdminContent />
+    </Suspense>
   )
 }
