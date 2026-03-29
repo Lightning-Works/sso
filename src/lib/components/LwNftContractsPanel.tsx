@@ -33,6 +33,241 @@ const CHAIN_OPTIONS = [
   'Avalanche', 'Core', 'SKALE Nebula', 'Solana', 'WAX',
 ]
 
+interface NftData {
+  id: string
+  token_id: string
+  name: string
+  image_url: string | null
+  owner: string | null
+  attributes: unknown[]
+}
+
+function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase }: {
+  contract: LwNftContract
+  syncing: boolean
+  onSync: () => void
+  onEdit: () => void
+  onDelete: () => void
+  supabase: ReturnType<typeof createClient>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [nfts, setNfts] = useState<NftData[]>([])
+  const [nftPage, setNftPage] = useState(0)
+  const [loadingNfts, setLoadingNfts] = useState(false)
+  const [totalNfts, setTotalNfts] = useState(0)
+  const PAGE_SIZE = 100
+
+  const toggleExpand = async () => {
+    if (expanded) {
+      setExpanded(false)
+      return
+    }
+    setExpanded(true)
+    if (nfts.length === 0) await loadNfts(0)
+  }
+
+  const loadNfts = async (page: number) => {
+    if (!c.id) return
+    setLoadingNfts(true)
+    setNftPage(page)
+
+    const { data, count } = await supabase
+      .from('lw_nft_data')
+      .select('id, token_id, name, image_url, owner, attributes', { count: 'exact' })
+      .eq('contract_id', c.id)
+      .order('token_id', { ascending: true })
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    setNfts((data || []) as NftData[])
+    setTotalNfts(count || 0)
+    setLoadingNfts(false)
+  }
+
+  const totalPages = Math.ceil(totalNfts / PAGE_SIZE)
+
+  return (
+    <div style={{
+      backgroundColor: 'var(--lw-wallet-row-bg)',
+      borderRadius: '8px',
+      marginBottom: '0.5rem',
+      overflow: 'hidden',
+    }}>
+      {/* Header — clickable to expand */}
+      <div
+        onClick={toggleExpand}
+        style={{
+          padding: '0.75rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '0.95rem' }}>
+              {c.collection_name || c.contract_address.slice(0, 12) + '...'}
+            </span>
+            {c.symbol && <span style={{ color: 'var(--nft-accent, #ff8800)', fontSize: '0.75rem' }}>${c.symbol}</span>}
+            <span style={{
+              backgroundColor: 'rgba(106,36,250,0.2)',
+              color: 'var(--lw-purple)',
+              fontSize: '0.65rem',
+              padding: '0.15rem 0.5rem',
+              borderRadius: '4px',
+            }}>
+              {c.chain}
+            </span>
+            {c.token_type && <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>{c.token_type}</span>}
+          </div>
+          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0', fontFamily: 'monospace' }}>
+            {c.contract_address}
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
+            {c.nft_count != null && (
+              <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>
+                {c.nft_count.toLocaleString()} NFTs cached
+              </span>
+            )}
+            {c.last_synced && (
+              <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>
+                Last sync: {new Date(c.last_synced).toLocaleString()}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSync() }}
+            disabled={syncing}
+            className="lw-btn"
+            style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#2a4a2a', color: '#34A853' }}
+          >
+            {syncing ? 'Syncing...' : 'Sync Now'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            className="lw-btn"
+            style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#3a3938', color: '#aaa' }}
+          >
+            Edit
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="lw-btn"
+            style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#3a2020', color: '#ff4444' }}
+          >
+            Delete
+          </button>
+          <span style={{
+            color: 'var(--lw-text-muted)',
+            fontSize: '0.8rem',
+            marginLeft: '0.5rem',
+            transition: 'transform 0.2s',
+            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            display: 'inline-block',
+          }}>
+            ▼
+          </span>
+        </div>
+      </div>
+
+      {/* Expanded NFT grid */}
+      {expanded && (
+        <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          {loadingNfts ? (
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>Loading NFTs...</p>
+          ) : nfts.length === 0 ? (
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>No NFTs cached. Click "Sync Now" to fetch from blockchain.</p>
+          ) : (
+            <>
+              {/* Pagination header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0 0.5rem' }}>
+                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>
+                  Showing {nftPage * PAGE_SIZE + 1}–{Math.min((nftPage + 1) * PAGE_SIZE, totalNfts)} of {totalNfts}
+                </span>
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', gap: '0.3rem' }}>
+                    <button
+                      onClick={() => loadNfts(nftPage - 1)}
+                      disabled={nftPage === 0}
+                      className="lw-btn"
+                      style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage === 0 ? '#555' : '#aaa' }}
+                    >
+                      Prev
+                    </button>
+                    <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', padding: '0 0.3rem' }}>
+                      {nftPage + 1}/{totalPages}
+                    </span>
+                    <button
+                      onClick={() => loadNfts(nftPage + 1)}
+                      disabled={nftPage >= totalPages - 1}
+                      className="lw-btn"
+                      style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage >= totalPages - 1 ? '#555' : '#aaa' }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* NFT grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                gap: '0.5rem',
+              }}>
+                {nfts.map(nft => (
+                  <div key={nft.id} style={{
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      backgroundColor: '#1a1a1c',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}>
+                      {nft.image_url ? (
+                        <img
+                          src={nft.image_url.startsWith('Qm') || nft.image_url.startsWith('bafy') ? `https://ipfs.io/ipfs/${nft.image_url}` : nft.image_url}
+                          alt={nft.name}
+                          loading="lazy"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <span style={{ color: '#555', fontSize: '0.6rem' }}>No image</span>
+                      )}
+                    </div>
+                    <div style={{ padding: '0.3rem 0.4rem' }}>
+                      <p style={{ color: 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {nft.name}
+                      </p>
+                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: '0.1rem 0 0 0' }}>
+                        #{nft.token_id}
+                      </p>
+                      {nft.owner && (
+                        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.5rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {nft.owner.slice(0, 6)}...{nft.owner.slice(-4)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function LwNftContractsPanel() {
   const [contracts, setContracts] = useState<LwNftContract[]>([])
   const [loading, setLoading] = useState(true)
@@ -359,73 +594,15 @@ export function LwNftContractsPanel() {
       )}
 
       {contracts.map(c => (
-        <div key={c.id} style={{
-          backgroundColor: 'var(--lw-wallet-row-bg)',
-          borderRadius: '8px',
-          padding: '0.75rem 1rem',
-          marginBottom: '0.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--lw-text-white)', fontWeight: 600, fontSize: '0.95rem' }}>
-                {c.collection_name || c.contract_address.slice(0, 12) + '...'}
-              </span>
-              {c.symbol && <span style={{ color: 'var(--nft-accent, #ff8800)', fontSize: '0.75rem' }}>${c.symbol}</span>}
-              <span style={{
-                backgroundColor: 'rgba(106,36,250,0.2)',
-                color: 'var(--lw-purple)',
-                fontSize: '0.65rem',
-                padding: '0.15rem 0.5rem',
-                borderRadius: '4px',
-              }}>
-                {c.chain}
-              </span>
-              {c.token_type && <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>{c.token_type}</span>}
-            </div>
-            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0', fontFamily: 'monospace' }}>
-              {c.contract_address}
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
-              {c.nft_count != null && (
-                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>
-                  {c.nft_count.toLocaleString()} NFTs cached
-                </span>
-              )}
-              {c.last_synced && (
-                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem' }}>
-                  Last sync: {new Date(c.last_synced).toLocaleString()}
-                </span>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-            <button
-              onClick={() => syncContract(c)}
-              disabled={syncing === c.id}
-              className="lw-btn"
-              style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#2a4a2a', color: '#34A853' }}
-            >
-              {syncing === c.id ? 'Syncing...' : 'Sync Now'}
-            </button>
-            <button
-              onClick={() => { setEditing(c); setShowNew(false) }}
-              className="lw-btn"
-              style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#3a3938', color: '#aaa' }}
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => deleteContract(c.id!)}
-              className="lw-btn"
-              style={{ width: 'auto', padding: '0.3rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#3a2020', color: '#ff4444' }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
+        <ContractCard
+          key={c.id}
+          contract={c}
+          syncing={syncing === c.id}
+          onSync={() => syncContract(c)}
+          onEdit={() => { setEditing(c); setShowNew(false) }}
+          onDelete={() => deleteContract(c.id!)}
+          supabase={supabase}
+        />
       ))}
     </div>
   )
