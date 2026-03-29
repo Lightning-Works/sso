@@ -73,6 +73,22 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
   const [collectionIcon, setCollectionIcon] = useState<string | null>(c.icon_url || null)
   const PAGE_SIZE = 100
 
+  // Load collection icon on mount (first NFT's image)
+  useEffect(() => {
+    if (collectionIcon || !c.id) return
+    supabase
+      .from('lw_nft_data')
+      .select('image_url')
+      .eq('contract_id', c.id)
+      .not('image_url', 'is', null)
+      .limit(1)
+      .then(({ data }) => {
+        if (data?.[0]?.image_url) {
+          setCollectionIcon(normalizeImageUrl(data[0].image_url as string))
+        }
+      })
+  }, [c.id])
+
   const toggleExpand = async () => {
     if (expanded) {
       setExpanded(false)
@@ -156,11 +172,12 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
       <div
         onClick={toggleExpand}
         style={{
-          padding: '0.75rem 1rem',
+          padding: '5px',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'stretch',
           justifyContent: 'space-between',
           cursor: 'pointer',
+          minHeight: '60px',
         }}
       >
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -168,7 +185,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
             <img
               src={collectionIcon}
               alt=""
-              style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0, margin: '-0.75rem 0 -0.75rem -0.75rem', padding: '5px' }}
+              style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
               onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           )}
