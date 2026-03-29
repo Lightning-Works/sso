@@ -333,3 +333,104 @@ export async function syncContract(contractId: number): Promise<{ nft_count: num
 
   return { nft_count: nfts.length }
 }
+
+// ── Chunked sync for large collections ──
+
+export async function syncContractChunk(
+  contractId: number,
+  chunk: number,
+  chunkSize: number = 500,
+): Promise<{ nft_count: number; total_ids: number; chunk: number; done: boolean }> {
+  const supabase = getServiceSupabase()
+
+  const { data: contract } = await supabase.from('lw_nft_contracts').select('*').eq('id', contractId).single()
+  if (!contract) throw new Error('Contract not found')
+
+  const chain = contract.chain as string
+
+  // Non-EVM: use full sync (WAX/Solana are fast enough)
+  if (chain === 'WAX' || chain === 'Solana' || chain.includes('Solana')) {
+    const result = await syncContract(contractId)
+    return { ...result, total_ids: result.nft_count, chunk: 0, done: true }
+  }
+
+  const rpcs = getChainRpcs(chain)
+  const alchemyUrl = getAlchemyNftUrl(chain)
+
+  // On first chunk, get all token IDs and store them
+  if (chunk === 0) {
+    // Clear old data
+    await supabase.from('lw_nft_data').delete().eq('contract_id', contractId)
+  }
+
+  // Get all token IDs
+  let tokenIds = await getTokenIds(alchemyUrl, contract.contract_address)
+  if (tokenIds.length === 0) return { nft_count: 0, total_ids: 0, chunk, done: true }
+
+  // Filter burned
+  const burnedIds = await getBurnedIds(alchemyUrl, contract.contract_address)
+  const liveIds = tokenIds.filter(id => !burnedIds.has(id))
+
+  // Get this chunk's slice
+  const start = chunk * chunkSize
+  const end = start + chunkSize
+  const chunkIds = liveIds.slice(start, end)
+  const isDone = end >= liveIds.length
+
+  if (chunkIds.length === 0) {
+    await supabase.from('lw_nft_contracts').update({ last_synced: new Date().toISOString(), nft_count: liveIds.length }).eq('id', contractId)
+    return { nft_count: 0, total_ids: liveIds.length, chunk, done: true }
+  }
+
+  // Fetch metadata for this chunk
+  const nfts: Record<string, unknown>[] = []
+  const BATCH = 20
+
+  for (let i = 0; i < chunkIds.length; i += BATCH) {
+    const batch = chunkIds.slice(i, i + BATCH)
+    const results = await Promise.all(batch.map(async (tokenId) => {
+      const uri = await fetchTokenUri(rpcs, contract.contract_address, parseInt(tokenId, 10))
+      if (!uri) return null
+      const meta = await fetchMetadata(uri)
+      if (!meta) return null
+      return {
+        token_id: tokenId,
+        name: meta.name || `#${tokenId}`,
+        description: meta.description || null,
+        image_url: normalizeUrl(meta.image as string | null),
+        animation_url: normalizeUrl(meta.animation_url as string | null),
+        attributes: meta.attributes || [],
+        owner: null,
+      }
+    }))
+    for (const r of results) if (r) nfts.push(r)
+  }
+
+  // Insert this chunk
+  if (nfts.length > 0) {
+    const rows = nfts.map(n => ({
+      contract_id: contractId,
+      token_id: String(n.token_id || ''),
+      name: String(n.name || ''),
+      description: (n.description || null) as string | null,
+      image_url: (n.image_url || null) as string | null,
+      animation_url: (n.animation_url || null) as string | null,
+      attributes: n.attributes || [],
+      owner: (n.owner || null) as string | null,
+      extra_data: n,
+    }))
+    for (let i = 0; i < rows.length; i += 50) {
+      const { error } = await supabase.from('lw_nft_data').insert(rows.slice(i, i + 50))
+      if (error) throw new Error(`Batch insert failed: ${error.message}`)
+    }
+  }
+
+  // Update contract
+  const { count: totalCached } = await supabase.from('lw_nft_data').select('id', { count: 'exact', head: true }).eq('contract_id', contractId)
+  await supabase.from('lw_nft_contracts').update({
+    last_synced: new Date().toISOString(),
+    nft_count: totalCached || nfts.length,
+  }).eq('id', contractId)
+
+  return { nft_count: nfts.length, total_ids: liveIds.length, chunk, done: isDone }
+}

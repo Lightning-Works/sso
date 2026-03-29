@@ -80,6 +80,66 @@ interface NftData {
   attributes: { trait_type?: string; value?: unknown }[]
 }
 
+function Pagination({ page, totalPages, totalItems, pageSize, onPageChange }: {
+  page: number; totalPages: number; totalItems: number; pageSize: number; onPageChange: (p: number) => void
+}) {
+  if (totalPages <= 1) return null
+
+  // Generate visible page numbers (show max 7 pages with ellipsis)
+  const pages: (number | '...')[] = []
+  if (totalPages <= 7) {
+    for (let i = 0; i < totalPages; i++) pages.push(i)
+  } else {
+    pages.push(0)
+    if (page > 3) pages.push('...')
+    for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i)
+    if (page < totalPages - 4) pages.push('...')
+    pages.push(totalPages - 1)
+  }
+
+  const btnStyle = (active: boolean, disabled: boolean) => ({
+    width: 'auto' as const,
+    padding: '0.2rem 0.5rem',
+    fontSize: '0.7rem',
+    backgroundColor: active ? 'var(--lw-purple, #6a24fa)' : '#3a3938',
+    color: active ? '#fff' : disabled ? '#555' : '#aaa',
+    minWidth: '28px',
+    textAlign: 'center' as const,
+    cursor: disabled ? 'default' : 'pointer',
+  })
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0' }}>
+      <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>
+        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalItems)} of {totalItems.toLocaleString()}
+      </span>
+      <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'center' }}>
+        <button onClick={() => onPageChange(0)} disabled={page === 0} className="lw-btn" style={btnStyle(false, page === 0)}>
+          &#171;
+        </button>
+        <button onClick={() => onPageChange(page - 1)} disabled={page === 0} className="lw-btn" style={btnStyle(false, page === 0)}>
+          &#8249;
+        </button>
+        {pages.map((p, i) =>
+          p === '...' ? (
+            <span key={`e${i}`} style={{ color: '#555', fontSize: '0.7rem', padding: '0 0.15rem' }}>...</span>
+          ) : (
+            <button key={p} onClick={() => onPageChange(p)} className="lw-btn" style={btnStyle(p === page, false)}>
+              {p + 1}
+            </button>
+          )
+        )}
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages - 1} className="lw-btn" style={btnStyle(false, page >= totalPages - 1)}>
+          &#8250;
+        </button>
+        <button onClick={() => onPageChange(totalPages - 1)} disabled={page >= totalPages - 1} className="lw-btn" style={btnStyle(false, page >= totalPages - 1)}>
+          &#187;
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase }: {
   contract: LwNftContract
   syncing: boolean
@@ -129,15 +189,25 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
     setLoadError('')
     setNftPage(page)
 
-    // Fetch ALL token IDs to sort numerically, then pick the page
-    const { data: allIds, error: idsError } = await supabase
-      .from('lw_nft_data')
-      .select('id, token_id')
-      .eq('contract_id', c.id)
+    // Fetch ALL token IDs (paginated to bypass Supabase 1000 row limit)
+    const allIds: { id: string; token_id: string }[] = []
+    let from = 0
+    const FETCH_SIZE = 1000
+    while (true) {
+      const { data: batch, error: batchErr } = await supabase
+        .from('lw_nft_data')
+        .select('id, token_id')
+        .eq('contract_id', c.id)
+        .range(from, from + FETCH_SIZE - 1)
+      if (batchErr || !batch || batch.length === 0) break
+      allIds.push(...batch)
+      if (batch.length < FETCH_SIZE) break
+      from += FETCH_SIZE
+    }
 
-    if (idsError || !allIds) {
-      setLoadError(`Failed to load: ${idsError?.message || 'unknown error'}`)
+    if (allIds.length === 0) {
       setNfts([])
+      setTotalNfts(0)
       setLoadingNfts(false)
       return
     }
@@ -295,35 +365,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>No NFTs cached. Click &quot;Sync Now&quot; to fetch from blockchain.</p>
           ) : (
             <>
-              {/* Pagination header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0 0.5rem' }}>
-                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>
-                  Showing {nftPage * PAGE_SIZE + 1}–{Math.min((nftPage + 1) * PAGE_SIZE, totalNfts)} of {totalNfts}
-                </span>
-                {totalPages > 1 && (
-                  <div style={{ display: 'flex', gap: '0.3rem' }}>
-                    <button
-                      onClick={() => loadNfts(nftPage - 1)}
-                      disabled={nftPage === 0}
-                      className="lw-btn"
-                      style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage === 0 ? '#555' : '#aaa' }}
-                    >
-                      Prev
-                    </button>
-                    <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', padding: '0 0.3rem' }}>
-                      {nftPage + 1}/{totalPages}
-                    </span>
-                    <button
-                      onClick={() => loadNfts(nftPage + 1)}
-                      disabled={nftPage >= totalPages - 1}
-                      className="lw-btn"
-                      style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage >= totalPages - 1 ? '#555' : '#aaa' }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </div>
+              <Pagination page={nftPage} totalPages={totalPages} totalItems={totalNfts} pageSize={PAGE_SIZE} onPageChange={loadNfts} />
 
               {/* NFT grid */}
               <div style={{
@@ -396,30 +438,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                 })}
               </div>
 
-              {/* Bottom pagination */}
-              {totalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0.5rem 0 0', gap: '0.3rem' }}>
-                  <button
-                    onClick={() => loadNfts(nftPage - 1)}
-                    disabled={nftPage === 0}
-                    className="lw-btn"
-                    style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage === 0 ? '#555' : '#aaa' }}
-                  >
-                    Prev
-                  </button>
-                  <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', padding: '0 0.3rem' }}>
-                    {nftPage + 1}/{totalPages}
-                  </span>
-                  <button
-                    onClick={() => loadNfts(nftPage + 1)}
-                    disabled={nftPage >= totalPages - 1}
-                    className="lw-btn"
-                    style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem', backgroundColor: '#3a3938', color: nftPage >= totalPages - 1 ? '#555' : '#aaa' }}
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
+              <Pagination page={nftPage} totalPages={totalPages} totalItems={totalNfts} pageSize={PAGE_SIZE} onPageChange={loadNfts} />
             </>
           )}
         </div>
@@ -586,19 +605,37 @@ export function LwNftContractsPanel() {
   const syncContract = async (contract: LwNftContract) => {
     if (!contract.id) return
     setSyncing(contract.id)
+
     try {
+      // First try full sync
       const res = await fetch('/api/admin/sync-lw-nfts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contract_id: contract.id }),
+        body: JSON.stringify({ contract_id: contract.id, chunk: 0, chunk_size: 500 }),
       })
       const data = await res.json()
-      if (data.error) {
-        showMsg(`Sync error: ${data.error}`, 'error')
-      } else {
-        showMsg(`Synced ${data.nft_count} NFTs for ${contract.collection_name || contract.contract_address}`)
-        loadContracts()
+      if (data.error) { showMsg(`Sync error: ${data.error}`, 'error'); setSyncing(null); return }
+
+      let totalSynced = data.nft_count
+      let chunk = 1
+
+      // If not done, keep syncing chunks
+      while (!data.done && chunk < 50) {
+        showMsg(`Syncing... chunk ${chunk + 1} (${totalSynced} so far of ~${data.total_ids})`)
+        const chunkRes = await fetch('/api/admin/sync-lw-nfts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contract_id: contract.id, chunk, chunk_size: 500 }),
+        })
+        const chunkData = await chunkRes.json()
+        if (chunkData.error) { showMsg(`Sync error at chunk ${chunk}: ${chunkData.error}`, 'error'); break }
+        totalSynced += chunkData.nft_count
+        if (chunkData.done) break
+        chunk++
       }
+
+      showMsg(`Synced ${totalSynced} NFTs for ${contract.collection_name || contract.contract_address}`)
+      loadContracts()
     } catch (e) {
       showMsg(`Sync failed: ${(e as Error).message}`, 'error')
     }
