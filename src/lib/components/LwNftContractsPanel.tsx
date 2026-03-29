@@ -88,45 +88,55 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
     setLoadError('')
     setNftPage(page)
 
-    // Fetch all and sort numerically client-side (token_id is text in DB)
-    // For pagination we use the full count but only display the page
-    const { count: totalCount, error: countError } = await supabase
+    // Fetch ALL token IDs to sort numerically, then pick the page
+    const { data: allIds, error: idsError } = await supabase
       .from('lw_nft_data')
-      .select('id', { count: 'exact', head: true })
+      .select('id, token_id')
       .eq('contract_id', c.id)
 
-    if (countError) {
-      setLoadError(`Failed to load: ${countError.message}`)
+    if (idsError || !allIds) {
+      setLoadError(`Failed to load: ${idsError?.message || 'unknown error'}`)
       setNfts([])
       setLoadingNfts(false)
       return
     }
 
-    setTotalNfts(totalCount || 0)
+    // Sort all IDs numerically
+    allIds.sort((a, b) => {
+      const aNum = parseInt(a.token_id, 10)
+      const bNum = parseInt(b.token_id, 10)
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum
+      return a.token_id.localeCompare(b.token_id)
+    })
 
-    // Fetch the page with raw ordering, then sort client-side
+    setTotalNfts(allIds.length)
+
+    // Get the IDs for this page
+    const pageIds = allIds.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(r => r.id)
+
+    if (pageIds.length === 0) {
+      setNfts([])
+      setLoadingNfts(false)
+      return
+    }
+
+    // Fetch full data for just this page's IDs
     const { data, error } = await supabase
       .from('lw_nft_data')
       .select('id, token_id, name, description, image_url, animation_url, owner, attributes')
-      .eq('contract_id', c.id)
-      .order('token_id', { ascending: true })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+      .in('id', pageIds)
 
     if (error) {
       setLoadError(`Failed to load: ${error.message}`)
       setNfts([])
     } else {
-      // Sort numerically by token_id
-      const sorted = ((data || []) as NftData[]).sort((a, b) => {
-        const aNum = parseInt(a.token_id, 10)
-        const bNum = parseInt(b.token_id, 10)
-        if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum
-        return a.token_id.localeCompare(b.token_id)
-      })
+      // Sort by the order from allIds
+      const idOrder = new Map(pageIds.map((id, i) => [id, i]))
+      const sorted = ((data || []) as NftData[]).sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0))
       setNfts(sorted)
 
       // Use first NFT's image as collection icon if none set
-      if (!collectionIcon && sorted.length > 0 && sorted[0].image_url) {
+      if (!collectionIcon && page === 0 && sorted.length > 0 && sorted[0].image_url) {
         setCollectionIcon(normalizeImageUrl(sorted[0].image_url))
       }
     }
