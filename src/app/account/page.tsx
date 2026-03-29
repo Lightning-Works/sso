@@ -8,6 +8,7 @@ import { WalletConnectPanel } from '@/lib/wallets/WalletConnectPanel'
 import type { ConnectedWallet } from '@/lib/wallets/types'
 import { shortenAddress } from '@/lib/wallets/types'
 import { UserImageCircle } from '@/lib/components/UserImageCircle'
+import { LwWalletPanel } from '@/lib/components/LwWalletPanel'
 import { logAuth, logProfile } from '@/lib/audit'
 
 export default function AccountPage() {
@@ -527,6 +528,11 @@ export default function AccountPage() {
             <span className="lw-footer-text">Coming Soon</span>
           </div>
         </div>
+
+        {/* LightningWorks Wallet */}
+        {savedWallets.length > 0 && (
+          <LwWalletPanel walletAddresses={savedWallets.map(w => w.address)} />
+        )}
 
         {/* Security */}
         <div className="lw-section">
