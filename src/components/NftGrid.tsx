@@ -765,13 +765,16 @@ export function NftGrid({
                 )}
               </div>
               <div className="nft-card-info" style={isUltraRare(nft) ? { color: '#111' } : {}}>
-                <p className="nft-card-name" style={isUltraRare(nft) ? { color: '#111', fontWeight: 700 } : {}}>{nft.name}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <p className="nft-card-name" style={{ ...(isUltraRare(nft) ? { color: '#111', fontWeight: 700 } : {}), flex: 1, minWidth: 0 }}>{nft.name}</p>
+                  {isUltraRare(nft) && (
+                    <span style={{ color: '#b8860b', fontSize: 'var(--nft-card-meta-size, 0.6rem)', fontWeight: 700, flexShrink: 0, marginLeft: '0.25rem' }}>UR</span>
+                  )}
+                </div>
                 <p className="nft-card-collection" style={isUltraRare(nft) ? { color: '#555' } : {}}>{nft.collection}</p>
-                {isUltraRare(nft) ? (
-                  <p className="nft-card-rarity" style={{ color: '#b8860b', fontWeight: 700 }}>ULTRA RARE</p>
-                ) : nft.rarity ? (() => {
+                {nft.rarity ? (() => {
                   const rs = getRarityStyle(nft.rarity)
-                  return <p className="nft-card-rarity" style={{ color: rs.color }}>{nft.rarity}</p>
+                  return <p className="nft-card-rarity" style={{ color: isUltraRare(nft) ? rs.color : rs.color }}>{nft.rarity}</p>
                 })() : null}
                 {nft.mintNumber && nft.maxSupply && nft.maxSupply !== '0' && (
                   <p className="nft-card-mint">Mint #{nft.mintNumber} / {nft.maxSupply}</p>

@@ -436,18 +436,19 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                       )}
                     </div>
                     <div style={{ padding: '0.3rem 0.4rem' }}>
-                      <p style={{ color: ur ? '#111' : 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: ur ? 700 : 400 }}>
-                        {nft.name}
-                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <p style={{ color: ur ? '#111' : 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: ur ? 700 : 400, flex: 1, minWidth: 0 }}>
+                          {nft.name}
+                        </p>
+                        {ur && (
+                          <span style={{ color: '#b8860b', fontSize: '0.5rem', fontWeight: 700, flexShrink: 0, marginLeft: '0.2rem' }}>UR</span>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: ur ? '#555' : 'var(--lw-text-muted)', fontSize: '0.55rem' }}>
                           #{nft.token_id}
                         </span>
-                        {ur ? (
-                          <span style={{ color: '#b8860b', fontSize: '0.5rem', fontWeight: 700 }}>
-                            ULTRA RARE
-                          </span>
-                        ) : rarity && (
+                        {rarity && (
                           <span style={{ color: rs!.color, fontSize: '0.5rem', fontWeight: 600, textTransform: 'capitalize' }}>
                             {rarity}
                           </span>
