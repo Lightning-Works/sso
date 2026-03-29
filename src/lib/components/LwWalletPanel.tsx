@@ -126,21 +126,79 @@ export function LwWalletPanel({ walletAddresses }: LwWalletPanelProps) {
         .order('collection_name')
       if (!allContracts) { setLoading(false); return }
 
-      // For each contract, check if user owns any NFTs
-      const lowerAddresses = walletAddresses.map(a => a.toLowerCase())
+      // For each EVM address, get owned NFTs from Alchemy filtered by LW contracts
       const owned: Record<number, LwNft[]> = {}
       const contractsWithNfts: LwContract[] = []
 
-      for (const contract of allContracts) {
-        const { data: nfts } = await supabase
-          .from('lw_nft_data')
-          .select('id, contract_id, token_id, name, description, image_url, animation_url, attributes, owner')
-          .eq('contract_id', contract.id)
-          .in('owner', lowerAddresses)
-          .order('token_id')
+      // Get owned token IDs from blockchain for each wallet + contract combo
+      const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
+      const chainAlchemy: Record<string, string> = {
+        Polygon: `https://polygon-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+        Ethereum: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+        Base: `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
+      }
 
-        if (nfts && nfts.length > 0) {
-          owned[contract.id] = nfts as LwNft[]
+      for (const contract of allContracts) {
+        const alchemyUrl = chainAlchemy[contract.chain as string]
+        const ownedTokenIds: Set<string> = new Set()
+
+        if (alchemyUrl) {
+          // Use Alchemy to get owned tokens for this contract
+          for (const addr of walletAddresses) {
+            try {
+              let pageKey = ''
+              do {
+                const params = new URLSearchParams({
+                  owner: addr,
+                  'contractAddresses[]': contract.contract_address as string,
+                  withMetadata: 'false',
+                  pageSize: '100',
+                })
+                if (pageKey) params.set('pageKey', pageKey)
+                const res = await fetch(`${alchemyUrl}/getNFTsForOwner?${params}`)
+                if (!res.ok) break
+                const data = await res.json()
+                for (const nft of data.ownedNfts || []) {
+                  ownedTokenIds.add(nft.tokenId)
+                }
+                pageKey = data.pageKey || ''
+              } while (pageKey)
+            } catch { /* skip */ }
+          }
+        } else {
+          // For non-Alchemy chains, try matching owner field in cache
+          const lowerAddresses = walletAddresses.map(a => a.toLowerCase())
+          const { data: ownerMatches } = await supabase
+            .from('lw_nft_data')
+            .select('token_id')
+            .eq('contract_id', contract.id)
+            .in('owner', lowerAddresses)
+          if (ownerMatches) {
+            ownerMatches.forEach(m => ownedTokenIds.add(m.token_id))
+          }
+        }
+
+        if (ownedTokenIds.size === 0) continue
+
+        // Fetch full data for owned tokens from cache
+        const tokenIdArray = [...ownedTokenIds]
+        const allNfts: LwNft[] = []
+
+        // Fetch in batches (Supabase .in() has limits)
+        for (let i = 0; i < tokenIdArray.length; i += 50) {
+          const batch = tokenIdArray.slice(i, i + 50)
+          const { data: nfts } = await supabase
+            .from('lw_nft_data')
+            .select('id, contract_id, token_id, name, description, image_url, animation_url, attributes, owner')
+            .eq('contract_id', contract.id)
+            .in('token_id', batch)
+          if (nfts) allNfts.push(...(nfts as LwNft[]))
+        }
+
+        if (allNfts.length > 0) {
+          // Sort numerically
+          allNfts.sort((a, b) => parseInt(a.token_id) - parseInt(b.token_id))
+          owned[contract.id] = allNfts
           contractsWithNfts.push(contract as LwContract)
         }
       }
