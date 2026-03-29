@@ -209,15 +209,16 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
     setLoadError('')
     setNftPage(page)
 
-    // Fetch ALL token IDs (paginated to bypass Supabase 1000 row limit)
+    // Fetch ALL token IDs (paginated to bypass Supabase row limit)
     const allIds: { id: string; token_id: string }[] = []
     let from = 0
-    const FETCH_SIZE = 1000
-    while (true) {
+    const FETCH_SIZE = 500 // Stay well under Supabase's default 1000 row limit
+    while (from < 100000) { // Safety cap
       const { data: batch, error: batchErr } = await supabase
         .from('lw_nft_data')
         .select('id, token_id')
         .eq('contract_id', c.id)
+        .order('id')
         .range(from, from + FETCH_SIZE - 1)
       if (batchErr || !batch || batch.length === 0) break
       allIds.push(...batch)
