@@ -3,17 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
-function getRarityStyle(rarity: string): { color: string; glow?: string } {
+function getRarityStyle(rarity: string): { color: string; border?: string; glow?: string } {
   const r = rarity.toLowerCase().trim()
-  if (r === 'common') return { color: '#c4a84a' }
-  if (r === 'uncommon') return { color: '#4CAF50' }
-  if (r === 'rare') return { color: '#4a9eff' }
-  if (r === 'epic') return { color: '#a855f7' }
-  if (r === 'legendary') return { color: '#ef4444' }
-  if (r === 'divine') return { color: '#e0e0e0', glow: '0 0 6px 2px rgba(224,224,224,0.6)' }
-  if (r === 'mystic') return { color: '#ff4eda', glow: '0 0 6px 2px rgba(255,78,218,0.6)' }
-  if (r === 'rainbow') return { color: '#ff4444', glow: '0 0 4px 1px #ff4444, 0 0 4px 1px #ffaa00, 0 0 4px 1px #44ff44, 0 0 4px 1px #4444ff' }
-  if (r === 'apocalyptic') return { color: '#ff6600', glow: '0 0 6px 2px rgba(255,102,0,0.7), 0 0 12px 4px rgba(255,50,0,0.4)' }
+  if (r === 'common') return { color: '#c4a84a', border: '1px solid rgba(196,168,74,0.4)' }
+  if (r === 'uncommon') return { color: '#4CAF50', border: '1px solid rgba(76,175,80,0.4)' }
+  if (r === 'rare') return { color: '#4a9eff', border: '1px solid rgba(74,158,255,0.4)' }
+  if (r === 'epic') return { color: '#a855f7', border: '1px solid rgba(168,85,247,0.5)' }
+  if (r === 'legendary') return { color: '#ef4444', border: '1px solid rgba(239,68,68,0.5)' }
+  if (r === 'divine') return { color: '#e0e0e0', border: '1px solid rgba(224,224,224,0.6)', glow: '0 0 8px 2px rgba(224,224,224,0.5)' }
+  if (r === 'mystic') return { color: '#ff4eda', border: '1px solid rgba(255,78,218,0.6)', glow: '0 0 8px 2px rgba(255,78,218,0.5)' }
+  if (r === 'rainbow') return { color: '#ff4444', border: '1px solid rgba(255,200,0,0.5)', glow: '0 0 4px 1px #ff4444, 0 0 6px 2px #ffaa00, 0 0 4px 1px #44ff44, 0 0 6px 2px #4444ff' }
+  if (r === 'apocalyptic') return { color: '#ff6600', border: '1px solid rgba(255,102,0,0.6)', glow: '0 0 8px 3px rgba(255,102,0,0.6), 0 0 16px 6px rgba(255,50,0,0.3)' }
   return { color: 'var(--nft-accent, #ff8800)' }
 }
 
@@ -701,7 +701,10 @@ export function NftGrid({
               onContextMenu={(e) => handleContextMenu(e, nft)}
               style={nft.rarity ? (() => {
                 const rs = getRarityStyle(nft.rarity!)
-                return rs.glow ? { boxShadow: rs.glow } : {}
+                return {
+                  ...(rs.border ? { border: rs.border } : {}),
+                  ...(rs.glow ? { boxShadow: rs.glow } : {}),
+                }
               })() : {}}
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}

@@ -31,6 +31,31 @@ interface LookupResult {
   icon_url?: string | null
 }
 
+function getRarityFromAttrs(attrs: { trait_type?: string; value?: unknown }[] | undefined): string | null {
+  if (!attrs) return null
+  for (const a of attrs) {
+    const key = (a.trait_type || '').toLowerCase()
+    if (key === 'rarity' || key === 'tier' || key === 'grade') {
+      return String(a.value || '')
+    }
+  }
+  return null
+}
+
+function getRarityStyle(rarity: string): { color: string; glow?: string; border?: string } {
+  const r = rarity.toLowerCase().trim()
+  if (r === 'common') return { color: '#c4a84a', border: '1px solid rgba(196,168,74,0.4)' }
+  if (r === 'uncommon') return { color: '#4CAF50', border: '1px solid rgba(76,175,80,0.4)' }
+  if (r === 'rare') return { color: '#4a9eff', border: '1px solid rgba(74,158,255,0.4)' }
+  if (r === 'epic') return { color: '#a855f7', border: '1px solid rgba(168,85,247,0.5)' }
+  if (r === 'legendary') return { color: '#ef4444', border: '1px solid rgba(239,68,68,0.5)' }
+  if (r === 'divine') return { color: '#e0e0e0', border: '1px solid rgba(224,224,224,0.6)', glow: '0 0 8px 2px rgba(224,224,224,0.5)' }
+  if (r === 'mystic') return { color: '#ff4eda', border: '1px solid rgba(255,78,218,0.6)', glow: '0 0 8px 2px rgba(255,78,218,0.5)' }
+  if (r === 'rainbow') return { color: '#ff4444', border: '1px solid rgba(255,200,0,0.5)', glow: '0 0 4px 1px #ff4444, 0 0 6px 2px #ffaa00, 0 0 4px 1px #44ff44, 0 0 6px 2px #4444ff' }
+  if (r === 'apocalyptic') return { color: '#ff6600', border: '1px solid rgba(255,102,0,0.6)', glow: '0 0 8px 3px rgba(255,102,0,0.6), 0 0 16px 6px rgba(255,50,0,0.3)' }
+  return { color: 'var(--lw-text-muted)' }
+}
+
 function normalizeImageUrl(url: string | null | undefined): string | null {
   if (!url) return null
   if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/')
@@ -306,7 +331,10 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                 gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
                 gap: '0.5rem',
               }}>
-                {nfts.map(nft => (
+                {nfts.map(nft => {
+                  const rarity = getRarityFromAttrs(nft.attributes)
+                  const rs = rarity ? getRarityStyle(rarity) : null
+                  return (
                   <div
                     key={nft.id}
                     onClick={() => setSelectedNft(nft)}
@@ -316,6 +344,8 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                       overflow: 'hidden',
                       cursor: 'pointer',
                       transition: 'transform 0.15s',
+                      border: rs?.border || '1px solid transparent',
+                      boxShadow: rs?.glow || 'none',
                     }}
                     onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'}
                     onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -345,9 +375,16 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                       <p style={{ color: 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {nft.name}
                       </p>
-                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem', margin: '0.1rem 0 0 0' }}>
-                        #{nft.token_id}
-                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem' }}>
+                          #{nft.token_id}
+                        </span>
+                        {rarity && (
+                          <span style={{ color: rs!.color, fontSize: '0.5rem', fontWeight: 600, textTransform: 'capitalize' }}>
+                            {rarity}
+                          </span>
+                        )}
+                      </div>
                       {nft.owner && (
                         <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.5rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {nft.owner.slice(0, 6)}...{nft.owner.slice(-4)}
@@ -355,7 +392,8 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Bottom pagination */}
