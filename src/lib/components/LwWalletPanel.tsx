@@ -113,102 +113,34 @@ export function LwWalletPanel({ walletAddresses }: LwWalletPanelProps) {
     })
   }
 
-  // Load contracts and user's NFTs
+  // Load contracts and user's NFTs via server-side API
   useEffect(() => {
     if (walletAddresses.length === 0) return
     const load = async () => {
       setLoading(true)
+      try {
+        const res = await fetch('/api/lw-wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: walletAddresses }),
+        })
+        if (!res.ok) { setLoading(false); return }
+        const data = await res.json()
 
-      // Get all LW contracts
-      const { data: allContracts } = await supabase
-        .from('lw_nft_contracts')
-        .select('id, chain, contract_address, collection_name, symbol, token_type, icon_url, nft_count')
-        .order('collection_name')
-      if (!allContracts) { setLoading(false); return }
-
-      // For each EVM address, get owned NFTs from Alchemy filtered by LW contracts
-      const owned: Record<number, LwNft[]> = {}
-      const contractsWithNfts: LwContract[] = []
-
-      // Get owned token IDs from blockchain for each wallet + contract combo
-      const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
-      const chainAlchemy: Record<string, string> = {
-        Polygon: `https://polygon-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
-        Ethereum: `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
-        Base: `https://base-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_KEY}`,
-      }
-
-      for (const contract of allContracts) {
-        const alchemyUrl = chainAlchemy[contract.chain as string]
-        const ownedTokenIds: Set<string> = new Set()
-
-        if (alchemyUrl) {
-          // Use Alchemy to get owned tokens for this contract
-          for (const addr of walletAddresses) {
-            try {
-              let pageKey = ''
-              do {
-                const params = new URLSearchParams({
-                  owner: addr,
-                  'contractAddresses[]': contract.contract_address as string,
-                  withMetadata: 'false',
-                  pageSize: '100',
-                })
-                if (pageKey) params.set('pageKey', pageKey)
-                const res = await fetch(`${alchemyUrl}/getNFTsForOwner?${params}`)
-                if (!res.ok) break
-                const data = await res.json()
-                for (const nft of data.ownedNfts || []) {
-                  ownedTokenIds.add(nft.tokenId)
-                }
-                pageKey = data.pageKey || ''
-              } while (pageKey)
-            } catch { /* skip */ }
-          }
-        } else {
-          // For non-Alchemy chains, try matching owner field in cache
-          const lowerAddresses = walletAddresses.map(a => a.toLowerCase())
-          const { data: ownerMatches } = await supabase
-            .from('lw_nft_data')
-            .select('token_id')
-            .eq('contract_id', contract.id)
-            .in('owner', lowerAddresses)
-          if (ownerMatches) {
-            ownerMatches.forEach(m => ownedTokenIds.add(m.token_id))
-          }
+        const contractList = (data.contracts || []) as LwContract[]
+        const nftMap: Record<number, LwNft[]> = {}
+        for (const [contractId, nfts] of Object.entries(data.nfts || {})) {
+          const sorted = (nfts as LwNft[]).sort((a, b) => parseInt(a.token_id) - parseInt(b.token_id))
+          nftMap[parseInt(contractId)] = sorted
         }
 
-        if (ownedTokenIds.size === 0) continue
-
-        // Fetch full data for owned tokens from cache
-        const tokenIdArray = [...ownedTokenIds]
-        const allNfts: LwNft[] = []
-
-        // Fetch in batches (Supabase .in() has limits)
-        for (let i = 0; i < tokenIdArray.length; i += 50) {
-          const batch = tokenIdArray.slice(i, i + 50)
-          const { data: nfts } = await supabase
-            .from('lw_nft_data')
-            .select('id, contract_id, token_id, name, description, image_url, animation_url, attributes, owner')
-            .eq('contract_id', contract.id)
-            .in('token_id', batch)
-          if (nfts) allNfts.push(...(nfts as LwNft[]))
-        }
-
-        if (allNfts.length > 0) {
-          // Sort numerically
-          allNfts.sort((a, b) => parseInt(a.token_id) - parseInt(b.token_id))
-          owned[contract.id] = allNfts
-          contractsWithNfts.push(contract as LwContract)
-        }
-      }
-
-      setContracts(contractsWithNfts)
-      setUserNfts(owned)
+        setContracts(contractList)
+        setUserNfts(nftMap)
+      } catch { /* silent */ }
       setLoading(false)
     }
     load()
-  }, [walletAddresses, supabase])
+  }, [walletAddresses])
 
   const handleForgeSelect = (nft: LwNft) => {
     if (!forgeMode) return
@@ -321,7 +253,12 @@ export function LwWalletPanel({ walletAddresses }: LwWalletPanelProps) {
   }
 
   if (contracts.length === 0) {
-    return null // Don't show section if user has no LW NFTs
+    return (
+      <div className="lw-section">
+        <h2 className="lw-section-title">LightningWorks Wallet</h2>
+        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No LightningWorks NFTs found in your connected wallets.</p>
+      </div>
+    )
   }
 
   return (
