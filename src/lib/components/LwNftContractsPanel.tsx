@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 
@@ -175,8 +175,25 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
   const [loadError, setLoadError] = useState('')
   const [totalNfts, setTotalNfts] = useState(0)
   const [selectedNft, setSelectedNft] = useState<NftData | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [fsZoom, setFsZoom] = useState(1)
+  const [fsPan, setFsPan] = useState({ x: 0, y: 0 })
+  const [fsDragging, setFsDragging] = useState(false)
+  const fsDragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
   const [collectionIcon, setCollectionIcon] = useState<string | null>(c.icon_url || null)
   const PAGE_SIZE = 100
+
+  // Fullscreen keyboard handler
+  useEffect(() => {
+    if (!fullscreen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Enter') { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }
+      if (e.key === '+' || e.key === '=') setFsZoom(z => Math.min(z + 0.1, 5))
+      if (e.key === '-') setFsZoom(z => Math.max(z - 0.1, 0.5))
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [fullscreen])
 
   // Load collection icon on mount (first NFT's image)
   useEffect(() => {
@@ -508,7 +525,18 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
               {selectedNft.animation_url && isVideoUrl(selectedNft.animation_url) ? (
                 <video src={normalizeImageUrl(selectedNft.animation_url)!} poster={normalizeImageUrl(selectedNft.image_url) || undefined} autoPlay loop muted playsInline controls style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
               ) : selectedNft.image_url ? (
-                <img src={normalizeImageUrl(selectedNft.image_url)!} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
+                <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '400px' }}>
+                  <img src={normalizeImageUrl(selectedNft.image_url)!} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', display: 'block' }} />
+                  <button
+                    onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+                    style={{
+                      position: 'absolute', bottom: '6px', right: '6px',
+                      background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#ccc', borderRadius: '4px', padding: '0.2rem 0.5rem',
+                      fontSize: '0.75rem', cursor: 'pointer',
+                    }}
+                  >[+]</button>
+                </span>
               ) : (
                 <div style={{ padding: '4rem', color: '#555' }}>No image</div>
               )}
@@ -556,6 +584,70 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
               )}
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Fullscreen Image Viewer */}
+      {fullscreen && selectedNft?.image_url && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.97), rgba(5, 3, 20, 0.98) 60%, rgba(2, 1, 10, 0.99))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden', cursor: fsDragging ? 'grabbing' : 'grab',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              const dist = Math.abs(e.clientX - fsDragStart.current.x) + Math.abs(e.clientY - fsDragStart.current.y)
+              if (dist < 5) { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }
+            }
+          }}
+          onMouseDown={(e) => {
+            setFsDragging(true)
+            fsDragStart.current = { x: e.clientX, y: e.clientY, panX: fsPan.x, panY: fsPan.y }
+          }}
+          onMouseMove={(e) => {
+            if (!fsDragging) return
+            setFsPan({ x: fsDragStart.current.panX + (e.clientX - fsDragStart.current.x), y: fsDragStart.current.panY + (e.clientY - fsDragStart.current.y) })
+          }}
+          onMouseUp={() => setFsDragging(false)}
+          onMouseLeave={() => setFsDragging(false)}
+          onWheel={(e) => { e.preventDefault(); setFsZoom(z => Math.round(Math.min(Math.max(z + (e.deltaY < 0 ? 0.03 : -0.03), 0.5), 5) * 100) / 100) }}
+        >
+          {/* Stars */}
+          <style>{`@keyframes admin-fs-twinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.9; } }`}</style>
+          {Array.from({ length: 80 }, (_, i) => (
+            <div key={`afs-${i}`} style={{
+              position: 'absolute',
+              left: `${Math.sin(i * 137.508) * 50 + 50}%`, top: `${Math.cos(i * 73.137) * 50 + 50}%`,
+              width: `${1 + (i % 3)}px`, height: `${1 + (i % 3)}px`, borderRadius: '50%',
+              backgroundColor: i % 7 === 0 ? '#aaccff' : i % 11 === 0 ? '#ffddaa' : '#fff',
+              animation: `admin-fs-twinkle ${2 + (i % 4) * 1.5}s ease-in-out ${(i * 0.37) % 5}s infinite`,
+              pointerEvents: 'none',
+            }} />
+          ))}
+          <img src={normalizeImageUrl(selectedNft.image_url)!} alt={selectedNft.name} draggable={false}
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain',
+              transform: `scale(${fsZoom}) translate(${fsPan.x / fsZoom}px, ${fsPan.y / fsZoom}px)`,
+              transformOrigin: 'center center',
+              transition: fsDragging ? 'none' : 'transform 0.15s ease-out',
+              pointerEvents: 'none', userSelect: 'none',
+            }} />
+          <div style={{
+            position: 'absolute', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', gap: '0.5rem', alignItems: 'center',
+            background: 'rgba(0,0,0,0.6)', borderRadius: '8px', padding: '0.4rem 0.75rem',
+          }}>
+            <button onClick={(e) => { e.stopPropagation(); setFsZoom(z => Math.max(z - 0.1, 0.5)) }} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer' }}>−</button>
+            <span style={{ color: '#bab1a8', fontSize: '0.8rem', minWidth: '3rem', textAlign: 'center' }}>{Math.round(fsZoom * 100)}%</span>
+            <button onClick={(e) => { e.stopPropagation(); setFsZoom(z => Math.min(z + 0.1, 5)) }} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer' }}>+</button>
+            <span style={{ color: '#555', margin: '0 0.25rem' }}>|</span>
+            <button onClick={(e) => { e.stopPropagation(); setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '0.75rem', cursor: 'pointer' }}>ESC</button>
+          </div>
+          <button onClick={() => { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>&#x2715;</button>
         </div>,
         document.body
       )}
