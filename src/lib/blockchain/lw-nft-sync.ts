@@ -210,6 +210,7 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
   const blockscoutApi = getBlockscoutApi(chain)
   if (blockscoutApi) {
     const bsNfts: Record<string, unknown>[] = []
+    const missingMetaIds: string[] = []
     let nextParams = ''
     let pages = 0
     do {
@@ -219,33 +220,55 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
       for (const item of data.items as Record<string, unknown>[]) {
         const tokenId = String(item.id || '')
         if (burnedIds.has(tokenId)) continue
-        // Check if burned via Blockscout owner
         const ownerHash = ((item.owner as Record<string, unknown>)?.hash || '') as string
         if (ownerHash === '0x0000000000000000000000000000000000000000') continue
 
-        let meta = (item.metadata || null) as Record<string, unknown> | null
-
-        // If Blockscout has no metadata, fetch directly from tokenURI
-        if (!meta && rpcs.length > 0) {
-          const uri = await fetchTokenUri(rpcs, contractAddress, parseInt(tokenId, 10))
-          if (uri) meta = await fetchMetadata(uri)
+        const meta = (item.metadata || null) as Record<string, unknown> | null
+        if (!meta) {
+          // Track for batch fetch later
+          missingMetaIds.push(tokenId)
+          bsNfts.push({
+            token_id: tokenId, name: `#${tokenId}`, description: null,
+            image_url: normalizeUrl((item.image_url || null) as string | null),
+            animation_url: null, attributes: [], owner: ownerHash || null,
+          })
+        } else {
+          bsNfts.push({
+            token_id: tokenId,
+            name: meta.name || `#${tokenId}`,
+            description: meta.description || null,
+            image_url: normalizeUrl((item.image_url || meta.image || null) as string | null),
+            animation_url: normalizeUrl((meta.animation_url || null) as string | null),
+            attributes: meta.attributes || [],
+            owner: ownerHash || null,
+          })
         }
-
-        const m = meta || {}
-        bsNfts.push({
-          token_id: tokenId,
-          name: m.name || `#${tokenId}`,
-          description: m.description || null,
-          image_url: normalizeUrl((item.image_url || m.image || null) as string | null),
-          animation_url: normalizeUrl((m.animation_url || null) as string | null),
-          attributes: m.attributes || [],
-          owner: ((item.owner as Record<string, unknown>)?.hash || null) as string | null,
-        })
       }
       const np = data.next_page_params as Record<string, string> | undefined
       nextParams = np ? `unique_token=${np.unique_token}` : ''
       pages++
     } while (nextParams && pages < 100)
+
+    // Batch-fetch metadata for NFTs Blockscout didn't index (max 20 to avoid timeout)
+    if (missingMetaIds.length > 0 && rpcs.length > 0) {
+      const toFetch = missingMetaIds.slice(0, 20)
+      await Promise.all(toFetch.map(async (tokenId) => {
+        try {
+          const uri = await fetchTokenUri(rpcs, contractAddress, parseInt(tokenId, 10))
+          if (!uri) return
+          const meta = await fetchMetadata(uri)
+          if (!meta) return
+          const existing = bsNfts.find(n => n.token_id === tokenId)
+          if (existing) {
+            existing.name = meta.name || existing.name
+            existing.description = (meta.description || null) as string | null
+            existing.image_url = normalizeUrl((meta.image || existing.image_url) as string | null)
+            existing.animation_url = normalizeUrl((meta.animation_url || null) as string | null)
+            existing.attributes = meta.attributes || []
+          }
+        } catch { /* skip */ }
+      }))
+    }
 
     if (bsNfts.length > 0) return bsNfts
   }
