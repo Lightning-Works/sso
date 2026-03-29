@@ -5,7 +5,7 @@
  */
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { blockscoutFetch, SOLANA_RPC, ATOMIC_API, EVM_CHAINS, SKALE_CHAINS } from './rpc'
+import { blockscoutFetch, rpcCall, SOLANA_RPC, ATOMIC_API, EVM_CHAINS, SKALE_CHAINS } from './rpc'
 
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
 const ALCHEMY_NFT_CHAINS: Record<string, string> = {
@@ -152,10 +152,10 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
   const rpcs = getChainRpcs(chain)
   const alchemyUrl = getAlchemyNftUrl(chain)
 
-  // Step 1: Get all token IDs from Alchemy (lightweight, no metadata)
+  // Step 1: Get all token IDs
   let tokenIds = await getTokenIds(alchemyUrl, contractAddress)
 
-  // Fallback: try Blockscout if Alchemy unavailable
+  // Fallback: try Blockscout
   if (tokenIds.length === 0) {
     const blockscoutApi = getBlockscoutApi(chain)
     if (blockscoutApi) {
@@ -166,10 +166,40 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
     }
   }
 
+  // Fallback: enumerate by totalSupply via RPC (sequential IDs starting from 1)
+  if (tokenIds.length === 0 && rpcs.length > 0) {
+    const supplyResult = await rpcCall(rpcs, 'eth_call', [{ to: contractAddress, data: '0x18160ddd' }, 'latest'])
+    if (supplyResult?.result) {
+      const totalSupply = parseInt(supplyResult.result as string, 16)
+      if (totalSupply > 0 && totalSupply <= 50000) {
+        for (let i = 1; i <= totalSupply; i++) tokenIds.push(String(i))
+      }
+    }
+  }
+
   if (tokenIds.length === 0) return []
 
   // Step 2: Get burned IDs and filter
   const burnedIds = await getBurnedIds(alchemyUrl, contractAddress)
+  // For chains without Alchemy, check burned via RPC (ownerOf = 0x000...)
+  if (burnedIds.size === 0 && !alchemyUrl && rpcs.length > 0) {
+    // Sample check — for large collections, check in batches
+    const BURN_CHECK_BATCH = 50
+    for (let i = 0; i < tokenIds.length; i += BURN_CHECK_BATCH) {
+      const batch = tokenIds.slice(i, i + BURN_CHECK_BATCH)
+      await Promise.all(batch.map(async (id) => {
+        const data = '0x6352211e' + parseInt(id, 10).toString(16).padStart(64, '0')
+        const result = await rpcCall(rpcs, 'eth_call', [{ to: contractAddress, data }, 'latest'])
+        if (result?.result) {
+          const owner = '0x' + (result.result as string).slice(-40)
+          if (owner === '0x0000000000000000000000000000000000000000') burnedIds.add(id)
+        } else {
+          // ownerOf reverted — token doesn't exist or was burned
+          burnedIds.add(id)
+        }
+      }))
+    }
+  }
   const liveIds = tokenIds.filter(id => !burnedIds.has(id))
 
   // Step 3: Fetch metadata from tokenURI via free RPC (batched)
@@ -363,8 +393,27 @@ export async function syncContractChunk(
     await supabase.from('lw_nft_data').delete().eq('contract_id', contractId)
   }
 
-  // Get all token IDs
+  // Get all token IDs (same fallback chain as fetchEvmContractNfts)
   let tokenIds = await getTokenIds(alchemyUrl, contract.contract_address)
+
+  if (tokenIds.length === 0) {
+    const blockscoutApi = getBlockscoutApi(chain)
+    if (blockscoutApi) {
+      const data = await blockscoutFetch(`${blockscoutApi}/tokens/${contract.contract_address}/instances`)
+      if (data?.items) tokenIds = (data.items as { id: string }[]).map(i => i.id)
+    }
+  }
+
+  if (tokenIds.length === 0 && rpcs.length > 0) {
+    const supplyResult = await rpcCall(rpcs, 'eth_call', [{ to: contract.contract_address, data: '0x18160ddd' }, 'latest'])
+    if (supplyResult?.result) {
+      const totalSupply = parseInt(supplyResult.result as string, 16)
+      if (totalSupply > 0 && totalSupply <= 50000) {
+        for (let i = 1; i <= totalSupply; i++) tokenIds.push(String(i))
+      }
+    }
+  }
+
   if (tokenIds.length === 0) return { nft_count: 0, total_ids: 0, chunk, done: true }
 
   // Filter burned
