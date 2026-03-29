@@ -120,13 +120,25 @@ async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: 
         // Skip burned tokens
         if (burnedIds.has(nft.tokenId || '')) continue
 
-        const meta = nft.raw?.metadata || {}
+        // Fetch live metadata from tokenURI if available (avoids Alchemy's stale cache)
+        let meta = nft.raw?.metadata || {}
+        const tokenUri = nft.tokenUri
+        if (tokenUri && tokenUri.startsWith('http')) {
+          try {
+            const liveRes = await fetch(tokenUri, { signal: AbortSignal.timeout(5000) })
+            if (liveRes.ok) {
+              const liveData = await liveRes.json()
+              meta = liveData
+            }
+          } catch { /* fall back to Alchemy's cached metadata */ }
+        }
+
         nfts.push({
           token_id: nft.tokenId || '',
-          name: nft.name || meta.name || `#${nft.tokenId || '?'}`,
-          description: nft.description || meta.description || null,
-          image_url: nft.image?.cachedUrl || nft.image?.originalUrl || meta.image || null,
-          animation_url: meta.animation_url || null,
+          name: meta.name || nft.name || `#${nft.tokenId || '?'}`,
+          description: meta.description || nft.description || null,
+          image_url: normalizeUrl(meta.image || nft.image?.originalUrl || null),
+          animation_url: normalizeUrl(meta.animation_url || null),
           attributes: meta.attributes || [],
           owner: null,
         })
@@ -135,7 +147,7 @@ async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: 
       startToken = data.pageKey || ''
       pages++
     } catch { break }
-  } while (startToken && pages < 50)
+  } while (startToken && pages < 100)
 
   return nfts
 }
