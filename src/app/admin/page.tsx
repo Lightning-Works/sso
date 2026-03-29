@@ -1,8 +1,8 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
@@ -31,23 +31,21 @@ interface App {
   companies?: Company | null
 }
 
-function AdminContent() {
+export default function AdminPage() {
   const [role, setRole] = useState('')
   const [adminUser, setAdminUser] = useState<{ id: string; email?: string; username?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const searchParams = useSearchParams()
-  const tabParam = searchParams.get('tab')
   const validTabs = ['companies', 'apps', 'characters', 'nft-contracts'] as const
-  const initialTab = validTabs.includes(tabParam as typeof validTabs[number]) ? tabParam as typeof validTabs[number] : 'apps'
+  const hashTab = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
+  const initialTab = validTabs.includes(hashTab as typeof validTabs[number]) ? hashTab as typeof validTabs[number] : 'apps'
   const [activeTab, setActiveTab] = useState<typeof validTabs[number]>(initialTab)
 
   const switchTab = (tab: typeof validTabs[number]) => {
     setActiveTab(tab)
-    const url = tab === 'apps' ? '/admin' : `/admin?tab=${tab}`
-    window.history.replaceState({}, '', url)
+    window.location.hash = tab === 'apps' ? '' : tab
   }
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [editingApp, setEditingApp] = useState<App | null>(null)
@@ -859,13 +857,5 @@ function AdminContent() {
 
       </div>
     </div>
-  )
-}
-
-export default function AdminPage() {
-  return (
-    <Suspense fallback={<div className="lw-account-page"><p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '3rem' }}>Loading...</p></div>}>
-      <AdminContent />
-    </Suspense>
   )
 }
