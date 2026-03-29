@@ -3,6 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+function getRarityStyle(rarity: string): { color: string; glow?: string } {
+  const r = rarity.toLowerCase().trim()
+  if (r === 'common') return { color: '#c4a84a' }
+  if (r === 'uncommon') return { color: '#4CAF50' }
+  if (r === 'rare') return { color: '#4a9eff' }
+  if (r === 'epic') return { color: '#a855f7' }
+  if (r === 'legendary') return { color: '#ef4444' }
+  if (r === 'divine') return { color: '#e0e0e0', glow: '0 0 6px 2px rgba(224,224,224,0.6)' }
+  if (r === 'mystic') return { color: '#ff4eda', glow: '0 0 6px 2px rgba(255,78,218,0.6)' }
+  if (r === 'rainbow') return { color: '#ff4444', glow: '0 0 4px 1px #ff4444, 0 0 4px 1px #ffaa00, 0 0 4px 1px #44ff44, 0 0 4px 1px #4444ff' }
+  if (r === 'apocalyptic') return { color: '#ff6600', glow: '0 0 6px 2px rgba(255,102,0,0.7), 0 0 12px 4px rgba(255,50,0,0.4)' }
+  return { color: 'var(--nft-accent, #ff8800)' }
+}
+
 export interface NftItem {
   id: string
   name: string
@@ -349,10 +363,10 @@ export function NftGrid({
           white-space: nowrap;
         }
         .nft-card-rarity {
-          color: var(--nft-accent, var(--lw-accent, #ff8800));
           font-size: var(--nft-card-meta-size, 0.6rem);
           margin: 0.15rem 0 0 0;
           text-transform: capitalize;
+          font-weight: 600;
         }
         .nft-card-mint {
           color: var(--lw-text-muted, #7a7572);
@@ -685,6 +699,10 @@ export function NftGrid({
               className={`nft-card${selected.has(nft.id) ? ' nft-card--selected' : ''}`}
               onClick={(e) => handleCardClick(nft, i, e)}
               onContextMenu={(e) => handleContextMenu(e, nft)}
+              style={nft.rarity ? (() => {
+                const rs = getRarityStyle(nft.rarity!)
+                return rs.glow ? { boxShadow: rs.glow } : {}
+              })() : {}}
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
@@ -701,7 +719,10 @@ export function NftGrid({
               <div className="nft-card-info">
                 <p className="nft-card-name">{nft.name}</p>
                 <p className="nft-card-collection">{nft.collection}</p>
-                {nft.rarity && <p className="nft-card-rarity">{nft.rarity}</p>}
+                {nft.rarity && (() => {
+                  const rs = getRarityStyle(nft.rarity)
+                  return <p className="nft-card-rarity" style={{ color: rs.color }}>{nft.rarity}</p>
+                })()}
                 {nft.mintNumber && nft.maxSupply && nft.maxSupply !== '0' && (
                   <p className="nft-card-mint">Mint #{nft.mintNumber} / {nft.maxSupply}</p>
                 )}
@@ -801,12 +822,15 @@ export function NftGrid({
               {selectedNft.description && <p className="nft-lightbox-desc">{selectedNft.description}</p>}
 
               <div className="nft-detail-grid">
-                {selectedNft.rarity && (
-                  <div className="nft-detail-cell">
+                {selectedNft.rarity && (() => {
+                  const rs = getRarityStyle(selectedNft.rarity!)
+                  return (
+                  <div className="nft-detail-cell" style={rs.glow ? { boxShadow: `inset ${rs.glow}` } : {}}>
                     <p className="nft-detail-label">Rarity</p>
-                    <p className="nft-detail-value nft-detail-value--accent" style={{ textTransform: 'capitalize' }}>{selectedNft.rarity}</p>
+                    <p className="nft-detail-value" style={{ textTransform: 'capitalize', color: rs.color, fontWeight: 600, ...(rs.glow ? { textShadow: rs.glow } : {}) }}>{selectedNft.rarity}</p>
                   </div>
-                )}
+                  )
+                })()}
                 {selectedNft.mintNumber && (
                   <div className="nft-detail-cell">
                     <p className="nft-detail-label">Mint</p>
