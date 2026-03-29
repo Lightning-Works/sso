@@ -219,14 +219,26 @@ async function fetchEvmContractNfts(chain: string, contractAddress: string): Pro
       for (const item of data.items as Record<string, unknown>[]) {
         const tokenId = String(item.id || '')
         if (burnedIds.has(tokenId)) continue
-        const meta = (item.metadata || {}) as Record<string, unknown>
+        // Check if burned via Blockscout owner
+        const ownerHash = ((item.owner as Record<string, unknown>)?.hash || '') as string
+        if (ownerHash === '0x0000000000000000000000000000000000000000') continue
+
+        let meta = (item.metadata || null) as Record<string, unknown> | null
+
+        // If Blockscout has no metadata, fetch directly from tokenURI
+        if (!meta && rpcs.length > 0) {
+          const uri = await fetchTokenUri(rpcs, contractAddress, parseInt(tokenId, 10))
+          if (uri) meta = await fetchMetadata(uri)
+        }
+
+        const m = meta || {}
         bsNfts.push({
           token_id: tokenId,
-          name: meta.name || `#${tokenId}`,
-          description: meta.description || null,
-          image_url: normalizeUrl((item.image_url || meta.image || null) as string | null),
-          animation_url: normalizeUrl((meta.animation_url || null) as string | null),
-          attributes: meta.attributes || [],
+          name: m.name || `#${tokenId}`,
+          description: m.description || null,
+          image_url: normalizeUrl((item.image_url || m.image || null) as string | null),
+          animation_url: normalizeUrl((m.animation_url || null) as string | null),
+          attributes: m.attributes || [],
           owner: ((item.owner as Record<string, unknown>)?.hash || null) as string | null,
         })
       }
