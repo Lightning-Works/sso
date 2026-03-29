@@ -158,7 +158,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
             <img
               src={collectionIcon}
               alt=""
-              style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+              style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0, margin: '-0.75rem 0 -0.75rem -0.75rem', padding: '5px' }}
               onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           )}
