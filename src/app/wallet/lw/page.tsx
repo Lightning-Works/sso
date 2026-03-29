@@ -48,12 +48,21 @@ function getTier(attrs: { trait_type?: string; value?: unknown }[]): string | nu
   return a ? String(a.value || '') : null
 }
 
+function isUltraRare(attrs: { trait_type?: string; value?: unknown }[]): boolean {
+  return attrs.some(a => {
+    const k = (a.trait_type || '').toLowerCase()
+    if (k !== 'ultra rare cover' && k !== 'ultra rare') return false
+    const v = String(a.value || '').toLowerCase()
+    return v && v !== 'no' && v !== 'none' && v !== 'false'
+  })
+}
+
 function lwToNftItems(nfts: LwNft[], contract: LwContract): NftItem[] {
   return nfts.map(nft => {
     const tier = getTier(nft.attributes)
     return {
       id: `${contract.contract_address}-${nft.token_id}`,
-      name: nft.name,
+      name: `Mint# ${nft.token_id}`,
       imageUrl: normalizeImageUrl(nft.image_url),
       videoUrl: nft.animation_url && isVideoUrl(nft.animation_url) ? normalizeImageUrl(nft.animation_url) : undefined,
       collection: contract.collection_name,
@@ -66,6 +75,14 @@ function lwToNftItems(nfts: LwNft[], contract: LwContract): NftItem[] {
         .map(a => ({ key: a.trait_type!, value: String(a.value || '') })),
     }
   })
+}
+
+const CHAIN_ICONS: Record<string, string> = {
+  Polygon: 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/matic-network/small.png',
+  Ethereum: 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/ethereum/small.png',
+  Base: 'https://raw.githubusercontent.com/base-org/brand-kit/main/logo/symbol/Base_Symbol_Blue.png',
+  Core: 'https://scan.coredao.org/favicon.ico',
+  'SKALE Nebula': 'https://green-giddy-denebola.explorer.mainnet.skalenodes.com/favicon.ico',
 }
 
 // Forge ABI
@@ -114,6 +131,29 @@ function LwWalletContent() {
         }
         setAllNfts(nftMap)
         if (contractList.length > 0) setSelectedContract(contractList[0].id)
+
+        // Auto-favorite Ultra Rares
+        for (const contract of contractList) {
+          const storageKey = `nft-tags-lw-${contract.contract_address}`
+          const nfts = nftMap[contract.id] || []
+          try {
+            const raw = localStorage.getItem(storageKey)
+            const tags = raw ? JSON.parse(raw) : { spam: [], favorite: [], hidden: [] }
+            const favSet = new Set(tags.favorite || [])
+            let changed = false
+            for (const nft of nfts) {
+              const nftId = `${contract.contract_address}-${nft.token_id}`
+              if (isUltraRare(nft.attributes) && !favSet.has(nftId)) {
+                favSet.add(nftId)
+                changed = true
+              }
+            }
+            if (changed) {
+              tags.favorite = [...favSet]
+              localStorage.setItem(storageKey, JSON.stringify(tags))
+            }
+          } catch { /* ignore */ }
+        }
       } catch { /* silent */ }
       setLoading(false)
     }
@@ -323,8 +363,12 @@ function LwWalletContent() {
             {/* NFT Grid */}
             {selectedContractData && (
               <div className="lw-section">
-                <h2 className="lw-section-title">
-                  {selectedContractData.collection_name} ({selectedNfts.length})
+                <h2 className="lw-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {selectedContractData.collection_name}
+                  <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400 }}>({selectedNfts.length})</span>
+                  {CHAIN_ICONS[selectedContractData.chain] && (
+                    <img src={CHAIN_ICONS[selectedContractData.chain]} alt={selectedContractData.chain} style={{ width: '20px', height: '20px', borderRadius: '4px' }} />
+                  )}
                 </h2>
                 <NftGrid
                   nfts={lwToNftItems(selectedNfts, selectedContractData)}

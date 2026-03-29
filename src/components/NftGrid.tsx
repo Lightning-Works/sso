@@ -356,6 +356,12 @@ export function NftGrid({
           width: 100%;
           height: 100%;
           object-fit: contain;
+          pointer-events: none;
+        }
+        /* Block Pinterest browser extension overlay */
+        .nft-card-thumb [data-pin-href],
+        .nft-card-thumb [data-pin-log] {
+          display: none !important;
         }
 
         .nft-card-info {
@@ -733,11 +739,11 @@ export function NftGrid({
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
-                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
+                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
-                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
                 )}
