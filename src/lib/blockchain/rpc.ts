@@ -81,6 +81,13 @@ export const EVM_CHAINS: Record<string, ChainRpc> = {
     nativeDecimals: 18,
     blockscoutApi: 'https://scan.coredao.org/api/v2',
   },
+  waterfall: {
+    name: 'Waterfall',
+    rpcs: ['https://rpc.waterfall.network/', 'https://rpc0.waterfall.network/', 'https://rpc1.waterfall.network/'],
+    nativeName: 'Water',
+    nativeSymbol: 'WATER',
+    nativeDecimals: 18,
+  },
 }
 
 export const SOLANA_RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`

@@ -71,8 +71,32 @@ async function fetchEvmContractNfts(blockscoutApi: string, contractAddress: stri
   return nfts
 }
 
+// Fetch burned token IDs from Alchemy
+async function fetchBurnedTokenIds(alchemyNftUrl: string, contractAddress: string): Promise<Set<string>> {
+  const burned = new Set<string>()
+  try {
+    const baseUrl = alchemyNftUrl.replace('/nft/v3/', '/v2/')
+    const res = await fetch(`${alchemyNftUrl.replace('/nft/v3/', '/nft/v3/')}/getOwnersForContract?contractAddress=${contractAddress}&withTokenBalances=true`, {
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return burned
+    const data = await res.json()
+    for (const owner of data.owners || []) {
+      if (owner.ownerAddress === '0x0000000000000000000000000000000000000000') {
+        for (const tb of owner.tokenBalances || []) {
+          burned.add(tb.tokenId || '')
+        }
+      }
+    }
+  } catch { /* skip */ }
+  return burned
+}
+
 // Alchemy fallback for EVM chains where Blockscout has incomplete indexing
 async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: string): Promise<Record<string, unknown>[]> {
+  // First get burned token IDs to filter them out
+  const burnedIds = await fetchBurnedTokenIds(alchemyNftUrl, contractAddress)
+
   const nfts: Record<string, unknown>[] = []
   let startToken = ''
   let pages = 0
@@ -93,6 +117,9 @@ async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: 
       if (items.length === 0) break
 
       for (const nft of items) {
+        // Skip burned tokens
+        if (burnedIds.has(nft.tokenId || '')) continue
+
         const meta = nft.raw?.metadata || {}
         nfts.push({
           token_id: nft.tokenId || '',
@@ -101,7 +128,7 @@ async function fetchAlchemyContractNfts(alchemyNftUrl: string, contractAddress: 
           image_url: nft.image?.cachedUrl || nft.image?.originalUrl || meta.image || null,
           animation_url: meta.animation_url || null,
           attributes: meta.attributes || [],
-          owner: null, // getNFTsForContract doesn't return owner
+          owner: null,
         })
       }
 

@@ -66,7 +66,7 @@ function normalizeImageUrl(url: string | null | undefined): string | null {
 
 const CHAIN_OPTIONS = [
   'Ethereum', 'Polygon', 'Base', 'BSC', 'Arbitrum', 'Optimism',
-  'Avalanche', 'Core', 'SKALE Nebula', 'Solana', 'WAX',
+  'Avalanche', 'Core', 'Waterfall', 'SKALE Nebula', 'Solana', 'WAX',
 ]
 
 interface NftData {

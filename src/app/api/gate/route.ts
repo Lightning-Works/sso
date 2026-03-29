@@ -19,6 +19,7 @@ const ALLOWED_RPC: Record<string, string> = {
   optimism: `https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`,
   avalanche: `https://api.avax.network/ext/bc/C/rpc`,
   core: 'https://rpc.coredao.org',
+  waterfall: 'https://rpc.waterfall.network/',
 }
 
 const ALLOWED_NFT_RPC: Record<string, string> = {
