@@ -6,6 +6,14 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { blockscoutFetch, SOLANA_RPC, ATOMIC_API, EVM_CHAINS, SKALE_CHAINS } from './rpc'
 
+function normalizeUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/')
+  if (url.startsWith('https://') || url.startsWith('http://')) return url
+  if (url.startsWith('Qm') || url.startsWith('bafy')) return `https://ipfs.io/ipfs/${url}`
+  return url
+}
+
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
 
 const ALCHEMY_NFT_CHAINS: Record<string, string> = {
@@ -235,15 +243,16 @@ export async function syncContract(contractId: number): Promise<{ nft_count: num
       token_id: String(n.token_id || ''),
       name: String(n.name || ''),
       description: (n.description || null) as string | null,
-      image_url: (n.image_url || null) as string | null,
-      animation_url: (n.animation_url || null) as string | null,
+      image_url: normalizeUrl(n.image_url as string | null),
+      animation_url: normalizeUrl(n.animation_url as string | null),
       attributes: n.attributes || [],
       owner: (n.owner || null) as string | null,
       extra_data: n,
     }))
 
     for (let i = 0; i < rows.length; i += 50) {
-      await supabase.from('lw_nft_data').insert(rows.slice(i, i + 50))
+      const { error } = await supabase.from('lw_nft_data').insert(rows.slice(i, i + 50))
+      if (error) throw new Error(`Batch insert failed at ${i}: ${error.message}`)
     }
   }
 

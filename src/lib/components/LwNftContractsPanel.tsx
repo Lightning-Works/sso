@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 
 export interface LwNftContract {
@@ -13,6 +14,7 @@ export interface LwNftContract {
   total_supply: number | null
   description: string
   metadata_base_uri: string
+  icon_url: string | null
   last_synced: string | null
   nft_count: number | null
   created_at?: string
@@ -25,7 +27,16 @@ interface LookupResult {
   total_supply: number | null
   description: string
   holders_count?: string
+  instance_count?: number
   icon_url?: string | null
+}
+
+function normalizeImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/')
+  if (url.startsWith('https://') || url.startsWith('http://')) return url
+  if (url.startsWith('Qm') || url.startsWith('bafy')) return `https://ipfs.io/ipfs/${url}`
+  return url
 }
 
 const CHAIN_OPTIONS = [
@@ -37,9 +48,11 @@ interface NftData {
   id: string
   token_id: string
   name: string
+  description: string | null
   image_url: string | null
+  animation_url: string | null
   owner: string | null
-  attributes: unknown[]
+  attributes: { trait_type?: string; value?: unknown }[]
 }
 
 function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase }: {
@@ -54,7 +67,9 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
   const [nfts, setNfts] = useState<NftData[]>([])
   const [nftPage, setNftPage] = useState(0)
   const [loadingNfts, setLoadingNfts] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [totalNfts, setTotalNfts] = useState(0)
+  const [selectedNft, setSelectedNft] = useState<NftData | null>(null)
   const PAGE_SIZE = 100
 
   const toggleExpand = async () => {
@@ -69,17 +84,23 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
   const loadNfts = async (page: number) => {
     if (!c.id) return
     setLoadingNfts(true)
+    setLoadError('')
     setNftPage(page)
 
-    const { data, count } = await supabase
+    const { data, count, error } = await supabase
       .from('lw_nft_data')
-      .select('id, token_id, name, image_url, owner, attributes', { count: 'exact' })
+      .select('id, token_id, name, description, image_url, animation_url, owner, attributes', { count: 'exact' })
       .eq('contract_id', c.id)
       .order('token_id', { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-    setNfts((data || []) as NftData[])
-    setTotalNfts(count || 0)
+    if (error) {
+      setLoadError(`Failed to load: ${error.message}`)
+      setNfts([])
+    } else {
+      setNfts((data || []) as NftData[])
+      setTotalNfts(count || 0)
+    }
     setLoadingNfts(false)
   }
 
@@ -175,10 +196,20 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
       {/* Expanded NFT grid */}
       {expanded && (
         <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          {loadingNfts ? (
+          {/* Collection banner/icon */}
+          {c.icon_url && (
+            <div style={{ padding: '0.75rem 0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <img src={c.icon_url} alt={c.collection_name} style={{ height: '40px', borderRadius: '6px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <span style={{ color: 'var(--lw-text-white)', fontWeight: 600 }}>{c.collection_name}</span>
+            </div>
+          )}
+
+          {loadError ? (
+            <p style={{ color: '#ff4444', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>{loadError}</p>
+          ) : loadingNfts ? (
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>Loading NFTs...</p>
           ) : nfts.length === 0 ? (
-            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>No NFTs cached. Click "Sync Now" to fetch from blockchain.</p>
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', padding: '1rem 0', textAlign: 'center' }}>No NFTs cached. Click &quot;Sync Now&quot; to fetch from blockchain.</p>
           ) : (
             <>
               {/* Pagination header */}
@@ -218,11 +249,19 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                 gap: '0.5rem',
               }}>
                 {nfts.map(nft => (
-                  <div key={nft.id} style={{
-                    backgroundColor: 'rgba(0,0,0,0.2)',
-                    borderRadius: '6px',
-                    overflow: 'hidden',
-                  }}>
+                  <div
+                    key={nft.id}
+                    onClick={() => setSelectedNft(nft)}
+                    style={{
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '6px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'transform 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                  >
                     <div style={{
                       width: '100%',
                       aspectRatio: '1',
@@ -234,7 +273,7 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                     }}>
                       {nft.image_url ? (
                         <img
-                          src={nft.image_url.startsWith('Qm') || nft.image_url.startsWith('bafy') ? `https://ipfs.io/ipfs/${nft.image_url}` : nft.image_url}
+                          src={normalizeImageUrl(nft.image_url)!}
                           alt={nft.name}
                           loading="lazy"
                           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -264,6 +303,95 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
           )}
         </div>
       )}
+
+      {/* NFT Detail Modal */}
+      {selectedNft && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '2rem',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedNft(null) }}
+        >
+          <div style={{
+            backgroundColor: '#1a1a1c', borderRadius: '12px',
+            maxWidth: '600px', width: '100%', maxHeight: '90vh', overflow: 'auto',
+            position: 'relative',
+            boxShadow: '0 0 15px 5px rgba(80,40,200,0.5), 0 0 40px 15px rgba(60,30,160,0.35)',
+          }}>
+            <button
+              onClick={() => setSelectedNft(null)}
+              style={{
+                position: 'sticky', top: '8px', float: 'right', marginRight: '8px',
+                background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff',
+                width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.1rem', zIndex: 10,
+              }}
+            >&#x2715;</button>
+
+            {/* Image/Video */}
+            <div style={{
+              width: '100%', maxHeight: '400px', backgroundColor: '#0d0d0d',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '12px 12px 0 0', overflow: 'hidden',
+            }}>
+              {selectedNft.animation_url ? (
+                <video src={normalizeImageUrl(selectedNft.animation_url)!} poster={normalizeImageUrl(selectedNft.image_url) || undefined} autoPlay loop muted playsInline controls style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
+              ) : selectedNft.image_url ? (
+                <img src={normalizeImageUrl(selectedNft.image_url)!} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }} />
+              ) : (
+                <div style={{ padding: '4rem', color: '#555' }}>No image</div>
+              )}
+            </div>
+
+            {/* Details */}
+            <div style={{ padding: '1rem' }}>
+              <h3 style={{ color: '#fff', margin: '0 0 0.25rem 0', fontSize: '1.1rem' }}>{selectedNft.name}</h3>
+              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
+                {c.collection_name} · #{selectedNft.token_id} · {c.chain}
+              </p>
+
+              {selectedNft.description && (
+                <p style={{ color: 'var(--lw-text-secondary, #bab1a8)', fontSize: '0.8rem', margin: '0 0 0.75rem 0', lineHeight: 1.5 }}>{selectedNft.description}</p>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem' }}>
+                <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                  <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0 }}>Token ID</p>
+                  <p style={{ color: '#fff', fontSize: '0.8rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace' }}>{selectedNft.token_id}</p>
+                </div>
+                {selectedNft.owner && (
+                  <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                    <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: 0 }}>Owner</p>
+                    <p style={{ color: '#fff', fontSize: '0.8rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {selectedNft.owner.slice(0, 8)}...{selectedNft.owner.slice(-6)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Attributes */}
+              {selectedNft.attributes && selectedNft.attributes.length > 0 && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', marginBottom: '0.4rem' }}>Attributes</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                    {selectedNft.attributes.map((a, i) => (
+                      <div key={i} style={{ backgroundColor: 'rgba(106,36,250,0.15)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem' }}>
+                        <span style={{ color: 'var(--lw-text-muted)' }}>{a.trait_type || 'key'}: </span>
+                        <span style={{ color: '#fff' }}>{String(a.value || '')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -276,7 +404,7 @@ export function LwNftContractsPanel() {
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'success' | 'error'>('success')
   const [syncing, setSyncing] = useState<number | null>(null)
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => { loadContracts() }, [])
 
@@ -311,6 +439,7 @@ export function LwNftContractsPanel() {
       total_supply: contract.total_supply,
       description: contract.description,
       metadata_base_uri: contract.metadata_base_uri,
+      icon_url: contract.icon_url,
     }
 
     if (contract.id) {
@@ -364,6 +493,7 @@ export function LwNftContractsPanel() {
     total_supply: null,
     description: '',
     metadata_base_uri: '',
+    icon_url: null,
     last_synced: null,
     nft_count: null,
   }
@@ -404,6 +534,7 @@ export function LwNftContractsPanel() {
             token_type: data.token_type || prev.token_type,
             total_supply: data.total_supply ?? prev.total_supply,
             description: data.description || prev.description,
+            icon_url: data.icon_url || prev.icon_url,
           }))
         }
       } catch {
@@ -462,7 +593,12 @@ export function LwNftContractsPanel() {
         {/* Lookup result confirmation */}
         {lookupResult && !isEditing && (
           <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(52,168,83,0.1)', borderRadius: '6px', border: '1px solid rgba(52,168,83,0.2)' }}>
-            <p style={{ color: '#34A853', fontSize: '0.8rem', fontWeight: 600, margin: '0 0 0.5rem 0' }}>Contract found on {form.chain}:</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+              {lookupResult.icon_url && (
+                <img src={lookupResult.icon_url} alt="" style={{ width: '36px', height: '36px', borderRadius: '6px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              )}
+              <p style={{ color: '#34A853', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Contract found on {form.chain}</p>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--lw-text-muted)' }}>Name:</span>
               <span style={{ color: 'var(--lw-text-white)', fontWeight: 500 }}>{lookupResult.collection_name || '—'}</span>
@@ -474,6 +610,18 @@ export function LwNftContractsPanel() {
                 <>
                   <span style={{ color: 'var(--lw-text-muted)' }}>Supply:</span>
                   <span style={{ color: 'var(--lw-text-white)' }}>{lookupResult.total_supply.toLocaleString()}</span>
+                </>
+              )}
+              {lookupResult.holders_count && (
+                <>
+                  <span style={{ color: 'var(--lw-text-muted)' }}>Holders:</span>
+                  <span style={{ color: 'var(--lw-text-white)' }}>{lookupResult.holders_count}</span>
+                </>
+              )}
+              {lookupResult.instance_count != null && lookupResult.instance_count > 0 && (
+                <>
+                  <span style={{ color: 'var(--lw-text-muted)' }}>NFTs indexed:</span>
+                  <span style={{ color: 'var(--lw-text-white)' }}>{lookupResult.instance_count}</span>
                 </>
               )}
             </div>
