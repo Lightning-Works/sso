@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { EVM_CHAINS, SKALE_CHAINS, blockscoutFetch, ATOMIC_API, SOLANA_RPC } from '@/lib/blockchain/rpc'
+import { EVM_CHAINS, SKALE_CHAINS, blockscoutFetch, ATOMIC_API, SOLANA_RPC, rpcCall } from '@/lib/blockchain/rpc'
 
 function getBlockscoutApi(chain: string): string | null {
   const key = chain.toLowerCase().replace(/\s+/g, '')
@@ -72,29 +72,69 @@ export async function POST(request: Request) {
       })
     }
 
-    // EVM chains — use Blockscout
+    // EVM chains — try Blockscout first, fall back to RPC
     const blockscoutApi = getBlockscoutApi(chain)
-    if (!blockscoutApi) {
-      return NextResponse.json({ error: `Unsupported chain: ${chain}` }, { status: 400 })
+    const chainKey = chain.toLowerCase().replace(/\s+/g, '')
+    const evmChain = EVM_CHAINS[chainKey] || Object.values(EVM_CHAINS).find(c => c.name.toLowerCase().replace(/\s+/g, '') === chainKey)
+
+    if (blockscoutApi) {
+      const data = await blockscoutFetch(`${blockscoutApi}/tokens/${address}`)
+      if (data && data.name) {
+        const instances = await blockscoutFetch(`${blockscoutApi}/tokens/${address}/instances`)
+        const instanceCount = (instances?.items as unknown[] || []).length
+        return NextResponse.json({
+          collection_name: (data.name || '') as string,
+          symbol: (data.symbol || '') as string,
+          token_type: (data.type || 'ERC-721') as string,
+          total_supply: data.total_supply ? parseInt(String(data.total_supply)) : null,
+          holders_count: (data.holders_count || '0') as string,
+          instance_count: instanceCount,
+          description: '',
+          icon_url: (data.icon_url || null) as string | null,
+        })
+      }
     }
 
-    const data = await blockscoutFetch(`${blockscoutApi}/tokens/${address}`)
-    if (!data) return NextResponse.json({ error: 'Contract not found on this chain. Check the address and chain selection.' }, { status: 404 })
+    // Fallback: read name/symbol directly from contract via RPC
+    if (evmChain) {
+      const rpcs = evmChain.rpcs
 
-    // Also get instance count
-    const instances = await blockscoutFetch(`${blockscoutApi}/tokens/${address}/instances`)
-    const instanceCount = (instances?.items as unknown[] || []).length
+      // Read name()
+      const nameResult = await rpcCall(rpcs, 'eth_call', [{ to: address, data: '0x06fdde03' }, 'latest'])
+      let contractName = ''
+      if (nameResult?.result && (nameResult.result as string).length > 130) {
+        const r = nameResult.result as string
+        const len = parseInt(r.slice(66, 130), 16)
+        contractName = Buffer.from(r.slice(130, 130 + len * 2), 'hex').toString('utf8').replace(/\0/g, '')
+      }
 
-    return NextResponse.json({
-      collection_name: (data.name || '') as string,
-      symbol: (data.symbol || '') as string,
-      token_type: (data.type || 'ERC-721') as string,
-      total_supply: data.total_supply ? parseInt(String(data.total_supply)) : null,
-      holders_count: (data.holders_count || '0') as string,
-      instance_count: instanceCount,
-      description: '',
-      icon_url: (data.icon_url || null) as string | null,
-    })
+      // Read symbol()
+      const symResult = await rpcCall(rpcs, 'eth_call', [{ to: address, data: '0x95d89b41' }, 'latest'])
+      let contractSymbol = ''
+      if (symResult?.result && (symResult.result as string).length > 130) {
+        const r = symResult.result as string
+        const len = parseInt(r.slice(66, 130), 16)
+        contractSymbol = Buffer.from(r.slice(130, 130 + len * 2), 'hex').toString('utf8').replace(/\0/g, '')
+      }
+
+      // Check ERC-721 interface
+      const erc721Result = await rpcCall(rpcs, 'eth_call', [{ to: address, data: '0x01ffc9a780ac58cd00000000000000000000000000000000000000000000000000000000' }, 'latest'])
+      const isErc721 = (erc721Result?.result as string || '').endsWith('1')
+
+      if (!contractName && !contractSymbol) {
+        return NextResponse.json({ error: 'Contract not found or has no name/symbol. Check the address and chain.' }, { status: 404 })
+      }
+
+      return NextResponse.json({
+        collection_name: contractName,
+        symbol: contractSymbol,
+        token_type: isErc721 ? 'ERC-721' : 'ERC-1155',
+        total_supply: null,
+        description: '',
+      })
+    }
+
+    return NextResponse.json({ error: `No RPC available for chain: ${chain}` }, { status: 400 })
   } catch (e) {
     return NextResponse.json({ error: `Lookup failed: ${(e as Error).message}` }, { status: 502 })
   }
