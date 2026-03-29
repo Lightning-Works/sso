@@ -374,10 +374,7 @@ export async function syncContract(contractId: number): Promise<{ nft_count: num
     nfts = await fetchEvmContractNfts(chain, contract.contract_address)
   }
 
-  // Clear old data
-  await supabase.from('lw_nft_data').delete().eq('contract_id', contractId)
-
-  // Insert in batches
+  // Upsert instead of delete+insert — only updates changed data, skips existing
   if (nfts.length > 0) {
     const rows = nfts.map(n => ({
       contract_id: contractId,
@@ -392,8 +389,25 @@ export async function syncContract(contractId: number): Promise<{ nft_count: num
     }))
 
     for (let i = 0; i < rows.length; i += 50) {
-      const { error } = await supabase.from('lw_nft_data').insert(rows.slice(i, i + 50))
-      if (error) throw new Error(`Batch insert failed at ${i}: ${error.message}`)
+      const { error } = await supabase
+        .from('lw_nft_data')
+        .upsert(rows.slice(i, i + 50), { onConflict: 'contract_id,token_id' })
+      if (error) throw new Error(`Batch upsert failed at ${i}: ${error.message}`)
+    }
+  }
+
+  // Remove tokens that no longer exist (burned since last sync)
+  const liveTokenIds = new Set(nfts.map(n => String(n.token_id || '')))
+  const { data: existing } = await supabase
+    .from('lw_nft_data')
+    .select('id, token_id')
+    .eq('contract_id', contractId)
+  if (existing) {
+    const toDelete = existing.filter(e => !liveTokenIds.has(e.token_id)).map(e => e.id)
+    if (toDelete.length > 0) {
+      for (let i = 0; i < toDelete.length; i += 50) {
+        await supabase.from('lw_nft_data').delete().in('id', toDelete.slice(i, i + 50))
+      }
     }
   }
 
