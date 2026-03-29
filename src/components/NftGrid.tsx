@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+function isUltraRare(nft: NftItem): boolean {
+  if (!nft.attributes) return false
+  return nft.attributes.some(a => {
+    const key = a.key.toLowerCase()
+    if (key !== 'ultra rare cover' && key !== 'ultra rare') return false
+    const val = a.value.toLowerCase()
+    return val && val !== 'no' && val !== 'none' && val !== 'false' && val !== ''
+  })
+}
+
 function isVideoUrl(url: string | null | undefined): boolean {
   if (!url) return false
   const lower = url.toLowerCase()
@@ -705,13 +715,20 @@ export function NftGrid({
               className={`nft-card${selected.has(nft.id) ? ' nft-card--selected' : ''}`}
               onClick={(e) => handleCardClick(nft, i, e)}
               onContextMenu={(e) => handleContextMenu(e, nft)}
-              style={nft.rarity ? (() => {
+              style={(() => {
+                const ur = isUltraRare(nft)
+                if (ur) return {
+                  backgroundColor: '#f0f0f0',
+                  border: '2px solid gold',
+                  boxShadow: '0 0 12px 3px rgba(255,215,0,0.5), 0 0 24px 6px rgba(255,215,0,0.25)',
+                }
+                if (!nft.rarity) return {}
                 const rs = getRarityStyle(nft.rarity!)
                 return {
                   ...(rs.border ? { border: rs.border } : {}),
                   ...(rs.glow ? { boxShadow: rs.glow } : {}),
                 }
-              })() : {}}
+              })()}
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb">
@@ -725,13 +742,15 @@ export function NftGrid({
                   <span className="nft-card-placeholder">No image</span>
                 )}
               </div>
-              <div className="nft-card-info">
-                <p className="nft-card-name">{nft.name}</p>
-                <p className="nft-card-collection">{nft.collection}</p>
-                {nft.rarity && (() => {
+              <div className="nft-card-info" style={isUltraRare(nft) ? { color: '#111' } : {}}>
+                <p className="nft-card-name" style={isUltraRare(nft) ? { color: '#111', fontWeight: 700 } : {}}>{nft.name}</p>
+                <p className="nft-card-collection" style={isUltraRare(nft) ? { color: '#555' } : {}}>{nft.collection}</p>
+                {isUltraRare(nft) ? (
+                  <p className="nft-card-rarity" style={{ color: '#b8860b', fontWeight: 700 }}>ULTRA RARE</p>
+                ) : nft.rarity ? (() => {
                   const rs = getRarityStyle(nft.rarity)
                   return <p className="nft-card-rarity" style={{ color: rs.color }}>{nft.rarity}</p>
-                })()}
+                })() : null}
                 {nft.mintNumber && nft.maxSupply && nft.maxSupply !== '0' && (
                   <p className="nft-card-mint">Mint #{nft.mintNumber} / {nft.maxSupply}</p>
                 )}

@@ -42,6 +42,20 @@ function getRarityFromAttrs(attrs: { trait_type?: string; value?: unknown }[] | 
   return null
 }
 
+function isUltraRare(attrs: { trait_type?: string; value?: unknown }[] | undefined): string | null {
+  if (!attrs) return null
+  for (const a of attrs) {
+    const key = (a.trait_type || '').toLowerCase()
+    if (key === 'ultra rare cover' || key === 'ultra rare') {
+      const val = String(a.value || '')
+      if (val && val.toLowerCase() !== 'no' && val.toLowerCase() !== 'none' && val.toLowerCase() !== 'false' && val !== '') {
+        return val
+      }
+    }
+  }
+  return null
+}
+
 function getRarityStyle(rarity: string): { color: string; glow?: string; border?: string } {
   const r = rarity.toLowerCase().trim()
   if (r === 'common') return { color: '#c4a84a', border: '1px solid rgba(196,168,74,0.4)' }
@@ -382,18 +396,19 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                 {nfts.map(nft => {
                   const rarity = getRarityFromAttrs(nft.attributes)
                   const rs = rarity ? getRarityStyle(rarity) : null
+                  const ur = isUltraRare(nft.attributes)
                   return (
                   <div
                     key={nft.id}
                     onClick={() => setSelectedNft(nft)}
                     style={{
-                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      backgroundColor: ur ? '#f0f0f0' : 'rgba(0,0,0,0.2)',
                       borderRadius: '6px',
                       overflow: 'hidden',
                       cursor: 'pointer',
                       transition: 'transform 0.15s',
-                      border: rs?.border || '1px solid transparent',
-                      boxShadow: rs?.glow || 'none',
+                      border: ur ? '2px solid gold' : rs?.border || '1px solid transparent',
+                      boxShadow: ur ? '0 0 12px 3px rgba(255,215,0,0.5), 0 0 24px 6px rgba(255,215,0,0.25)' : rs?.glow || 'none',
                     }}
                     onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'}
                     onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -420,21 +435,25 @@ function ContractCard({ contract: c, syncing, onSync, onEdit, onDelete, supabase
                       )}
                     </div>
                     <div style={{ padding: '0.3rem 0.4rem' }}>
-                      <p style={{ color: 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <p style={{ color: ur ? '#111' : 'var(--lw-text-white)', fontSize: '0.65rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: ur ? 700 : 400 }}>
                         {nft.name}
                       </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.55rem' }}>
+                        <span style={{ color: ur ? '#555' : 'var(--lw-text-muted)', fontSize: '0.55rem' }}>
                           #{nft.token_id}
                         </span>
-                        {rarity && (
+                        {ur ? (
+                          <span style={{ color: '#b8860b', fontSize: '0.5rem', fontWeight: 700 }}>
+                            ULTRA RARE
+                          </span>
+                        ) : rarity && (
                           <span style={{ color: rs!.color, fontSize: '0.5rem', fontWeight: 600, textTransform: 'capitalize' }}>
                             {rarity}
                           </span>
                         )}
                       </div>
                       {nft.owner && (
-                        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.5rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <p style={{ color: ur ? '#777' : 'var(--lw-text-muted)', fontSize: '0.5rem', margin: '0.1rem 0 0 0', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {nft.owner.slice(0, 6)}...{nft.owner.slice(-4)}
                         </p>
                       )}
