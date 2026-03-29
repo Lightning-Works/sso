@@ -851,13 +851,26 @@ export function NftGrid({
           <div className="nft-lightbox-panel">
             <button className="nft-lightbox-close" onClick={() => setSelectedNft(null)} aria-label="Close">&#x2715;</button>
 
-            <div className="nft-lightbox-media">
+            <div className="nft-lightbox-media" style={{ position: 'relative' }}>
               {selectedNft.videoUrl && isVideoUrl(selectedNft.videoUrl) ? (
                 <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
               ) : selectedNft.imageUrl ? (
                 <img src={selectedNft.imageUrl} alt={selectedNft.name} />
               ) : (
                 <div style={{ padding: '4rem' }} className="nft-card-placeholder">No image available</div>
+              )}
+              {selectedNft.imageUrl && (
+                <button
+                  onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+                  style={{
+                    position: 'absolute', bottom: '8px', right: '8px',
+                    background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#ccc', borderRadius: '4px', padding: '0.2rem 0.5rem',
+                    fontSize: '0.75rem', cursor: 'pointer',
+                  }}
+                >
+                  [+]
+                </button>
               )}
             </div>
 
@@ -923,25 +936,13 @@ export function NftGrid({
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem' }}>
-                {selectedNft.externalUrl ? (
+              {selectedNft.externalUrl && (
+                <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
                   <a href={selectedNft.externalUrl} target="_blank" rel="noopener noreferrer" className="lw-link" style={{ fontSize: '0.85rem' }}>
                     View Details →
                   </a>
-                ) : <span />}
-                {selectedNft.imageUrl && (
-                  <button
-                    onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
-                    style={{
-                      background: 'rgba(106,36,250,0.2)', border: '1px solid rgba(106,36,250,0.3)',
-                      color: '#bab1a8', borderRadius: '6px', padding: '0.3rem 0.6rem',
-                      fontSize: '0.8rem', cursor: 'pointer',
-                    }}
-                  >
-                    [+] Fullscreen
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>,
@@ -955,11 +956,16 @@ export function NftGrid({
             position: 'fixed', inset: 0, zIndex: 99999,
             background: 'radial-gradient(ellipse at 30% 20%, rgba(15, 10, 40, 0.97), rgba(5, 3, 20, 0.98) 60%, rgba(2, 1, 10, 0.99))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            overflow: 'hidden', cursor: fsZoom > 1 ? (fsDragging ? 'grabbing' : 'grab') : 'default',
+            overflow: 'hidden', cursor: fsDragging ? 'grabbing' : 'grab',
           }}
-          onClick={(e) => { if (e.target === e.currentTarget && !fsDragging) { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) } }}
+          onClick={(e) => {
+            // Only close if it was a click (not a drag)
+            if (e.target === e.currentTarget) {
+              const dist = Math.abs(e.clientX - fsDragStart.current.x) + Math.abs(e.clientY - fsDragStart.current.y)
+              if (dist < 5) { setFullscreen(false); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }
+            }
+          }}
           onMouseDown={(e) => {
-            if (fsZoom <= 1) return
             setFsDragging(true)
             fsDragStart.current = { x: e.clientX, y: e.clientY, panX: fsPan.x, panY: fsPan.y }
           }}
@@ -972,6 +978,10 @@ export function NftGrid({
           }}
           onMouseUp={() => setFsDragging(false)}
           onMouseLeave={() => setFsDragging(false)}
+          onWheel={(e) => {
+            e.preventDefault()
+            setFsZoom(z => Math.min(Math.max(z + (e.deltaY < 0 ? 0.1 : -0.1), 0.5), 5))
+          }}
         >
           {/* Twinkling stars */}
           <style>{`
