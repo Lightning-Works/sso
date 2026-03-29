@@ -851,26 +851,26 @@ export function NftGrid({
           <div className="nft-lightbox-panel">
             <button className="nft-lightbox-close" onClick={() => setSelectedNft(null)} aria-label="Close">&#x2715;</button>
 
-            <div className="nft-lightbox-media" style={{ position: 'relative' }}>
+            <div className="nft-lightbox-media">
               {selectedNft.videoUrl && isVideoUrl(selectedNft.videoUrl) ? (
                 <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
               ) : selectedNft.imageUrl ? (
-                <img src={selectedNft.imageUrl} alt={selectedNft.name} />
+                <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)' }}>
+                  <img src={selectedNft.imageUrl} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} />
+                  <button
+                    onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
+                    style={{
+                      position: 'absolute', bottom: '6px', right: '6px',
+                      background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#ccc', borderRadius: '4px', padding: '0.2rem 0.5rem',
+                      fontSize: '0.75rem', cursor: 'pointer',
+                    }}
+                  >
+                    [+]
+                  </button>
+                </span>
               ) : (
                 <div style={{ padding: '4rem' }} className="nft-card-placeholder">No image available</div>
-              )}
-              {selectedNft.imageUrl && (
-                <button
-                  onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
-                  style={{
-                    position: 'absolute', bottom: '8px', right: '8px',
-                    background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
-                    color: '#ccc', borderRadius: '4px', padding: '0.2rem 0.5rem',
-                    fontSize: '0.75rem', cursor: 'pointer',
-                  }}
-                >
-                  [+]
-                </button>
               )}
             </div>
 
@@ -980,7 +980,11 @@ export function NftGrid({
           onMouseLeave={() => setFsDragging(false)}
           onWheel={(e) => {
             e.preventDefault()
-            setFsZoom(z => Math.min(Math.max(z + (e.deltaY < 0 ? 0.1 : -0.1), 0.5), 5))
+            e.stopPropagation()
+            setFsZoom(z => {
+              const delta = e.deltaY < 0 ? 0.03 : -0.03
+              return Math.round(Math.min(Math.max(z + delta, 0.5), 5) * 100) / 100
+            })
           }}
         >
           {/* Twinkling stars */}
@@ -1009,12 +1013,12 @@ export function NftGrid({
             src={selectedNft.imageUrl}
             alt={selectedNft.name}
             style={{
-              maxWidth: fsZoom === 1 ? '90vw' : undefined,
-              maxHeight: fsZoom === 1 ? '90vh' : undefined,
-              width: fsZoom !== 1 ? `${fsZoom * 90}vw` : undefined,
+              maxWidth: '90vw',
+              maxHeight: '90vh',
               objectFit: 'contain',
-              transform: `translate(${fsPan.x}px, ${fsPan.y}px)`,
-              transition: fsDragging ? 'none' : 'transform 0.1s',
+              transform: `scale(${fsZoom}) translate(${fsPan.x / fsZoom}px, ${fsPan.y / fsZoom}px)`,
+              transformOrigin: 'center center',
+              transition: fsDragging ? 'none' : 'transform 0.15s ease-out',
               pointerEvents: 'none',
               userSelect: 'none',
             }}
