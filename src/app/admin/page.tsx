@@ -465,17 +465,17 @@ export default function AdminPage() {
             />
           </div>
 
-          {/* Right — Game Info */}
+          {/* Right — App and Lore Info */}
           <div style={{ flex: 1 }}>
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.5rem' }}>
-              Game Info
+              App and Lore Info
             </label>
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>
-              Paste all information you want the character AI to know about this game. This will be sent to Kinet.ink for RAG training.
+              Paste all information you want the character AI to know. This will be sent to Kinet.ink for RAG training. Up to 1 million characters.
             </p>
             <textarea
               value={characterInfo}
-              maxLength={500000}
+              maxLength={1000000}
               onChange={e => { setCharacterInfo(e.target.value); markDirty() }}
               className="lw-input"
               placeholder="Paste game lore, mechanics, characters, world-building, FAQ, etc..."
