@@ -6,6 +6,32 @@ function getServiceDb() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+const VALID_RULE_TYPES = ['nft_ownership', 'token_balance', 'nft_trait', 'nft_collection_count', 'custom_token'] as const
+const VALID_OPERATORS = ['must_have', 'must_not_have', 'gte', 'lte'] as const
+const MAX_NAME_LENGTH = 200
+const MAX_DESC_LENGTH = 2000
+const MAX_RULES = 20
+
+function validateRules(rules: Record<string, unknown>[]): string | null {
+  if (rules.length > MAX_RULES) return `Maximum ${MAX_RULES} rules per gate`
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i]
+    const ruleType = (r.rule_type || r.type) as string
+    if (!VALID_RULE_TYPES.includes(ruleType as typeof VALID_RULE_TYPES[number])) {
+      return `Rule ${i + 1}: invalid rule_type "${ruleType}". Must be one of: ${VALID_RULE_TYPES.join(', ')}`
+    }
+    const op = (r.operator || 'must_have') as string
+    if (!VALID_OPERATORS.includes(op as typeof VALID_OPERATORS[number])) {
+      return `Rule ${i + 1}: invalid operator "${op}". Must be one of: ${VALID_OPERATORS.join(', ')}`
+    }
+    const amount = r.amount ?? r.min_balance ?? r.min_count
+    if (amount !== undefined && amount !== null && (typeof amount !== 'number' || amount < 0)) {
+      return `Rule ${i + 1}: amount must be a non-negative number`
+    }
+  }
+  return null
+}
+
 async function verifyAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -85,6 +111,17 @@ export async function POST(request: Request) {
   if (!app_slug || !name) {
     return NextResponse.json({ error: 'app_slug and name required' }, { status: 400 })
   }
+  if (name.length > MAX_NAME_LENGTH) {
+    return NextResponse.json({ error: `name must be under ${MAX_NAME_LENGTH} characters` }, { status: 400 })
+  }
+  if (description && description.length > MAX_DESC_LENGTH) {
+    return NextResponse.json({ error: `description must be under ${MAX_DESC_LENGTH} characters` }, { status: 400 })
+  }
+  if (!rules || !Array.isArray(rules) || rules.length === 0) {
+    return NextResponse.json({ error: 'At least one rule is required' }, { status: 400 })
+  }
+  const ruleError = validateRules(rules)
+  if (ruleError) return NextResponse.json({ error: ruleError }, { status: 400 })
 
   const db = getServiceDb()
 
@@ -92,13 +129,20 @@ export async function POST(request: Request) {
   const { data: app } = await db.from('apps').select('slug').eq('slug', app_slug).single()
   if (!app) return NextResponse.json({ error: `App "${app_slug}" not found` }, { status: 404 })
 
-  const displayId = await getNextDisplayId(db, app_slug)
-
-  const { data: gate, error: gateErr } = await db
-    .from('token_gates')
-    .insert({ app_slug, display_id: displayId, name, description: description || '' })
-    .select()
-    .single()
+  // Generate display_id with retry for race conditions
+  let gate = null
+  let gateErr = null
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const displayId = await getNextDisplayId(db, app_slug)
+    const result = await db
+      .from('token_gates')
+      .insert({ app_slug, display_id: displayId, name, description: description || '' })
+      .select()
+      .single()
+    if (!result.error) { gate = result.data; break }
+    if (result.error.code === '23505') continue // UNIQUE violation, retry
+    gateErr = result.error; break
+  }
 
   if (gateErr || !gate) {
     return NextResponse.json({ error: gateErr?.message || 'Failed to create gate' }, { status: 500 })

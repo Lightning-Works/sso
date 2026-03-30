@@ -82,7 +82,7 @@ async function checkEvmNftOwnership(wallets: string[], collection: string, evmCh
   let total = 0
   for (const wallet of wallets) {
     try {
-      const res = await fetch(`${url}/getNFTsForOwner?owner=${wallet}&contractAddresses[]=${collection}&withMetadata=false&pageSize=100`, { signal: AbortSignal.timeout(TIMEOUT) })
+      const res = await fetch(`${url}/getNFTsForOwner?owner=${encodeURIComponent(wallet)}&contractAddresses[]=${encodeURIComponent(collection)}&withMetadata=false&pageSize=100`, { signal: AbortSignal.timeout(TIMEOUT) })
       if (!res.ok) continue
       const data = await res.json()
       total += (data.ownedNfts || []).length
@@ -102,7 +102,7 @@ async function checkEvmNftTrait(wallets: string[], collection: string, evmChain:
 
   for (const wallet of wallets) {
     try {
-      const res = await fetch(`${url}/getNFTsForOwner?owner=${wallet}&contractAddresses[]=${collection}&withMetadata=true&pageSize=100`, { signal: AbortSignal.timeout(10000) })
+      const res = await fetch(`${url}/getNFTsForOwner?owner=${encodeURIComponent(wallet)}&contractAddresses[]=${encodeURIComponent(collection)}&withMetadata=true&pageSize=100`, { signal: AbortSignal.timeout(10000) })
       if (!res.ok) continue
       const data = await res.json()
       for (const nft of data.ownedNfts || []) {
@@ -144,7 +144,7 @@ async function checkWaxNftOwnership(wallets: string[], collection: string): Prom
   let total = 0
   for (const wallet of wallets) {
     try {
-      const res = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?owner=${wallet}&collection_name=${collection}&limit=1`, { signal: AbortSignal.timeout(TIMEOUT) })
+      const res = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?owner=${encodeURIComponent(wallet)}&collection_name=${encodeURIComponent(collection)}&limit=1`, { signal: AbortSignal.timeout(TIMEOUT) })
       const data = await res.json()
       if (data.success) total += (data.data || []).length
     } catch { /* skip */ }
@@ -254,7 +254,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: rules } = await db.from('token_gate_rules').select('*').eq('gate_id', id).order('sort_order')
   if (!rules || rules.length === 0) {
-    return NextResponse.json({ pass: true, results: [], gate_id: id, display_id: gate.display_id })
+    return NextResponse.json({ pass: false, results: [], gate_id: id, display_id: gate.display_id, detail: 'Gate has no rules configured' })
   }
 
   // Get user's wallets
