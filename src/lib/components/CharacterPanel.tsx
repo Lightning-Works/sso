@@ -198,8 +198,8 @@ export function CharacterPanel({ character, supabase, adminUser, onSaved, setMes
               padding: '0.75rem',
             }}
           />
-          <p style={{ color: characterInfo.length > 490000 ? '#ff8800' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0', textAlign: 'right' }}>
-            {characterInfo.length.toLocaleString()} / 500,000
+          <p style={{ color: characterInfo.length > 950000 ? '#ff8800' : 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0', textAlign: 'right' }}>
+            {characterInfo.length.toLocaleString()} / 1,000,000
           </p>
         </div>
       </div>
