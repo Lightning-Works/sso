@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 
 function getServiceDb() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -30,14 +30,6 @@ function validateRules(rules: Record<string, unknown>[]): string | null {
     }
   }
   return null
-}
-
-async function verifyAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) return null
-  return user
 }
 
 async function getNextDisplayId(db: ReturnType<typeof getServiceDb>, appSlug: string): Promise<string> {
@@ -99,9 +91,8 @@ export async function GET(request: Request) {
 
 // POST /api/gates — Create a new gate
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const admin = await verifyAdmin(supabase)
-  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const admin = await verifyAdmin(request)
+  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
 
   const body = await request.json()
   const { app_slug, name, description, rules } = body as {

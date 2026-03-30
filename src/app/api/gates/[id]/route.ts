@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 
 const VALID_RULE_TYPES = ['nft_ownership', 'token_balance', 'nft_trait', 'nft_collection_count', 'custom_token'] as const
 const VALID_OPERATORS = ['must_have', 'must_not_have', 'gte', 'lte'] as const
@@ -27,14 +27,6 @@ function getServiceDb() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-async function verifyAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) return null
-  return user
-}
-
 // GET /api/gates/:id — Get a single gate with all rules
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -57,9 +49,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 // PUT /api/gates/:id — Update gate and replace rules
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await createClient()
-  const admin = await verifyAdmin(supabase)
-  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const admin = await verifyAdmin(request)
+  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
 
   const body = await request.json()
   const { name, description, is_active, rules } = body as {
@@ -125,9 +116,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 // DELETE /api/gates/:id
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await createClient()
-  const admin = await verifyAdmin(supabase)
-  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  const admin = await verifyAdmin(request)
+  if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
 
   const db = getServiceDb()
   const { error } = await db.from('token_gates').delete().eq('id', id)
