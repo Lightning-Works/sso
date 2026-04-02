@@ -159,5 +159,13 @@ export function themeToCssVars(theme: Required<LoginTheme>): string {
     .lw-btn-google, .lw-btn-apple, .lw-btn-discord, .lw-btn-twitter, .lw-btn-wax {
       border-radius: ${theme.border_radius} !important;
     }
+    .lw-btn-wax {
+      background-color: #ffffff !important;
+      color: #333333 !important;
+      border: 1px solid ${theme.divider_color} !important;
+    }
+    .lw-btn-wax:hover {
+      background-color: #f5f5f5 !important;
+    }
   `
 }
