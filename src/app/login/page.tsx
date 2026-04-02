@@ -29,6 +29,7 @@ function LoginContent() {
   const [authError, setAuthError] = useState<{ show: boolean; reason: string; logs: string }>({ show: false, reason: '', logs: '' })
   const [copied, setCopied] = useState(false)
   const [themeCss, setThemeCss] = useState('')
+  const [showLoginSuccess, setShowLoginSuccess] = useState(false)
 
   // Convert hex (#rrggbb) to HSL string for Kinet.ink
   const hexToHsl = (hex: string): string => {
@@ -49,6 +50,13 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Show success modal if redirected back from OAuth with app context
+  useEffect(() => {
+    if (searchParams.get('login_success') === 'true') {
+      setShowLoginSuccess(true)
+    }
+  }, [searchParams])
 
   // Show error modal if redirected back with auth error
   useEffect(() => {
@@ -227,13 +235,23 @@ function LoginContent() {
         username: data.user?.user_metadata?.username,
         description: `Logged in via email/password`,
       })
-      router.push('/account')
+      // If logged in via an app/company context, show success modal instead of navigating
+      if (searchParams.get('app') || searchParams.get('company')) {
+        setLoading(false)
+        setShowLoginSuccess(true)
+      } else {
+        router.push('/account')
+      }
     }
   }
 
   const handleOAuth = async (provider: 'google' | 'discord' | 'apple' | 'twitter' | 'x') => {
     const params = new URLSearchParams({ provider })
     if (externalRedirect) params.set('external_redirect', externalRedirect)
+    const appParam = searchParams.get('app')
+    const companyParam = searchParams.get('company')
+    if (appParam) params.set('app', appParam)
+    if (companyParam) params.set('company', companyParam)
     const callbackUrl = `${window.location.origin}/auth/callback?${params.toString()}`
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -346,6 +364,82 @@ function LoginContent() {
           >
             Try Again
           </button>
+        </div>
+      </div>
+    )}
+
+    {/* Login success modal — shown when logged in via app/company context */}
+    {showLoginSuccess && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+      }}>
+        <div style={{
+          backgroundColor: themeCss ? 'var(--lw-panel)' : 'rgba(0,0,0,0.8)',
+          borderRadius: 'var(--lw-radius, 8px)',
+          padding: '2.5rem',
+          maxWidth: '400px',
+          width: '90%',
+          textAlign: 'center',
+          border: '1px solid rgba(128,128,128,0.2)',
+        }}>
+          {/* Checkmark */}
+          <div style={{
+            width: '56px', height: '56px', borderRadius: '50%',
+            backgroundColor: 'rgba(74, 222, 128, 0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1.25rem', fontSize: '1.75rem',
+          }}>
+            <span style={{ color: '#4ade80' }}>&#10003;</span>
+          </div>
+
+          <h3 style={{
+            color: 'var(--lw-text-primary, #e4dad1)',
+            margin: '0 0 0.5rem', fontSize: '1.25rem',
+            fontFamily: 'var(--lw-font-body, inherit)',
+          }}>
+            Logged in to {appName || 'your account'}
+          </h3>
+          <p style={{
+            color: 'var(--lw-text-secondary, #bab1a8)',
+            fontSize: '0.9rem', margin: '0 0 2rem',
+          }}>
+            You&apos;re signed in successfully.
+          </p>
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={() => {
+                if (externalRedirect) {
+                  window.location.href = externalRedirect
+                } else {
+                  window.history.back()
+                }
+              }}
+              style={{
+                flex: 1, padding: '0.75rem 1rem',
+                borderRadius: 'var(--lw-radius, 8px)',
+                border: '1px solid rgba(128,128,128,0.3)',
+                backgroundColor: 'transparent',
+                color: 'var(--lw-text-primary, #e4dad1)',
+                fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer',
+                fontFamily: 'var(--lw-font-body, inherit)',
+              }}
+            >
+              Close &amp; Return
+            </button>
+            <button
+              onClick={() => router.push('/account')}
+              className="lw-btn lw-btn-primary"
+              style={{
+                flex: 1, padding: '0.75rem 1rem',
+                fontSize: '0.9rem', fontWeight: 500,
+              }}
+            >
+              Continue to Wallet
+            </button>
+          </div>
         </div>
       </div>
     )}

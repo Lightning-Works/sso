@@ -47,6 +47,17 @@ export async function GET(request: Request) {
           `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
         )
       }
+
+      // If logged in via app/company context, show success modal on login page
+      const appParam = searchParams.get('app')
+      const companyParam = searchParams.get('company')
+      if (appParam || companyParam) {
+        const successParams = new URLSearchParams({ login_success: 'true' })
+        if (appParam) successParams.set('app', appParam)
+        if (companyParam) successParams.set('company', companyParam)
+        return NextResponse.redirect(`${origin}/login?${successParams.toString()}`)
+      }
+
       return NextResponse.redirect(`${origin}${next}`)
     }
 
