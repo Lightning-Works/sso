@@ -11,6 +11,7 @@ import type { WalletToken, WalletChain } from '../types'
 import { getSolanaBalances } from './solana-balances'
 import { getEvmBalances } from './evm-balances'
 import { getWaxBalances } from './wax-balances'
+import { getDiviBalances } from './divi-balances'
 
 export async function getBalancesForAddress(chain: WalletChain, address: string): Promise<WalletToken[]> {
   switch (chain) {
@@ -20,6 +21,8 @@ export async function getBalancesForAddress(chain: WalletChain, address: string)
       return getEvmBalances(address)
     case 'wax':
       return getWaxBalances(address)
+    case 'divi':
+      return getDiviBalances(address)
     default:
       return []
   }
@@ -41,3 +44,4 @@ export async function getAllBalances(wallets: { chain: WalletChain; address: str
 export { getSolanaBalances } from './solana-balances'
 export { getEvmBalances } from './evm-balances'
 export { getWaxBalances } from './wax-balances'
+export { getDiviBalances } from './divi-balances'

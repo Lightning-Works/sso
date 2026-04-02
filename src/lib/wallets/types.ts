@@ -1,4 +1,4 @@
-export type WalletChain = 'evm' | 'solana' | 'wax'
+export type WalletChain = 'evm' | 'solana' | 'wax' | 'divi'
 
 export interface ConnectedWallet {
   chain: WalletChain

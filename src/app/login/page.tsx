@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { logAuth } from '@/lib/audit'
+import { mergeThemes, themeFromSearchParams, themeToCssVars, type LoginTheme } from '@/lib/theme'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -27,6 +28,7 @@ function LoginContent() {
   const [userEmail, setUserEmail] = useState('')
   const [authError, setAuthError] = useState<{ show: boolean; reason: string; logs: string }>({ show: false, reason: '', logs: '' })
   const [copied, setCopied] = useState(false)
+  const [themeCss, setThemeCss] = useState('')
 
   // Convert hex (#rrggbb) to HSL string for Kinet.ink
   const hexToHsl = (hex: string): string => {
@@ -109,11 +111,12 @@ function LoginContent() {
   useEffect(() => {
     const appSlug = searchParams.get('app')
     const companySlug = searchParams.get('company')
+    const urlOverrides = themeFromSearchParams(searchParams)
 
     if (appSlug) {
       supabase
         .from('apps')
-        .select('*, companies(name, slug, logo_url)')
+        .select('*, companies(name, slug, logo_url, theme)')
         .eq('slug', appSlug)
         .single()
         .then(({ data }) => {
@@ -128,6 +131,12 @@ function LoginContent() {
             if (data.companies?.logo_url) setCompanyLogo(`${STORAGE_BASE}/company-logos/${data.companies.logo_url}`)
             if (data.chat_api_key) setChatApiKey(data.chat_api_key)
             if (data.name) setAppName(data.name)
+
+            // Apply theme: URL params > app theme > company theme > defaults
+            const companyTheme = (data.companies as Record<string, unknown>)?.theme as LoginTheme | null
+            const appTheme = data.theme as LoginTheme | null
+            const merged = mergeThemes(companyTheme, appTheme, urlOverrides)
+            setThemeCss(themeToCssVars(merged))
           }
         })
     } else if (companySlug) {
@@ -140,8 +149,17 @@ function LoginContent() {
           if (data) {
             if (data.logo_url) setCompanyLogo(`${STORAGE_BASE}/company-logos/${data.logo_url}`)
             if (data.app_side_img) setSideImg(`${STORAGE_BASE}/app_side_image/${data.app_side_img}`)
+
+            // Apply theme: URL params > company theme > defaults
+            const companyTheme = data.theme as LoginTheme | null
+            const merged = mergeThemes(companyTheme, null, urlOverrides)
+            setThemeCss(themeToCssVars(merged))
           }
         })
+    } else if (Object.keys(urlOverrides).length > 0) {
+      // URL params only, no app or company
+      const merged = mergeThemes(null, null, urlOverrides)
+      setThemeCss(themeToCssVars(merged))
     }
   }, [searchParams])
 
@@ -332,25 +350,8 @@ function LoginContent() {
       </div>
     )}
 
-    <style>{`
-      .lw-input, .lw-input:focus, .lw-input:active,
-      input[type="email"].lw-input, input[type="password"].lw-input {
-        background-color: rgb(26, 17, 46) !important;
-        color: #bab1a8 !important;
-        -webkit-text-fill-color: #bab1a8 !important;
-      }
-      .lw-input::placeholder {
-        color: #7a7572 !important;
-        -webkit-text-fill-color: #7a7572 !important;
-        opacity: 1 !important;
-      }
-      .lw-input:-webkit-autofill,
-      .lw-input:-webkit-autofill:hover,
-      .lw-input:-webkit-autofill:focus {
-        -webkit-box-shadow: 0 0 0 1000px rgb(26, 17, 46) inset !important;
-        -webkit-text-fill-color: #bab1a8 !important;
-      }
-    `}</style>
+    {/* Theme CSS — overrides defaults when a company/app theme or URL params are set */}
+    {themeCss && <style>{themeCss}</style>}
     <div className="lw-page">
       <div className="lw-page-inner">
         <div className="lw-panel-content">
@@ -435,7 +436,6 @@ function LoginContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="lw-input"
-                  style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}}
                   required
                 />
                 <input
@@ -444,7 +444,6 @@ function LoginContent() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="lw-input"
-                  style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}}
                   required
                 />
 

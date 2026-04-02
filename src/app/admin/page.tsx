@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
+import { DEFAULT_THEME, THEME_KEYS, type LoginTheme } from '@/lib/theme'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -16,6 +17,7 @@ interface Company {
   logo_url: string | null
   primary_color: string
   app_side_img: string | null
+  theme: LoginTheme | null
 }
 
 interface App {
@@ -28,6 +30,7 @@ interface App {
   character_info: string | null
   chat_api_key: string | null
   admin_api_key: string | null
+  theme: LoginTheme | null
   companies?: Company | null
 }
 
@@ -160,12 +163,120 @@ export default function AdminPage() {
     )
   }
 
+  // === THEME EDITOR (reused in Company and App forms) ===
+
+  const THEME_FIELD_LABELS: Record<string, { label: string; type: 'color' | 'text' }> = {
+    primary_color: { label: 'Primary Color (buttons, links)', type: 'color' },
+    primary_hover_color: { label: 'Primary Hover Color', type: 'color' },
+    bg_color: { label: 'Page Background', type: 'color' },
+    panel_bg_color: { label: 'Panel Background', type: 'text' },
+    text_color: { label: 'Text Color', type: 'color' },
+    text_secondary_color: { label: 'Secondary Text', type: 'color' },
+    input_bg_color: { label: 'Input Background', type: 'text' },
+    input_text_color: { label: 'Input Text Color', type: 'color' },
+    divider_color: { label: 'Divider Color', type: 'color' },
+    border_radius: { label: 'Border Radius (e.g. 8px)', type: 'text' },
+    font_family: { label: 'Font Family', type: 'text' },
+    font_size: { label: 'Font Size (e.g. 16px)', type: 'text' },
+  }
+
+  const ThemeEditor = ({ theme, onChange, onDirty }: {
+    theme: LoginTheme, onChange: (t: LoginTheme) => void, onDirty: () => void
+  }) => {
+    const [expanded, setExpanded] = useState(Object.keys(theme).length > 0)
+
+    const updateField = (key: string, value: string) => {
+      const next = { ...theme, [key]: value || undefined }
+      // Remove empty values
+      for (const k of Object.keys(next)) {
+        if (!(next as Record<string, string>)[k]) delete (next as Record<string, string>)[k]
+      }
+      onChange(next)
+      onDirty()
+    }
+
+    return (
+      <div style={{ marginTop: '1.5rem' }}>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            background: 'none', border: 'none', color: 'var(--lw-text-primary)',
+            fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', padding: 0,
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+          }}
+        >
+          <span style={{ fontSize: '0.8rem' }}>{expanded ? '▼' : '▶'}</span>
+          Login Page Theme
+          {Object.keys(theme).length > 0 && (
+            <span style={{ color: 'var(--lw-purple)', fontSize: '0.75rem', fontWeight: 400 }}>
+              ({Object.keys(theme).length} customized)
+            </span>
+          )}
+        </button>
+        <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>
+          Customize the SSO login page appearance. Empty fields use defaults. URL parameters sent by the app will override these values.
+        </p>
+        {expanded && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem',
+            marginTop: '1rem', padding: '1rem',
+            backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px',
+          }}>
+            {THEME_KEYS.map(key => {
+              const field = THEME_FIELD_LABELS[key]
+              if (!field) return null
+              const value = (theme as Record<string, string>)[key] || ''
+              const defaultVal = (DEFAULT_THEME as Record<string, string>)[key]
+              const isColor = field.type === 'color'
+
+              return (
+                <div key={key}>
+                  <label style={{ color: 'var(--lw-text-secondary)', fontSize: '0.75rem', display: 'block', marginBottom: '0.25rem' }}>
+                    {field.label}
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isColor && (
+                      <input
+                        type="color"
+                        value={value || defaultVal}
+                        onChange={e => updateField(key, e.target.value)}
+                        style={{ width: '36px', height: '30px', cursor: 'pointer', border: 'none', borderRadius: '4px', padding: 0, flexShrink: 0 }}
+                      />
+                    )}
+                    <input
+                      type="text"
+                      value={value}
+                      onChange={e => updateField(key, e.target.value)}
+                      placeholder={defaultVal}
+                      className="lw-input"
+                      style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', fontSize: '0.8rem', padding: '0.4rem 0.5rem' }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { onChange({}); onDirty() }}
+                className="lw-btn"
+                style={{ width: 'auto', padding: '0.3rem 1rem', fontSize: '0.75rem', backgroundColor: '#3a3938', color: '#aaa', cursor: 'pointer' }}
+              >
+                Reset All to Defaults
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // === COMPANY CRUD ===
 
   const CompanyForm = ({ company, isNew }: { company: Company | null, isNew: boolean }) => {
     const [name, setName] = useState(company?.name || '')
     const [slug, setSlug] = useState(company?.slug || '')
     const [primaryColor, setPrimaryColor] = useState(company?.primary_color || '#6a24fa')
+    const [theme, setTheme] = useState<LoginTheme>(company?.theme || {})
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const logoRef = useRef<HTMLInputElement>(null)
@@ -187,9 +298,12 @@ export default function AdminPage() {
         sideImg = await uploadFile('app_side_image', sideRef.current.files[0])
       }
 
+      // Sync primary_color from theme if set there, for backwards compat
+      const effectiveColor = theme.primary_color || primaryColor
+
       if (isNew) {
         const { error } = await supabase.from('companies').insert({
-          name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
+          name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: effectiveColor, app_side_img: sideImg, theme
         })
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -204,7 +318,7 @@ export default function AdminPage() {
         }
       } else {
         const { error } = await supabase.from('companies').update({
-          name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: primaryColor, app_side_img: sideImg
+          name, slug: slug.toLowerCase(), logo_url: logoUrl, primary_color: effectiveColor, app_side_img: sideImg, theme
         }).eq('id', company!.id)
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -235,13 +349,10 @@ export default function AdminPage() {
             <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Slug (URL identifier)</label>
             <input className="lw-input" style={{backgroundColor:'rgb(26,17,46)',color:'#bab1a8'}} value={slug} onChange={e => { setSlug(e.target.value); markDirty() }} placeholder="companyname" />
           </div>
-          <div>
-            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Primary Color</label>
-            <input type="color" value={primaryColor} onChange={e => { setPrimaryColor(e.target.value); markDirty() }} style={{ width: '60px', height: '36px', cursor: 'pointer', marginTop: '0.25rem' }} />
-          </div>
           <ImageField label="Company Logo" currentFile={company?.logo_url || null} bucketUrl={`${STORAGE_BASE}/company-logos`} height="60px" fileRef={logoRef} onFileSelected={markDirty} />
           <ImageField label="Default Side Image" currentFile={company?.app_side_img || null} bucketUrl={`${STORAGE_BASE}/app_side_image`} height="200px" fileRef={sideRef} onFileSelected={markDirty} />
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <ThemeEditor theme={theme} onChange={setTheme} onDirty={markDirty} />
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
               {saving ? 'Saving...' : saved ? 'Saved' : isNew ? 'Create Company' : 'Save'}
             </button>
@@ -260,8 +371,7 @@ export default function AdminPage() {
     const [name, setName] = useState(app?.name || '')
     const [slug, setSlug] = useState(app?.slug || '')
     const [companyId, setCompanyId] = useState(app?.company_id || companies[0]?.id || 0)
-    // API keys are managed in the Character panel, not here
-    // But we preserve them on save so they don't get wiped
+    const [theme, setTheme] = useState<LoginTheme>(app?.theme || {})
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const headerRef = useRef<HTMLInputElement>(null)
@@ -280,7 +390,7 @@ export default function AdminPage() {
 
       if (isNew) {
         const { error } = await supabase.from('apps').insert({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme
         })
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -295,7 +405,7 @@ export default function AdminPage() {
         }
       } else {
         const { error } = await supabase.from('apps').update({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme
         }).eq('id', app!.id)
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -340,7 +450,11 @@ export default function AdminPage() {
             </select>
           </div>
           <ImageField label="App Logo (shown in login panel)" currentFile={app?.app_header_img || null} bucketUrl={`${STORAGE_BASE}/app_logo`} height="75px" fileRef={headerRef} onFileSelected={markDirty} />
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <ThemeEditor theme={theme} onChange={setTheme} onDirty={markDirty} />
+          <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0' }}>
+            App theme overrides company theme. URL parameters (e.g. ?primary_color=%23A35B4E) override both.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
               {saving ? 'Saving...' : saved ? 'Saved' : isNew ? 'Create App' : 'Save'}
             </button>

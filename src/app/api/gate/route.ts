@@ -6,6 +6,7 @@ const HELIUS_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY
 const GATE_SIGNING_SECRET = process.env.GATE_SIGNING_SECRET || ''
 const WAX_RPC = 'https://wax.greymass.com'
+const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
 const MAX_RULES = 10
 
 // ── Allowed RPC URLs (prevent SSRF) ──
@@ -42,6 +43,7 @@ function validateAddress(address: string, chain: string): boolean {
   if (chain === 'evm') return /^0x[0-9a-fA-F]{40}$/.test(address)
   if (chain === 'solana') return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)
   if (chain === 'wax') return /^[a-z1-5.]{1,13}$/.test(address)
+  if (chain === 'divi') return /^D[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(address)
   return true
 }
 
@@ -129,6 +131,26 @@ async function fetchWaxBalance(account: string, contract: string, symbol: string
   } catch { return 0 }
 }
 
+async function fetchDiviBalance(address: string): Promise<number> {
+  try {
+    const res = await fetch(DIVI_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        jsonrpc: '1.0', id: 'gate',
+        method: 'getaddressbalance',
+        params: [{ addresses: [address] }],
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await res.json()
+    if (data.result && typeof data.result.balance === 'number') {
+      return data.result.balance / 1e8
+    }
+    return 0
+  } catch { return 0 }
+}
+
 async function fetchEvmNfts(nftRpcUrl: string, contractAddress: string, walletAddress: string): Promise<Record<string, unknown>[]> {
   try {
     const params = new URLSearchParams({
@@ -187,7 +209,7 @@ async function fetchWaxNfts(account: string, collection: string, schema?: string
 
 interface GateRule {
   type: 'token_balance' | 'nft_ownership' | 'nft_trait' | 'nft_collection_count' | 'custom_token'
-  chain?: 'evm' | 'solana' | 'wax'
+  chain?: 'evm' | 'solana' | 'wax' | 'divi'
   symbol?: string
   contract?: string
   min_balance?: number
@@ -348,6 +370,8 @@ async function evaluateRule(userId: string, rule: GateRule): Promise<GateResult>
           if (waxContract && rule.symbol) {
             totalBalance += await fetchWaxBalance(w.wallet_address, waxContract, rule.symbol)
           }
+        } else if (w.chain_type === 'divi' && (rule.symbol === 'DIVI' || !rule.symbol)) {
+          totalBalance += await fetchDiviBalance(w.wallet_address)
         }
       }
 

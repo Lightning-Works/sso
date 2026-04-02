@@ -5,6 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { connectWaxWallet } from './wax'
+import { validateDiviAddress, generateDiviChallenge, formatDiviWallet } from './divi'
 import { shortenAddress } from './types'
 import type { ConnectedWallet, WalletToken } from './types'
 import { getBalancesForAddress } from './balances'
@@ -176,6 +177,95 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     setConnecting('')
   }
 
+  // === DIVI ===
+  const [diviModalOpen, setDiviModalOpen] = useState(false)
+  const [diviStep, setDiviStep] = useState(1)
+  const [diviAddress, setDiviAddress] = useState('')
+  const [diviChallenge, setDiviChallenge] = useState<{ message: string; nonce: string } | null>(null)
+  const [diviSignature, setDiviSignature] = useState('')
+  const [diviError, setDiviError] = useState('')
+  const [diviVerifying, setDiviVerifying] = useState(false)
+  const [diviBalance, setDiviBalance] = useState<number | null>(null)
+  const [diviCopied, setDiviCopied] = useState(false)
+
+  const handleDiviOpen = () => {
+    playClick()
+    setDiviModalOpen(true)
+    setDiviStep(1)
+    setDiviAddress('')
+    setDiviChallenge(null)
+    setDiviSignature('')
+    setDiviError('')
+    setDiviVerifying(false)
+    setDiviBalance(null)
+    setDiviCopied(false)
+  }
+
+  const handleDiviStep1 = () => {
+    playClick()
+    if (!validateDiviAddress(diviAddress.trim())) {
+      setDiviError('Please enter a valid DIVI address (starts with D)')
+      return
+    }
+    setDiviError('')
+    const challenge = generateDiviChallenge()
+    setDiviChallenge(challenge)
+    setDiviStep(2)
+  }
+
+  const handleDiviStep2 = () => {
+    playClick()
+    setDiviStep(3)
+  }
+
+  const handleDiviCopyMessage = async () => {
+    if (diviChallenge) {
+      await navigator.clipboard.writeText(diviChallenge.message)
+      setDiviCopied(true)
+      setTimeout(() => setDiviCopied(false), 2000)
+    }
+  }
+
+  const handleDiviConnect = async () => {
+    playClick()
+    if (!diviSignature.trim()) {
+      setDiviError('Please paste your signature')
+      return
+    }
+    if (!diviChallenge) return
+
+    setDiviError('')
+    setDiviVerifying(true)
+
+    try {
+      const res = await fetch('/api/wallet/divi-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: diviAddress.trim(),
+          message: diviChallenge.message,
+          signature: diviSignature.trim(),
+        }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.verified) {
+        setDiviError(data.error || 'Signature verification failed. Please try again.')
+        setDiviVerifying(false)
+        return
+      }
+
+      // Save the wallet
+      const wallet = formatDiviWallet(diviAddress.trim())
+      await saveWallet(wallet)
+      setDiviBalance(data.balance ?? null)
+      setDiviStep(4) // success
+    } catch {
+      setDiviError('Connection failed. Please try again.')
+    }
+    setDiviVerifying(false)
+  }
+
   // Filter
   const [hideSmall, setHideSmall] = useState(true)
 
@@ -190,7 +280,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     getTokenPrices().then(setPrices)
   }, [])
 
-  const toggleExpandAddr = async (address: string, chain: 'evm' | 'solana' | 'wax') => {
+  const toggleExpandAddr = async (address: string, chain: 'evm' | 'solana' | 'wax' | 'divi') => {
     if (expandedAddr === address) {
       setExpandedAddr(null)
       return
@@ -290,7 +380,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
     }
 
     // Native chain symbols — always show first
-    const nativeSymbols: Record<string, string> = { evm: 'ETH', solana: 'SOL', wax: 'WAX' }
+    const nativeSymbols: Record<string, string> = { evm: 'ETH', solana: 'SOL', wax: 'WAX', divi: 'DIVI' }
     const nativeSymbol = nativeSymbols[chain] || ''
 
     // Calculate USD values and sort
@@ -339,15 +429,15 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   // Find saved wallets by provider
   const getSavedForProvider = (provider: string) => savedWallets.filter(w => w.provider === provider)
 
-  const AddressRow = ({ addr, chain, isActive }: { addr: string, chain: 'evm' | 'solana' | 'wax', isActive: boolean }) => {
+  const AddressRow = ({ addr, chain, isActive }: { addr: string, chain: 'evm' | 'solana' | 'wax' | 'divi' | 'divi', isActive: boolean }) => {
     const isExp = expandedAddr === addr
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', margin: '2px 0' }}>
-          {chain === 'wax' || chain === 'evm' || chain === 'solana' ? (
+          {chain === 'wax' || chain === 'evm' || chain === 'solana' || chain === 'divi' ? (
             <>
               <a
-                href={chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
+                href={chain === 'divi' ? '#' : chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
                 style={{
                   color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
                   fontSize: '0.7rem',
@@ -404,7 +494,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   }
 
   const WalletRow = ({ id, name, icon, provider, chain, isSaved, onConnect, addresses, canAddMore, walletLink }: {
-    id: string, name: string, icon: React.ReactNode, provider: string, chain: 'evm' | 'solana' | 'wax',
+    id: string, name: string, icon: React.ReactNode, provider: string, chain: 'evm' | 'solana' | 'wax' | 'divi' | 'divi',
     isSaved: boolean, onConnect: () => void, addresses: string[], canAddMore?: boolean, walletLink?: string
   }) => {
     const saved = getSavedForProvider(provider)
@@ -484,6 +574,8 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
   const phantomSavedWallets = savedWallets.filter(w => w.provider === 'phantom')
   const solflareSavedWallets = savedWallets.filter(w => w.provider === 'solflare')
   const waxSavedWallets = savedWallets.filter(w => w.provider === 'wax')
+  const diviSavedWallets = savedWallets.filter(w => w.provider === 'divi')
+  const diviSaved = diviSavedWallets.length > 0
   const isCurrentlyPhantom = solanaWalletName.toLowerCase() === 'phantom'
   const isCurrentlySolflare = solanaWalletName.toLowerCase() === 'solflare'
   const phantomSaved = phantomSavedWallets.length > 0
@@ -535,20 +627,14 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         canAddMore={true}
       />
 
-      <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', marginBottom: '0.5rem' }}>
-        <div className="lw-row" style={{ padding: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width="24" height="24" style={{ borderRadius: '50%' }} />
-            <span className="lw-row-value">DiviGo Wallet</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-            <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1', opacity: 0.5, cursor: 'not-allowed', minWidth: '100px' }}>
-              Coming Soon
-            </button>
-            <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
-          </div>
-        </div>
-      </div>
+      <WalletRow
+        id="divi" name="Divi Wallet"
+        icon={<img src="/divigo_logo_round_128px.webp" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
+        provider="divi" chain="divi"
+        isSaved={diviSaved}
+        onConnect={handleDiviOpen}
+        addresses={diviSavedWallets.map(w => w.address)}
+      />
 
       <WalletRow
         id="wax" name="WAX Cloud Wallet"
@@ -559,6 +645,239 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         addresses={waxSavedWallets.map(w => w.address)}
         walletLink={waxSavedWallets[0] ? `/wallet/wax?account=${encodeURIComponent(waxSavedWallets[0].address)}` : undefined}
       />
+
+      {/* Divi Connect Modal */}
+      {diviModalOpen && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+          }}
+          onClick={() => { if (diviStep !== 4) setDiviModalOpen(false) }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '2rem',
+              maxWidth: '460px', width: '90%', position: 'relative',
+              border: '1px solid rgba(106,36,250,0.3)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setDiviModalOpen(false)}
+              style={{
+                position: 'absolute', top: '12px', right: '16px',
+                background: 'none', border: 'none', color: '#888',
+                fontSize: '1.25rem', cursor: 'pointer', padding: '4px',
+              }}
+            >
+              x
+            </button>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <img src="/divigo_logo_round_128px.webp" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>Connect Divi Wallet</h3>
+            </div>
+
+            {/* Step indicators */}
+            {diviStep < 4 && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                {[1, 2, 3].map(s => (
+                  <div key={s} style={{
+                    flex: 1, height: '3px', borderRadius: '2px',
+                    backgroundColor: s <= diviStep ? 'var(--lw-purple, #6a24fa)' : 'rgba(255,255,255,0.1)',
+                    transition: 'background-color 0.3s',
+                  }} />
+                ))}
+              </div>
+            )}
+
+            {/* Step 1: Enter Address */}
+            {diviStep === 1 && (
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem',
+                }}>
+                  <span style={{
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    borderRadius: '50%', width: '24px', height: '24px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
+                  }}>1</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>Enter your DIVI address</span>
+                </div>
+                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                  Paste your DIVI wallet address below. It starts with the letter D.
+                </p>
+                <input
+                  type="text"
+                  value={diviAddress}
+                  onChange={e => { setDiviAddress(e.target.value); setDiviError('') }}
+                  placeholder="D7hrf45..."
+                  style={{
+                    width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)',
+                    color: '#fff', fontSize: '0.95rem', fontFamily: 'monospace',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleDiviStep1() }}
+                  autoFocus
+                />
+                {diviError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
+                <button
+                  onClick={handleDiviStep1}
+                  className="lw-btn"
+                  style={{
+                    width: '100%', marginTop: '1rem', padding: '0.6rem',
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: Sign Message */}
+            {diviStep === 2 && (
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem',
+                }}>
+                  <span style={{
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    borderRadius: '50%', width: '24px', height: '24px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
+                  }}>2</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>Sign this message in your Divi wallet</span>
+                </div>
+                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 0.75rem 0' }}>
+                  Open your Divi wallet, go to <strong style={{ color: '#ccc' }}>Sign Message</strong>, paste the message below, and sign it with your address.
+                </p>
+                <div style={{
+                  position: 'relative', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px',
+                  padding: '0.75rem', border: '1px solid rgba(255,255,255,0.1)',
+                }}>
+                  <pre style={{
+                    color: '#e4dad1', fontSize: '0.8rem', margin: 0,
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontFamily: 'monospace',
+                    paddingRight: '2.5rem',
+                  }}>
+                    {diviChallenge?.message}
+                  </pre>
+                  <button
+                    onClick={handleDiviCopyMessage}
+                    style={{
+                      position: 'absolute', top: '8px', right: '8px',
+                      background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
+                      color: diviCopied ? '#4ade80' : '#aaa', borderRadius: '6px',
+                      padding: '4px 10px', fontSize: '0.7rem', cursor: 'pointer',
+                    }}
+                  >
+                    {diviCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <button
+                  onClick={handleDiviStep2}
+                  className="lw-btn"
+                  style={{
+                    width: '100%', marginTop: '1rem', padding: '0.6rem',
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
+                  }}
+                >
+                  I&apos;ve Signed It
+                </button>
+              </div>
+            )}
+
+            {/* Step 3: Paste Signature */}
+            {diviStep === 3 && (
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem',
+                }}>
+                  <span style={{
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    borderRadius: '50%', width: '24px', height: '24px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
+                  }}>3</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>Paste your signature</span>
+                </div>
+                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                  Copy the signature from your Divi wallet and paste it below.
+                </p>
+                <textarea
+                  value={diviSignature}
+                  onChange={e => { setDiviSignature(e.target.value); setDiviError('') }}
+                  placeholder="Paste signature here..."
+                  rows={3}
+                  style={{
+                    width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)',
+                    color: '#fff', fontSize: '0.85rem', fontFamily: 'monospace',
+                    outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                  }}
+                  autoFocus
+                />
+                {diviError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
+                <button
+                  onClick={handleDiviConnect}
+                  disabled={diviVerifying}
+                  className="lw-btn"
+                  style={{
+                    width: '100%', marginTop: '1rem', padding: '0.6rem',
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    fontSize: '0.95rem', fontWeight: 600, cursor: diviVerifying ? 'wait' : 'pointer',
+                    borderRadius: '8px', opacity: diviVerifying ? 0.7 : 1,
+                  }}
+                >
+                  {diviVerifying ? <span className="lw-dots">Verifying</span> : 'Connect'}
+                </button>
+              </div>
+            )}
+
+            {/* Step 4: Success */}
+            {diviStep === 4 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: '56px', height: '56px', borderRadius: '50%',
+                  backgroundColor: 'rgba(74, 222, 128, 0.15)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+                  fontSize: '1.75rem',
+                }}>
+                  <span style={{ color: '#4ade80' }}>&#10003;</span>
+                </div>
+                <h3 style={{ color: '#fff', margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>Connected!</h3>
+                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 0.25rem 0' }}>
+                  {shortenAddress(diviAddress)}
+                </p>
+                {diviBalance !== null && (
+                  <p style={{ color: '#4ade80', fontSize: '1.1rem', fontWeight: 600, margin: '0.75rem 0' }}>
+                    You have {diviBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} DIVI in your wallet.
+                  </p>
+                )}
+                <button
+                  onClick={() => setDiviModalOpen(false)}
+                  className="lw-btn"
+                  style={{
+                    width: '100%', marginTop: '1rem', padding: '0.6rem',
+                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
+                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
