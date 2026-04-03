@@ -644,7 +644,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
 
       <WalletRow
         id="divi" name="Divi Wallet"
-        icon={<img src="/divi_logo.png" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
+        icon={<img src="/divi_logo.webp" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
         provider="divi" chain="divi"
         isSaved={diviSaved}
         onConnect={handleDiviOpen}
@@ -693,7 +693,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              <img src="/divi_logo.png" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
+              <img src="/divi_logo.webp" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
               <h3 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>Connect Divi Wallet</h3>
             </div>
 
