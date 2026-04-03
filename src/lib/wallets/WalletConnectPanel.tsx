@@ -627,9 +627,24 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         canAddMore={true}
       />
 
+      <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', marginBottom: '0.5rem' }}>
+        <div className="lw-row" style={{ padding: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width="24" height="24" style={{ borderRadius: '50%' }} />
+            <span className="lw-row-value">DiviGo Wallet</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+            <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1', opacity: 0.5, cursor: 'not-allowed', minWidth: '100px' }}>
+              Coming Soon
+            </button>
+            <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
+          </div>
+        </div>
+      </div>
+
       <WalletRow
         id="divi" name="Divi Wallet"
-        icon={<img src="/divigo_logo_round_128px.webp" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
+        icon={<img src="/divi_logo.png" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
         provider="divi" chain="divi"
         isSaved={diviSaved}
         onConnect={handleDiviOpen}
@@ -678,7 +693,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              <img src="/divigo_logo_round_128px.webp" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
+              <img src="/divi_logo.png" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
               <h3 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>Connect Divi Wallet</h3>
             </div>
 
