@@ -673,9 +673,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
         >
           <div
             style={{
-              backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '2rem',
+              backgroundColor: 'var(--lw-panel, rgba(0,0,0,0.8))', borderRadius: 'var(--lw-radius, 8px)', padding: '2rem',
               maxWidth: '460px', width: '90%', position: 'relative',
-              border: '1px solid rgba(106,36,250,0.3)',
+              border: '1px solid var(--lw-border, #4c4946)',
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -684,17 +684,17 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
               onClick={() => setDiviModalOpen(false)}
               style={{
                 position: 'absolute', top: '12px', right: '16px',
-                background: 'none', border: 'none', color: '#888',
+                background: 'none', border: 'none', color: 'var(--lw-text-muted, #7a7572)',
                 fontSize: '1.25rem', cursor: 'pointer', padding: '4px',
               }}
             >
-              x
+              &#x2715;
             </button>
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
               <img src="/bert_divi_wallet_logo_v2.webp" alt="Divi" width="32" height="32" style={{ borderRadius: '50%' }} />
-              <h3 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>Connect Divi Wallet</h3>
+              <h3 style={{ margin: 0, color: 'var(--lw-text-white, #fff)', fontSize: '1.15rem' }}>Connect Divi Wallet</h3>
             </div>
 
             {/* Step indicators */}
@@ -722,9 +722,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
                   }}>1</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>Enter your DIVI address</span>
+                  <span style={{ color: 'var(--lw-text-white, #fff)', fontWeight: 600 }}>Enter your DIVI address</span>
                 </div>
-                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                <p style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
                   Paste your DIVI wallet address below. It starts with the letter D.
                 </p>
                 <input
@@ -732,24 +732,16 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                   value={diviAddress}
                   onChange={e => { setDiviAddress(e.target.value); setDiviError('') }}
                   placeholder="D7hrf45..."
-                  style={{
-                    width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)',
-                    color: '#fff', fontSize: '0.95rem', fontFamily: 'monospace',
-                    outline: 'none', boxSizing: 'border-box',
-                  }}
+                  className="lw-input"
+                  style={{ fontFamily: 'monospace', boxSizing: 'border-box' }}
                   onKeyDown={e => { if (e.key === 'Enter') handleDiviStep1() }}
                   autoFocus
                 />
-                {diviError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
+                {diviError && <p style={{ color: 'var(--lw-error, #ff4444)', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
                 <button
                   onClick={handleDiviStep1}
-                  className="lw-btn"
-                  style={{
-                    width: '100%', marginTop: '1rem', padding: '0.6rem',
-                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
-                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
-                  }}
+                  className="lw-btn lw-btn-primary"
+                  style={{ width: '100%', marginTop: '1rem', padding: '0.6rem', fontSize: '0.95rem', fontWeight: 600 }}
                 >
                   Next
                 </button>
@@ -768,28 +760,26 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
                   }}>2</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>Sign this message in your Divi wallet</span>
+                  <span style={{ color: 'var(--lw-text-white, #fff)', fontWeight: 600 }}>Sign this message in your Divi wallet</span>
                 </div>
-                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 0.75rem 0' }}>
-                  Open your Divi wallet, go to <strong style={{ color: '#ccc' }}>Sign Message</strong>, paste the message below, and sign it with your address.
+                <p style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.85rem', margin: '0 0 0.75rem 0' }}>
+                  Open your Divi wallet, go to <strong style={{ color: 'var(--lw-text-secondary, #bab1a8)' }}>Sign Message</strong>, paste the message below, and sign it with your address.
                 </p>
                 <div style={{
-                  position: 'relative', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px',
+                  position: 'relative', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 'var(--lw-radius-sm, 4px)',
                   padding: '0.75rem', border: '1px solid rgba(255,255,255,0.1)',
                 }}>
                   <pre style={{
-                    color: '#e4dad1', fontSize: '0.8rem', margin: 0,
+                    color: 'var(--lw-text-primary, #e4dad1)', fontSize: '0.8rem', margin: 0,
                     whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontFamily: 'monospace',
                     paddingRight: '2.5rem',
-                  }}>
-                    {diviChallenge?.message}
-                  </pre>
+                  }}>{diviChallenge?.message}</pre>
                   <button
                     onClick={handleDiviCopyMessage}
                     style={{
                       position: 'absolute', top: '8px', right: '8px',
                       background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
-                      color: diviCopied ? '#4ade80' : '#aaa', borderRadius: '6px',
+                      color: diviCopied ? 'var(--lw-success, #44ff44)' : 'var(--lw-text-muted, #7a7572)', borderRadius: 'var(--lw-radius-sm, 4px)',
                       padding: '4px 10px', fontSize: '0.7rem', cursor: 'pointer',
                     }}
                   >
@@ -798,12 +788,8 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                 </div>
                 <button
                   onClick={handleDiviStep2}
-                  className="lw-btn"
-                  style={{
-                    width: '100%', marginTop: '1rem', padding: '0.6rem',
-                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
-                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
-                  }}
+                  className="lw-btn lw-btn-primary"
+                  style={{ width: '100%', marginTop: '1rem', padding: '0.6rem', fontSize: '0.95rem', fontWeight: 600 }}
                 >
                   I&apos;ve Signed It
                 </button>
@@ -822,9 +808,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.8rem', fontWeight: 700, flexShrink: 0,
                   }}>3</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>Paste your signature</span>
+                  <span style={{ color: 'var(--lw-text-white, #fff)', fontWeight: 600 }}>Paste your signature</span>
                 </div>
-                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                <p style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
                   Copy the signature from your Divi wallet and paste it below.
                 </p>
                 <textarea
@@ -832,24 +818,22 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                   onChange={e => { setDiviSignature(e.target.value); setDiviError('') }}
                   placeholder="Paste signature here..."
                   rows={3}
+                  className="lw-input"
                   style={{
-                    width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)',
-                    color: '#fff', fontSize: '0.85rem', fontFamily: 'monospace',
-                    outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                    fontFamily: 'monospace', fontSize: '0.85rem',
+                    resize: 'vertical', boxSizing: 'border-box',
                   }}
                   autoFocus
                 />
-                {diviError && <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
+                {diviError && <p style={{ color: 'var(--lw-error, #ff4444)', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>{diviError}</p>}
                 <button
                   onClick={handleDiviConnect}
                   disabled={diviVerifying}
-                  className="lw-btn"
+                  className="lw-btn lw-btn-primary"
                   style={{
                     width: '100%', marginTop: '1rem', padding: '0.6rem',
-                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
                     fontSize: '0.95rem', fontWeight: 600, cursor: diviVerifying ? 'wait' : 'pointer',
-                    borderRadius: '8px', opacity: diviVerifying ? 0.7 : 1,
+                    opacity: diviVerifying ? 0.7 : 1,
                   }}
                 >
                   {diviVerifying ? <span className="lw-dots">Verifying</span> : 'Connect'}
@@ -866,25 +850,21 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
                   alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
                   fontSize: '1.75rem',
                 }}>
-                  <span style={{ color: '#4ade80' }}>&#10003;</span>
+                  <span style={{ color: 'var(--lw-success, #44ff44)' }}>&#10003;</span>
                 </div>
-                <h3 style={{ color: '#fff', margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>Connected!</h3>
-                <p style={{ color: '#aaa', fontSize: '0.85rem', margin: '0 0 0.25rem 0' }}>
+                <h3 style={{ color: 'var(--lw-text-white, #fff)', margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>Connected!</h3>
+                <p style={{ color: 'var(--lw-text-muted, #7a7572)', fontSize: '0.85rem', margin: '0 0 0.25rem 0' }}>
                   {shortenAddress(diviAddress)}
                 </p>
                 {diviBalance !== null && (
-                  <p style={{ color: '#4ade80', fontSize: '1.1rem', fontWeight: 600, margin: '0.75rem 0' }}>
+                  <p style={{ color: 'var(--lw-success, #44ff44)', fontSize: '1.1rem', fontWeight: 600, margin: '0.75rem 0' }}>
                     You have {diviBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} DIVI in your wallet.
                   </p>
                 )}
                 <button
                   onClick={() => setDiviModalOpen(false)}
-                  className="lw-btn"
-                  style={{
-                    width: '100%', marginTop: '1rem', padding: '0.6rem',
-                    backgroundColor: 'var(--lw-purple, #6a24fa)', color: '#fff',
-                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer', borderRadius: '8px',
-                  }}
+                  className="lw-btn lw-btn-primary"
+                  style={{ width: '100%', marginTop: '1rem', padding: '0.6rem', fontSize: '0.95rem', fontWeight: 600 }}
                 >
                   Done
                 </button>
