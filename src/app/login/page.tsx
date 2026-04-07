@@ -30,6 +30,7 @@ function LoginContent() {
   const [copied, setCopied] = useState(false)
   const [themeCss, setThemeCss] = useState('')
   const [showLoginSuccess, setShowLoginSuccess] = useState(false)
+  const [themeReady, setThemeReady] = useState(false)
 
   // Convert hex (#rrggbb) to HSL string for Kinet.ink
   const hexToHsl = (hex: string): string => {
@@ -146,6 +147,7 @@ function LoginContent() {
             const merged = mergeThemes(companyTheme, appTheme, urlOverrides)
             setThemeCss(themeToCssVars(merged))
           }
+          setThemeReady(true)
         })
     } else if (companySlug) {
       supabase
@@ -163,11 +165,15 @@ function LoginContent() {
             const merged = mergeThemes(companyTheme, null, urlOverrides)
             setThemeCss(themeToCssVars(merged))
           }
+          setThemeReady(true)
         })
-    } else if (Object.keys(urlOverrides).length > 0) {
-      // URL params only, no app or company
-      const merged = mergeThemes(null, null, urlOverrides)
-      setThemeCss(themeToCssVars(merged))
+    } else {
+      // No app or company — default theme, ready immediately
+      setThemeReady(true)
+      if (Object.keys(urlOverrides).length > 0) {
+        const merged = mergeThemes(null, null, urlOverrides)
+        setThemeCss(themeToCssVars(merged))
+      }
     }
   }, [searchParams])
 
@@ -446,12 +452,15 @@ function LoginContent() {
 
     {/* Theme CSS — overrides defaults when a company/app theme or URL params are set */}
     {themeCss && <style>{themeCss}</style>}
-    <div className="lw-page">
+    {/* Hide page until theme is loaded to prevent flash of default theme */}
+    {!themeReady && (searchParams.get('app') || searchParams.get('company')) ? (
+      <div style={{ minHeight: '100vh', backgroundColor: 'transparent' }} />
+    ) : null}
+    <div className="lw-page" style={!themeReady && (searchParams.get('app') || searchParams.get('company')) ? { visibility: 'hidden' } : undefined}>
       <div className="lw-page-inner">
         <div className="lw-panel-content">
           <div className="lw-header">
             <img src={companyLogo} alt="Company Logo" className="lw-logo" />
-            <p className="lw-subtitle">Sign in to your account</p>
           </div>
 
           {/* Panel — shows login OR chat, not both */}
@@ -599,7 +608,7 @@ function LoginContent() {
             </div>
           )}
 
-          <p className="lw-footer-text" style={{ marginTop: '1.5rem' }}>
+          <p className="lw-footer-text" style={{ marginTop: '1.5rem', textAlign: 'center' }}>
             By signing in, you agree to our{' '}
             <a href="/terms" className="lw-link">Terms of Service</a>
             {' '}and{' '}

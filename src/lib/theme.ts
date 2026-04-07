@@ -79,9 +79,36 @@ export function themeFromSearchParams(params: URLSearchParams): LoginTheme {
 }
 
 /**
+ * Lighten a color 50% toward white (for input backgrounds).
+ * Handles hex (#rrggbb) and rgb/rgba formats.
+ */
+function lightenTowardWhite(color: string, amount = 0.5): string {
+  // Handle hex
+  if (color.startsWith('#') && color.length >= 7) {
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`
+  }
+  // Handle rgb/rgba
+  const match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+  if (match) {
+    const r = parseInt(match[1])
+    const g = parseInt(match[2])
+    const b = parseInt(match[3])
+    return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`
+  }
+  return color
+}
+
+/**
  * Generate a CSS style block to inject for the merged theme
  */
 export function themeToCssVars(theme: Required<LoginTheme>): string {
+  // Auto-compute input bg from panel bg when the panel has been customized
+  const isCustomPanel = theme.panel_bg_color !== DEFAULT_THEME.panel_bg_color
+  const inputBg = isCustomPanel ? lightenTowardWhite(theme.panel_bg_color, 0.5) : theme.input_bg_color
+
   return `
     :root {
       --lw-purple: ${theme.primary_color};
@@ -90,7 +117,7 @@ export function themeToCssVars(theme: Required<LoginTheme>): string {
       --lw-panel: ${theme.panel_bg_color};
       --lw-text-primary: ${theme.text_color};
       --lw-text-secondary: ${theme.text_secondary_color};
-      --lw-input-bg: ${theme.input_bg_color};
+      --lw-input-bg: ${inputBg};
       --lw-border: ${theme.divider_color};
       --lw-radius: ${theme.border_radius};
       --lw-radius-sm: ${theme.border_radius};
@@ -101,7 +128,7 @@ export function themeToCssVars(theme: Required<LoginTheme>): string {
     }
     .lw-input, .lw-input:focus, .lw-input:active,
     input[type="email"].lw-input, input[type="password"].lw-input, input[type="text"].lw-input {
-      background-color: ${theme.input_bg_color} !important;
+      background-color: ${inputBg} !important;
       color: ${theme.input_text_color} !important;
       -webkit-text-fill-color: ${theme.input_text_color} !important;
       border-radius: ${theme.border_radius} !important;
