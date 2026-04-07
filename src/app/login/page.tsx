@@ -452,11 +452,11 @@ function LoginContent() {
 
     {/* Theme CSS — overrides defaults when a company/app theme or URL params are set */}
     {themeCss && <style>{themeCss}</style>}
-    {/* Hide page until theme is loaded to prevent flash of default theme */}
-    {!themeReady && (searchParams.get('app') || searchParams.get('company')) ? (
-      <div style={{ minHeight: '100vh', backgroundColor: 'transparent' }} />
-    ) : null}
-    <div className="lw-page" style={!themeReady && (searchParams.get('app') || searchParams.get('company')) ? { visibility: 'hidden' } : undefined}>
+    {/* While loading a custom theme, override body bg to transparent and hide content */}
+    {!themeReady && (searchParams.get('app') || searchParams.get('company')) && (
+      <style>{`body { background-color: transparent !important; } .lw-page { visibility: hidden !important; }`}</style>
+    )}
+    <div className="lw-page">
       <div className="lw-page-inner">
         <div className="lw-panel-content">
           <div className="lw-header">
