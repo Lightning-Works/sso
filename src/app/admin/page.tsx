@@ -771,11 +771,11 @@ export default function AdminPage() {
               LW NFTs
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '2rem' }}>
-            <a href="/admin/api-docs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginLeft: '1rem' }}>
+            <a href="/admin/api-docs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.15rem 1rem', fontSize: '0.85rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px', minWidth: 0 }}>
               APIs
             </a>
-            <a href="/admin/logs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px' }}>
+            <a href="/admin/logs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.15rem 1rem', fontSize: '0.85rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px', minWidth: 0 }}>
               Logs
             </a>
           </div>
