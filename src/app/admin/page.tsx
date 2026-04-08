@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
+import { GatesPanel } from '@/lib/components/GatesPanel'
 import { DEFAULT_THEME, THEME_KEYS, type LoginTheme } from '@/lib/theme'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
@@ -41,7 +42,7 @@ export default function AdminPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const validTabs = ['companies', 'apps', 'characters', 'nft-contracts'] as const
+  const validTabs = ['companies', 'apps', 'characters', 'gates', 'nft-contracts'] as const
   const hashTab = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
   const initialTab = validTabs.includes(hashTab as typeof validTabs[number]) ? hashTab as typeof validTabs[number] : 'apps'
   const [activeTab, setActiveTab] = useState<typeof validTabs[number]>(initialTab)
@@ -756,6 +757,13 @@ export default function AdminPage() {
               Characters
             </button>
             <button
+              onClick={() => switchTab('gates')}
+              className="lw-btn"
+              style={{ borderRadius: '0', background: activeTab === 'gates' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Gates
+            </button>
+            <button
               onClick={() => switchTab('nft-contracts')}
               className="lw-btn"
               style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'nft-contracts' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
@@ -955,6 +963,8 @@ export default function AdminPage() {
               ))}
           </>
         )}
+
+        {activeTab === 'gates' && <GatesPanel />}
 
         {activeTab === 'nft-contracts' && (
           <>
