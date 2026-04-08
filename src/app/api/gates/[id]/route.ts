@@ -1,27 +1,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
-
-const VALID_RULE_TYPES = ['nft_ownership', 'token_balance', 'nft_trait', 'nft_collection_count', 'custom_token'] as const
-const VALID_OPERATORS = ['must_have', 'must_not_have', 'gte', 'lte'] as const
-const MAX_RULES = 20
-
-function validateRules(rules: Record<string, unknown>[]): string | null {
-  if (rules.length > MAX_RULES) return `Maximum ${MAX_RULES} rules per gate`
-  if (rules.length === 0) return 'At least one rule is required'
-  for (let i = 0; i < rules.length; i++) {
-    const r = rules[i]
-    const ruleType = (r.rule_type || r.type) as string
-    if (!VALID_RULE_TYPES.includes(ruleType as typeof VALID_RULE_TYPES[number])) {
-      return `Rule ${i + 1}: invalid rule_type "${ruleType}"`
-    }
-    const op = (r.operator || 'must_have') as string
-    if (!VALID_OPERATORS.includes(op as typeof VALID_OPERATORS[number])) {
-      return `Rule ${i + 1}: invalid operator "${op}"`
-    }
-  }
-  return null
-}
+import { validateRules } from '@/lib/gates/validation'
 
 function getServiceDb() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)

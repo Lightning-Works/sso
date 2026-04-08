@@ -5,6 +5,7 @@ import { EVM_CHAINS, SOLANA_RPC, WAX_RPC, rpcCall } from '@/lib/blockchain/rpc'
 
 const HELIUS_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_API_KEY || ''
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
+const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
 const TIMEOUT = 8000
 
 function getServiceDb() {
@@ -65,6 +66,19 @@ async function getWaxBalance(account: string, contract: string, symbol: string):
     })
     const data = await res.json()
     return Array.isArray(data) && data.length > 0 ? parseFloat(data[0].split(' ')[0]) : 0
+  } catch { return 0 }
+}
+
+async function getDiviBalance(address: string): Promise<number> {
+  try {
+    const res = await fetch(DIVI_RPC, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ jsonrpc: '1.0', id: 'gate', method: 'getaddressbalance', params: [{ addresses: [address] }] }),
+      signal: AbortSignal.timeout(TIMEOUT),
+    })
+    const data = await res.json()
+    if (data.result && typeof data.result.balance === 'number') return data.result.balance / 1e8
+    return 0
   } catch { return 0 }
 }
 
@@ -152,6 +166,46 @@ async function checkWaxNftOwnership(wallets: string[], collection: string): Prom
   return { owns: total > 0, count: total }
 }
 
+async function checkSolanaNftTrait(wallets: string[], collection: string, traitType: string, traitValue?: string): Promise<boolean> {
+  for (const wallet of wallets) {
+    try {
+      const res = await fetch(SOLANA_RPC, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'getAssetsByOwner',
+          params: { ownerAddress: wallet, page: 1, limit: 1000, displayOptions: { showCollectionMetadata: true } },
+        }),
+        signal: AbortSignal.timeout(15000),
+      })
+      const data = await res.json()
+      for (const item of data.result?.items || []) {
+        if (item.interface === 'FungibleToken' || item.interface === 'FungibleAsset') continue
+        const groups = (item.grouping || []) as { group_key: string; group_value: string }[]
+        if (!groups.some(g => g.group_key === 'collection' && g.group_value === collection)) continue
+        const attrs = item.content?.metadata?.attributes || []
+        if (attrs.find((a: { trait_type?: string; value?: unknown }) =>
+          a.trait_type === traitType && (traitValue === undefined || traitValue === null || String(a.value) === traitValue)
+        )) return true
+      }
+    } catch { /* skip */ }
+  }
+  return false
+}
+
+async function checkWaxNftTrait(wallets: string[], collection: string, traitType: string, traitValue?: string): Promise<boolean> {
+  for (const wallet of wallets) {
+    try {
+      const res = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?owner=${encodeURIComponent(wallet)}&collection_name=${encodeURIComponent(collection)}&limit=100`, { signal: AbortSignal.timeout(TIMEOUT) })
+      const data = await res.json()
+      for (const asset of data.data || []) {
+        const d = asset.data || asset.immutable_data || {}
+        if (d[traitType] !== undefined && (traitValue === undefined || traitValue === null || String(d[traitType]) === traitValue)) return true
+      }
+    } catch { /* skip */ }
+  }
+  return false
+}
+
 // ── Rule evaluator ──
 
 interface GateRule {
@@ -162,7 +216,7 @@ interface GateRule {
 
 interface RuleResult { rule_type: string; pass: boolean; detail: string }
 
-async function evaluateRule(rule: GateRule, wallets: { evm: string[]; solana: string[]; wax: string[] }): Promise<RuleResult> {
+async function evaluateRule(rule: GateRule, wallets: { evm: string[]; solana: string[]; wax: string[]; divi: string[] }): Promise<RuleResult> {
   const op = rule.operator || 'must_have'
 
   switch (rule.rule_type) {
@@ -175,7 +229,7 @@ async function evaluateRule(rule: GateRule, wallets: { evm: string[]; solana: st
       } else if (rule.chain === 'wax' && rule.collection_address) {
         result = await checkWaxNftOwnership(wallets.wax, rule.collection_address)
       }
-      const pass = op === 'must_have' ? result.owns : op === 'must_not_have' ? !result.owns : op === 'gte' ? result.count >= (rule.amount || 1) : op === 'lte' ? result.count <= (rule.amount || 0) : result.owns
+      const pass = op === 'must_have' ? result.owns : op === 'must_not_have' ? !result.owns : op === 'gte' ? result.count >= (rule.amount ?? 1) : op === 'lte' ? result.count <= (rule.amount ?? 0) : result.owns
       return { rule_type: rule.rule_type, pass, detail: `${result.count} NFTs owned` }
     }
 
@@ -188,14 +242,19 @@ async function evaluateRule(rule: GateRule, wallets: { evm: string[]; solana: st
       } else if (rule.chain === 'wax' && rule.collection_address) {
         count = (await checkWaxNftOwnership(wallets.wax, rule.collection_address)).count
       }
-      const pass = op === 'gte' ? count >= (rule.amount || 1) : op === 'lte' ? count <= (rule.amount || 0) : count > 0
-      return { rule_type: rule.rule_type, pass, detail: `${count} NFTs (${op} ${rule.amount || 0})` }
+      const pass = op === 'gte' ? count >= (rule.amount ?? 1) : op === 'lte' ? count <= (rule.amount ?? 0) : count > 0
+      return { rule_type: rule.rule_type, pass, detail: `${count} NFTs (${op} ${rule.amount ?? 0})` }
     }
 
     case 'nft_trait': {
+      if (!rule.trait_type) return { rule_type: rule.rule_type, pass: false, detail: 'trait_type required' }
       let found = false
       if (rule.chain === 'evm' && rule.collection_address) {
-        found = await checkEvmNftTrait(wallets.evm, rule.collection_address, rule.evm_chain || 'polygon', rule.trait_type || '', rule.trait_value || undefined)
+        found = await checkEvmNftTrait(wallets.evm, rule.collection_address, rule.evm_chain || 'polygon', rule.trait_type, rule.trait_value || undefined)
+      } else if (rule.chain === 'solana' && rule.collection_address) {
+        found = await checkSolanaNftTrait(wallets.solana, rule.collection_address, rule.trait_type, rule.trait_value || undefined)
+      } else if (rule.chain === 'wax' && rule.collection_address) {
+        found = await checkWaxNftTrait(wallets.wax, rule.collection_address, rule.trait_type, rule.trait_value || undefined)
       }
       const pass = op === 'must_have' ? found : op === 'must_not_have' ? !found : found
       return { rule_type: rule.rule_type, pass, detail: found ? `Has ${rule.trait_type}=${rule.trait_value || '*'}` : 'Not found' }
@@ -222,8 +281,10 @@ async function evaluateRule(rule: GateRule, wallets: { evm: string[]; solana: st
         if (waxContract && rule.symbol) {
           for (const w of wallets.wax) balance += await getWaxBalance(w, waxContract, rule.symbol)
         }
+      } else if (rule.chain === 'divi' && (rule.symbol === 'DIVI' || !rule.symbol)) {
+        for (const w of wallets.divi) balance += await getDiviBalance(w)
       }
-      const amt = rule.amount || 0
+      const amt = rule.amount ?? 0
       const pass = op === 'gte' ? balance >= amt : op === 'lte' ? balance <= amt : op === 'must_have' ? balance > 0 : op === 'must_not_have' ? balance === 0 : balance >= amt
       return { rule_type: rule.rule_type, pass, detail: `Balance: ${balance} (${op} ${amt})` }
     }
@@ -263,6 +324,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     evm: (walletData || []).filter(w => w.chain_type === 'evm').map(w => w.wallet_address),
     solana: (walletData || []).filter(w => w.chain_type === 'solana').map(w => w.wallet_address),
     wax: (walletData || []).filter(w => w.chain_type === 'wax').map(w => w.wallet_address),
+    divi: (walletData || []).filter(w => w.chain_type === 'divi').map(w => w.wallet_address),
   }
 
   // Evaluate each rule
