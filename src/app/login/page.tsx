@@ -16,7 +16,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [companyLogo, setCompanyLogo] = useState('/lightningworks_logo_fordark_800px.webp')
   const [appLogo, setAppLogo] = useState('')
-  const [sideImg, setSideImg] = useState<string | null>('/shiyang_pointing_1800px.webp')
+  const [sideImg, setSideImg] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatApiKey, setChatApiKey] = useState('')
   const [appName, setAppName] = useState('')
@@ -168,12 +168,29 @@ function LoginContent() {
           setThemeReady(true)
         })
     } else {
-      // No app or company — default theme, ready immediately
-      setThemeReady(true)
-      if (Object.keys(urlOverrides).length > 0) {
-        const merged = mergeThemes(null, null, urlOverrides)
-        setThemeCss(themeToCssVars(merged))
-      }
+      // No app or company param — load default SSO app if it exists
+      supabase
+        .from('apps')
+        .select('*, companies(name, slug, logo_url, theme)')
+        .eq('slug', 'sso')
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            if (data.app_header_img) setAppLogo(`${STORAGE_BASE}/app_logo/${data.app_header_img}`)
+            if (data.app_side_img) {
+              setSideImg(`${STORAGE_BASE}/app_side_image/${data.app_side_img}`)
+            }
+            if (data.companies?.logo_url) setCompanyLogo(`${STORAGE_BASE}/company-logos/${data.companies.logo_url}`)
+            if (data.chat_api_key) setChatApiKey(data.chat_api_key)
+            if (data.name) setAppName(data.name)
+          }
+          // Default app doesn't override theme unless URL params are set
+          if (Object.keys(urlOverrides).length > 0) {
+            const merged = mergeThemes(null, null, urlOverrides)
+            setThemeCss(themeToCssVars(merged))
+          }
+          setThemeReady(true)
+        })
     }
   }, [searchParams])
 
