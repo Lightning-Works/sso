@@ -224,7 +224,40 @@ function LoginContent() {
     return () => window.removeEventListener('message', handleMessage)
   }, [userAvatarUrl, userName, userBorderColor, userInnerColor])
 
-  const externalRedirect = searchParams.get('redirect')
+  const rawRedirect = searchParams.get('redirect')
+
+  // Validate external redirect against allowed origins to prevent open redirect
+  const externalRedirect = (() => {
+    if (!rawRedirect) return null
+    try {
+      const parsed = new URL(rawRedirect)
+      const host = parsed.hostname.toLowerCase()
+
+      // Allow any localhost port for local dev
+      if (parsed.protocol === 'http:' && host === 'localhost') return rawRedirect
+
+      // Only allow https for non-localhost
+      if (parsed.protocol !== 'https:') return null
+
+      const allowed = process.env.NEXT_PUBLIC_ALLOWED_REDIRECT_ORIGINS
+      if (!allowed) return null
+      const patterns = allowed.split(',').map(o => o.trim().toLowerCase())
+      for (const pattern of patterns) {
+        try {
+          if (pattern.includes('*')) {
+            const patternUrl = new URL(pattern.replace('*', '_wildcard_'))
+            const baseDomain = patternUrl.hostname.replace('_wildcard_.', '')
+            if (host === baseDomain || host.endsWith('.' + baseDomain)) return rawRedirect
+          } else {
+            if (parsed.origin.toLowerCase() === new URL(pattern).origin.toLowerCase()) return rawRedirect
+          }
+        } catch { continue }
+      }
+      return null
+    } catch {
+      return null
+    }
+  })()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

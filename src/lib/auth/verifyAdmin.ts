@@ -26,17 +26,13 @@ export async function verifyAdmin(request: Request) {
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
     try {
-      const supabase = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      )
-      const { data: { user }, error } = await supabase.auth.getUser(token)
-      if (error || !user) return null
-
       const db = createServiceClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
       )
+      const { data: { user }, error } = await db.auth.getUser(token)
+      if (error || !user) return null
+
       const { data: profile } = await db.from('profiles').select('role').eq('id', user.id).single()
       if (profile && (profile.role === 'admin' || profile.role === 'superadmin')) {
         return user

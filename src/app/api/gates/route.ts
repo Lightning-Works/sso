@@ -144,12 +144,38 @@ export async function POST(request: Request) {
   return NextResponse.json({ gate: { ...gate, rules: fullRules || [] } }, { status: 201 })
 }
 
-export async function OPTIONS() {
+function isAllowedCorsOrigin(origin: string): boolean {
+  if (!origin) return false
+  try {
+    const parsed = new URL(origin)
+    const host = parsed.hostname.toLowerCase()
+    if (parsed.protocol === 'http:' && host === 'localhost') return true
+    if (parsed.protocol !== 'https:') return false
+    const patterns = (process.env.ALLOWED_REDIRECT_ORIGINS ?? '').split(',').map(o => o.trim().toLowerCase())
+    for (const pattern of patterns) {
+      try {
+        if (pattern.includes('*')) {
+          const patternUrl = new URL(pattern.replace('*', '_wildcard_'))
+          const baseDomain = patternUrl.hostname.replace('_wildcard_.', '')
+          if (host === baseDomain || host.endsWith('.' + baseDomain)) return true
+        } else {
+          if (parsed.origin.toLowerCase() === new URL(pattern).origin.toLowerCase()) return true
+        }
+      } catch { continue }
+    }
+  } catch { /* invalid origin */ }
+  return false
+}
+
+export async function OPTIONS(request: Request) {
+  const origin = request.headers.get('origin') ?? ''
+  const corsOrigin = isAllowedCorsOrigin(origin) ? origin : 'null'
   return new NextResponse(null, {
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
     },
   })
 }

@@ -2,10 +2,55 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { logAuth } from '@/lib/audit/logger'
 
+/** Validate that a "next" path is a safe relative path (no open redirect). */
+function isSafeRelativePath(path: string): boolean {
+  // Must start with / but not // (protocol-relative) and no backslashes
+  return /^\/[^/\\]/.test(path) || path === '/'
+}
+
+/**
+ * Validate external redirect URL against allowed origin patterns.
+ * Supports: exact origins, wildcard subdomains (https://*.example.com),
+ * and any localhost port automatically.
+ * Set ALLOWED_REDIRECT_ORIGINS=https://*.lightningworks.io,https://siegeworlds.com
+ */
+function isAllowedRedirectOrigin(url: string): boolean {
+  const allowed = process.env.ALLOWED_REDIRECT_ORIGINS
+  if (!allowed) return false
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+
+    // Allow any localhost port for local dev
+    if (parsed.protocol === 'http:' && host === 'localhost') return true
+
+    // Only allow https for non-localhost
+    if (parsed.protocol !== 'https:') return false
+
+    const patterns = allowed.split(',').map(o => o.trim().toLowerCase())
+    for (const pattern of patterns) {
+      try {
+        // Wildcard subdomain pattern: https://*.example.com
+        if (pattern.includes('*')) {
+          const patternUrl = new URL(pattern.replace('*', '_wildcard_'))
+          const baseDomain = patternUrl.hostname.replace('_wildcard_.', '')
+          if (host === baseDomain || host.endsWith('.' + baseDomain)) return true
+        } else {
+          if (parsed.origin.toLowerCase() === new URL(pattern).origin.toLowerCase()) return true
+        }
+      } catch { continue }
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/account'
+  const nextParam = searchParams.get('next') ?? '/account'
+  const next = isSafeRelativePath(nextParam) ? nextParam : '/account'
   const externalRedirect = searchParams.get('external_redirect')
 
   const errorDescription = searchParams.get('error_description')
@@ -41,7 +86,7 @@ export async function GET(request: Request) {
       })
 
       // If an external app requested this login, redirect back with tokens
-      if (externalRedirect && data.session) {
+      if (externalRedirect && data.session && isAllowedRedirectOrigin(externalRedirect)) {
         const sep = externalRedirect.includes('#') ? '&' : '#'
         return NextResponse.redirect(
           `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
