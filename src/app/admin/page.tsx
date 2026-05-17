@@ -7,6 +7,7 @@ import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
 import { GatesPanel } from '@/lib/components/GatesPanel'
+import { UsersPanel } from '@/lib/components/UsersPanel'
 import { DEFAULT_THEME, THEME_KEYS, type LoginTheme } from '@/lib/theme'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
@@ -42,7 +43,7 @@ export default function AdminPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const validTabs = ['companies', 'apps', 'characters', 'gates', 'nft-contracts'] as const
+  const validTabs = ['users', 'companies', 'apps', 'characters', 'gates', 'nft-contracts'] as const
   const hashTab = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
   const initialTab = validTabs.includes(hashTab as typeof validTabs[number]) ? hashTab as typeof validTabs[number] : 'apps'
   const [activeTab, setActiveTab] = useState<typeof validTabs[number]>(initialTab)
@@ -736,9 +737,16 @@ export default function AdminPage() {
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: 0 }}>
             <button
+              onClick={() => switchTab('users')}
+              className="lw-btn"
+              style={{ borderRadius: '4px 0 0 4px', background: activeTab === 'users' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Users
+            </button>
+            <button
               onClick={() => switchTab('companies')}
               className="lw-btn"
-              style={{ borderRadius: '4px 0 0 4px', background: activeTab === 'companies' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+              style={{ borderRadius: '0', background: activeTab === 'companies' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               Companies
             </button>
@@ -780,6 +788,9 @@ export default function AdminPage() {
             </a>
           </div>
         </div>
+
+        {/* Users Tab */}
+        {activeTab === 'users' && <UsersPanel />}
 
         {/* Companies Tab */}
         {activeTab === 'companies' && (
