@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { CHAT_EMBED_BASE } from '@/lib/chat'
 import { getWaxBalances, getSyndicateTokens, type SyndicateToken, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
 import { useCallback } from 'react'
 import { getTokenPrices, formatUsd } from '@/lib/wallets/balances/prices'
@@ -507,7 +508,7 @@ function WaxPortfolioContent() {
               ✕
             </button>
             <iframe
-              src={`https://fairytime.lovable.app/embed/chat?key=${ashChatKey}&bg=1a112e&accent=6a24fa&header=false${userId ? `&user_id=${encodeURIComponent(userId)}` : ''}${userName ? `&userName=${encodeURIComponent(userName)}` : ''}`}
+              src={`${CHAT_EMBED_BASE}/embed/chat?key=${ashChatKey}&bg=1a112e&accent=6a24fa&header=false${userId ? `&user_id=${encodeURIComponent(userId)}` : ''}${userName ? `&userName=${encodeURIComponent(userName)}` : ''}`}
               style={{ width: '100%', height: '650px', border: 'none', display: 'block' }}
               allow="clipboard-write"
               title="Character Chat"

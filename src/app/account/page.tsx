@@ -1,6 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import { CHAT_EMBED_BASE } from '@/lib/chat'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
@@ -888,7 +889,7 @@ export default function AccountPage() {
               ✕
             </button>
             <iframe
-              src={`https://fairytime.lovable.app/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${user?.id ? `&user_id=${encodeURIComponent(user.id)}` : ''}${displayName || username ? `&userName=${encodeURIComponent(displayName || username)}` : ''}`}
+              src={`${CHAT_EMBED_BASE}/embed/chat?key=${chatApiKey}&bg=1a112e&accent=6a24fa&header=false${user?.id ? `&user_id=${encodeURIComponent(user.id)}` : ''}${displayName || username ? `&userName=${encodeURIComponent(displayName || username)}` : ''}`}
               style={{ width: '100%', height: '650px', border: 'none', display: 'block' }}
               allow="clipboard-write"
               title="Character Chat"
