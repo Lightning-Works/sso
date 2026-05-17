@@ -1,49 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { logAuth } from '@/lib/audit/logger'
+import { isRedirectAllowed } from '@/lib/auth/redirectOrigins'
 
 /** Validate that a "next" path is a safe relative path (no open redirect). */
 function isSafeRelativePath(path: string): boolean {
   // Must start with / but not // (protocol-relative) and no backslashes
   return /^\/[^/\\]/.test(path) || path === '/'
-}
-
-/**
- * Validate external redirect URL against allowed origin patterns.
- * Supports: exact origins, wildcard subdomains (https://*.example.com),
- * and any localhost port automatically.
- * Set ALLOWED_REDIRECT_ORIGINS=https://*.lightningworks.io,https://siegeworlds.com
- */
-function isAllowedRedirectOrigin(url: string): boolean {
-  const allowed = process.env.ALLOWED_REDIRECT_ORIGINS
-  if (!allowed) return false
-  try {
-    const parsed = new URL(url)
-    const host = parsed.hostname.toLowerCase()
-
-    // Allow any localhost port for local dev
-    if (parsed.protocol === 'http:' && host === 'localhost') return true
-
-    // Only allow https for non-localhost
-    if (parsed.protocol !== 'https:') return false
-
-    const patterns = allowed.split(',').map(o => o.trim().toLowerCase())
-    for (const pattern of patterns) {
-      try {
-        // Wildcard subdomain pattern: https://*.example.com
-        if (pattern.includes('*')) {
-          const patternUrl = new URL(pattern.replace('*', '_wildcard_'))
-          const baseDomain = patternUrl.hostname.replace('_wildcard_.', '')
-          if (host === baseDomain || host.endsWith('.' + baseDomain)) return true
-        } else {
-          if (parsed.origin.toLowerCase() === new URL(pattern).origin.toLowerCase()) return true
-        }
-      } catch { continue }
-    }
-    return false
-  } catch {
-    return false
-  }
 }
 
 export async function GET(request: Request) {
@@ -52,6 +15,7 @@ export async function GET(request: Request) {
   const nextParam = searchParams.get('next') ?? '/account'
   const next = isSafeRelativePath(nextParam) ? nextParam : '/account'
   const externalRedirect = searchParams.get('external_redirect')
+  const appParam = searchParams.get('app')
 
   const errorDescription = searchParams.get('error_description')
 
@@ -85,16 +49,29 @@ export async function GET(request: Request) {
         metadata: { provider },
       })
 
-      // If an external app requested this login, redirect back with tokens
-      if (externalRedirect && data.session && isAllowedRedirectOrigin(externalRedirect)) {
-        const sep = externalRedirect.includes('#') ? '&' : '#'
-        return NextResponse.redirect(
-          `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
-        )
+      // If an external app requested this login, redirect back with tokens —
+      // but only to an origin this app (or the env fallback) allows.
+      if (externalRedirect && data.session) {
+        let appOrigins: string[] = []
+        if (appParam) {
+          // Public-readable column; tolerate it not existing yet (pre-migration)
+          // so logins fall back to the env allow-list instead of breaking.
+          const { data: appRow } = await supabase
+            .from('apps')
+            .select('redirect_origins')
+            .eq('slug', appParam)
+            .single()
+          if (appRow?.redirect_origins) appOrigins = appRow.redirect_origins
+        }
+        if (isRedirectAllowed(externalRedirect, appOrigins, process.env.ALLOWED_REDIRECT_ORIGINS)) {
+          const sep = externalRedirect.includes('#') ? '&' : '#'
+          return NextResponse.redirect(
+            `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
+          )
+        }
       }
 
       // If logged in via app/company context, show success modal on login page
-      const appParam = searchParams.get('app')
       const companyParam = searchParams.get('company')
       if (appParam || companyParam) {
         const successParams = new URLSearchParams({ login_success: 'true' })

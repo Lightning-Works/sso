@@ -33,6 +33,7 @@ interface App {
   chat_api_key: string | null
   admin_api_key: string | null
   theme: LoginTheme | null
+  redirect_origins: string[] | null
   companies?: Company | null
 }
 
@@ -374,6 +375,7 @@ export default function AdminPage() {
     const [slug, setSlug] = useState(app?.slug || '')
     const [companyId, setCompanyId] = useState(app?.company_id || companies[0]?.id || 0)
     const [theme, setTheme] = useState<LoginTheme>(app?.theme || {})
+    const [redirectOrigins, setRedirectOrigins] = useState<string>((app?.redirect_origins || []).join('\n'))
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const headerRef = useRef<HTMLInputElement>(null)
@@ -384,6 +386,8 @@ export default function AdminPage() {
       setSaving(true)
       setMessage('')
 
+      const originsArr = redirectOrigins.split('\n').map(s => s.trim()).filter(Boolean)
+
       let headerImg = app?.app_header_img || null
 
       if (headerRef.current?.files?.[0]) {
@@ -392,7 +396,7 @@ export default function AdminPage() {
 
       if (isNew) {
         const { error } = await supabase.from('apps').insert({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr
         })
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -407,7 +411,7 @@ export default function AdminPage() {
         }
       } else {
         const { error } = await supabase.from('apps').update({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr
         }).eq('id', app!.id)
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -450,6 +454,22 @@ export default function AdminPage() {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>Allowed Redirect Origins</label>
+            <textarea
+              className="lw-input"
+              style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', minHeight: '5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}
+              value={redirectOrigins}
+              onChange={e => { setRedirectOrigins(e.target.value); markDirty() }}
+              placeholder={'https://app.example.com\nhttps://*.example.com'}
+            />
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0' }}>
+              One origin per line. Logins for this app will only hand tokens back to these origins.
+              Use <code>https://app.example.com</code> for an exact site or <code>https://*.example.com</code> for any subdomain;
+              <code>http://localhost:&lt;port&gt;</code> is always allowed. Add a client&apos;s domain here to onboard them —
+              no redeploy needed. Leave empty to fall back to the global env allow-list.
+            </p>
           </div>
           <ImageField label="App Logo (shown in login panel)" currentFile={app?.app_header_img || null} bucketUrl={`${STORAGE_BASE}/app_logo`} height="75px" fileRef={headerRef} onFileSelected={markDirty} />
           <ThemeEditor theme={theme} onChange={setTheme} onDirty={markDirty} />

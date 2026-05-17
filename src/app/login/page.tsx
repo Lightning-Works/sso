@@ -1,10 +1,11 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { logAuth } from '@/lib/audit'
+import { isRedirectAllowed } from '@/lib/auth/redirectOrigins'
 import { mergeThemes, themeFromSearchParams, themeToCssVars, type LoginTheme } from '@/lib/theme'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
@@ -16,6 +17,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [companyLogo, setCompanyLogo] = useState('/lightningworks_logo_fordark_800px.webp')
   const [appLogo, setAppLogo] = useState('')
+  const [appRedirectOrigins, setAppRedirectOrigins] = useState<string[]>([])
   const [sideImg, setSideImg] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatApiKey, setChatApiKey] = useState('')
@@ -130,6 +132,7 @@ function LoginContent() {
         .single()
         .then(({ data }) => {
           if (data) {
+            setAppRedirectOrigins(data.redirect_origins || [])
             if (data.app_header_img) setAppLogo(`${STORAGE_BASE}/app_logo/${data.app_header_img}`)
             // Set side image if configured, clear the default if not
             if (data.app_side_img) {
@@ -183,6 +186,7 @@ function LoginContent() {
             if (data.companies?.logo_url) setCompanyLogo(`${STORAGE_BASE}/company-logos/${data.companies.logo_url}`)
             if (data.chat_api_key) setChatApiKey(data.chat_api_key)
             if (data.name) setAppName(data.name)
+            setAppRedirectOrigins(data.redirect_origins || [])
           }
           // Default app doesn't override theme unless URL params are set
           if (Object.keys(urlOverrides).length > 0) {
@@ -226,38 +230,12 @@ function LoginContent() {
 
   const rawRedirect = searchParams.get('redirect')
 
-  // Validate external redirect against allowed origins to prevent open redirect
-  const externalRedirect = (() => {
-    if (!rawRedirect) return null
-    try {
-      const parsed = new URL(rawRedirect)
-      const host = parsed.hostname.toLowerCase()
-
-      // Allow any localhost port for local dev
-      if (parsed.protocol === 'http:' && host === 'localhost') return rawRedirect
-
-      // Only allow https for non-localhost
-      if (parsed.protocol !== 'https:') return null
-
-      const allowed = process.env.NEXT_PUBLIC_ALLOWED_REDIRECT_ORIGINS
-      if (!allowed) return null
-      const patterns = allowed.split(',').map(o => o.trim().toLowerCase())
-      for (const pattern of patterns) {
-        try {
-          if (pattern.includes('*')) {
-            const patternUrl = new URL(pattern.replace('*', '_wildcard_'))
-            const baseDomain = patternUrl.hostname.replace('_wildcard_.', '')
-            if (host === baseDomain || host.endsWith('.' + baseDomain)) return rawRedirect
-          } else {
-            if (parsed.origin.toLowerCase() === new URL(pattern).origin.toLowerCase()) return rawRedirect
-          }
-        } catch { continue }
-      }
-      return null
-    } catch {
-      return null
-    }
-  })()
+  // Validate external redirect: per-app origins (admin-managed) ∪ env fallback.
+  // Prevents an open redirect leaking the user's tokens to an attacker URL.
+  const externalRedirect = useMemo(
+    () => (isRedirectAllowed(rawRedirect, appRedirectOrigins, process.env.NEXT_PUBLIC_ALLOWED_REDIRECT_ORIGINS) ? rawRedirect : null),
+    [rawRedirect, appRedirectOrigins],
+  )
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
