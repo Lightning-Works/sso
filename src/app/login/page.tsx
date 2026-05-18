@@ -445,9 +445,15 @@ function LoginContent() {
 
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (externalRedirect) {
-                  window.location.href = externalRedirect
+                  const { data: { session } } = await supabase.auth.getSession()
+                  if (session) {
+                    const sep = externalRedirect.includes('#') ? '&' : '#'
+                    window.location.href = `${externalRedirect}${sep}access_token=${session.access_token}&refresh_token=${session.refresh_token}&token_type=bearer`
+                  } else {
+                    window.location.href = externalRedirect
+                  }
                 } else {
                   window.history.back()
                 }
