@@ -282,7 +282,10 @@ function LoginContent() {
 
   const handleOAuth = async (provider: 'google' | 'discord' | 'apple' | 'twitter' | 'x') => {
     const params = new URLSearchParams({ provider })
-    if (externalRedirect) params.set('external_redirect', externalRedirect)
+    // Pass the RAW redirect through OAuth. /auth/callback is the authoritative
+    // validator (app redirect_origins + server allow-list), so a stale
+    // build-time NEXT_PUBLIC env can't silently drop it and strand the user.
+    if (rawRedirect) params.set('external_redirect', rawRedirect)
     const appParam = searchParams.get('app')
     const companyParam = searchParams.get('company')
     if (appParam) params.set('app', appParam)
@@ -455,7 +458,9 @@ function LoginContent() {
                     window.location.href = externalRedirect
                   }
                 } else {
-                  window.history.back()
+                  // No valid redirect — go somewhere safe. NEVER history.back():
+                  // that re-enters the OAuth provider and loops.
+                  router.push('/account')
                 }
               }}
               style={{

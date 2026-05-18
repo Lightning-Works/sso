@@ -49,34 +49,36 @@ export async function GET(request: Request) {
         metadata: { provider },
       })
 
-      // If an external app requested this login, redirect back with tokens —
-      // but only to an origin this app (or the env fallback) allows.
-      if (externalRedirect && data.session) {
-        let appOrigins: string[] = []
-        if (appParam) {
-          // Public-readable column; tolerate it not existing yet (pre-migration)
-          // so logins fall back to the env allow-list instead of breaking.
-          const { data: appRow } = await supabase
-            .from('apps')
-            .select('redirect_origins')
-            .eq('slug', appParam)
-            .single()
-          if (appRow?.redirect_origins) appOrigins = appRow.redirect_origins
-        }
-        if (isRedirectAllowed(externalRedirect, appOrigins, process.env.ALLOWED_REDIRECT_ORIGINS)) {
-          const sep = externalRedirect.includes('#') ? '&' : '#'
-          return NextResponse.redirect(
-            `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
-          )
-        }
+      // Resolve this app's allowed redirect origins (DB-driven; tolerate the
+      // column not existing yet so logins fall back to the env allow-list).
+      let appOrigins: string[] = []
+      if (appParam) {
+        const { data: appRow } = await supabase
+          .from('apps')
+          .select('redirect_origins')
+          .eq('slug', appParam)
+          .single()
+        if (appRow?.redirect_origins) appOrigins = appRow.redirect_origins
+      }
+      const redirectAllowed = !!externalRedirect &&
+        isRedirectAllowed(externalRedirect, appOrigins, process.env.ALLOWED_REDIRECT_ORIGINS)
+
+      // If an external app requested this login, hand the tokens back directly.
+      if (externalRedirect && data.session && redirectAllowed) {
+        const sep = externalRedirect.includes('#') ? '&' : '#'
+        return NextResponse.redirect(
+          `${externalRedirect}${sep}access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`
+        )
       }
 
-      // If logged in via app/company context, show success modal on login page
+      // Otherwise show the success modal — carry an *allowed* redirect through
+      // so the modal can still complete the hand-off (never a Google loop).
       const companyParam = searchParams.get('company')
       if (appParam || companyParam) {
         const successParams = new URLSearchParams({ login_success: 'true' })
         if (appParam) successParams.set('app', appParam)
         if (companyParam) successParams.set('company', companyParam)
+        if (externalRedirect && redirectAllowed) successParams.set('redirect', externalRedirect)
         return NextResponse.redirect(`${origin}/login?${successParams.toString()}`)
       }
 
