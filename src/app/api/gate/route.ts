@@ -6,7 +6,7 @@ const HELIUS_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY
 const GATE_SIGNING_SECRET = process.env.GATE_SIGNING_SECRET || ''
 const WAX_RPC = 'https://wax.greymass.com'
-const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
+const DIVI_RPC = process.env.NEXT_PUBLIC_DIVI_RPC || 'https://services.divi.domains/api/rpc/'
 const MAX_RULES = 10
 
 // ── Allowed RPC URLs (prevent SSRF) ──

@@ -5,7 +5,7 @@ import { EVM_CHAINS, SOLANA_RPC, WAX_RPC, rpcCall } from '@/lib/blockchain/rpc'
 
 const HELIUS_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_API_KEY || ''
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || ''
-const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
+const DIVI_RPC = process.env.NEXT_PUBLIC_DIVI_RPC || 'https://services.divi.domains/api/rpc/'
 const TIMEOUT = 8000
 
 function getServiceDb() {

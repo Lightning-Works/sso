@@ -6,8 +6,11 @@
 import type { ConnectedWallet } from './types'
 import { shortenAddress } from './types'
 
-// Divi RPC endpoint (testnet for now)
-export const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
+// Divi mainnet JSON-RPC (public, no auth). The old /testnet/rpc/ was the
+// docs page, not the endpoint — the real one is /api/rpc/. Overridable via
+// NEXT_PUBLIC_DIVI_RPC (e.g. a credentialed node) with no code change.
+export const DIVI_RPC =
+  process.env.NEXT_PUBLIC_DIVI_RPC || 'https://services.divi.domains/api/rpc/'
 
 /**
  * Validate a Divi address (base58, starts with D, typical length 34)

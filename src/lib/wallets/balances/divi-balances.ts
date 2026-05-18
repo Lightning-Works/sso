@@ -1,68 +1,50 @@
 /**
- * Divi Balance Checker
+ * Divi Balance Checker — uses the real Divi mainnet JSON-RPC
+ * (see DIVI_RPC in ../divi; default https://services.divi.domains/api/rpc/).
  *
- * The old hardcoded JSON-RPC endpoint (services.divi.domains/testnet/rpc/)
- * is dead, so balances were silently returning 0.
+ * Returns spendable + staking-vault balance for the address, in DIVI.
+ * `getaddressbalance` returns satoshis (÷1e8). The optional `only_vaults`
+ * flag returns coins locked in self-custodial Divi staking vaults; we sum
+ * both so a self-custody staker sees their full on-chain total.
  *
- * Primary: Divi's official explorer API (api.diviscan.io) `/address/<addr>`,
- * whose `balance_info.result.balance` is in satoshis (÷1e8 = DIVI).
- * Fallback: cryptoID `?q=getbalance` (returns DIVI as a plain number).
- *
- * KNOWN LIMITATION: both sources report `getaddressbalance` — i.e. the
- * SPENDABLE UTXO balance. DIVI locked in staking vaults / masternode
- * collateral is NOT counted, so a staker's address can show ~0 here even
- * though they "hold" a large amount. Accurate vault/masternode totals
- * require a Divi Core RPC node — set NEXT_PUBLIC_DIVI_API_BASE to that
- * node's explorer base when available (no code change needed).
+ * NOTE: pooled / custodial holdings (e.g. DiviGo, exchanges, staking
+ * pools) are NOT on the user's own address on-chain, so no RPC can show
+ * them here — that balance lives in the pool operator's off-chain ledger.
  */
 
 import type { WalletToken } from '../types'
+import { DIVI_RPC } from '../divi'
 
-const DISCAN_BASE = process.env.NEXT_PUBLIC_DIVI_API_BASE || 'https://api.diviscan.io'
-const CRYPTOID = 'https://chainz.cryptoid.info/divi/api.dws'
-
-function pickBalanceSats(json: unknown): number | null {
-  // /address/:address -> { transaction_info, balance_info: { result: { balance, received } } }
-  const j = json as Record<string, unknown>
-  const bi = (j?.balance_info ?? j) as Record<string, unknown>
-  const result = (bi?.result ?? bi) as Record<string, unknown>
-  const bal = (result?.balance ?? bi?.balance) as unknown
-  const n = typeof bal === 'string' ? Number(bal) : (bal as number)
-  return Number.isFinite(n) ? (n as number) : null
+async function rpcBalanceSats(address: string, onlyVaults: boolean): Promise<number> {
+  const res = await fetch(DIVI_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '1.0',
+      id: 'balance',
+      method: 'getaddressbalance',
+      params: onlyVaults ? [{ addresses: [address] }, true] : [{ addresses: [address] }],
+    }),
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!res.ok) throw new Error(`Divi RPC HTTP ${res.status}`)
+  const data = await res.json()
+  if (data.error) throw new Error(`Divi RPC: ${data.error.message || 'error'}`)
+  const sats = data?.result?.balance
+  return typeof sats === 'number' ? sats : 0
 }
 
 export async function getDiviBalance(address: string): Promise<number> {
-  // Primary: official diviscan explorer (satoshis -> DIVI)
   try {
-    const res = await fetch(`${DISCAN_BASE}/address/${encodeURIComponent(address)}`, {
-      signal: AbortSignal.timeout(12000),
-      headers: { Accept: 'application/json' },
-    })
-    if (res.ok) {
-      const sats = pickBalanceSats(await res.json())
-      if (sats !== null) return sats / 1e8
-    } else {
-      console.error('Divi diviscan HTTP', res.status)
-    }
-  } catch (e) {
-    console.error('Divi diviscan error:', e)
+    const [spendable, vaulted] = await Promise.all([
+      rpcBalanceSats(address, false),
+      rpcBalanceSats(address, true).catch(() => 0), // only_vaults unsupported on some nodes
+    ])
+    return (spendable + vaulted) / 1e8
+  } catch (error) {
+    console.error('Divi balance error:', error)
+    return 0
   }
-
-  // Fallback: cryptoID getbalance (already in DIVI)
-  try {
-    const res = await fetch(`${CRYPTOID}?q=getbalance&a=${encodeURIComponent(address)}`, {
-      signal: AbortSignal.timeout(10000),
-      headers: { Accept: 'text/plain' },
-    })
-    if (res.ok) {
-      const n = Number((await res.text()).trim())
-      if (Number.isFinite(n)) return n
-    }
-  } catch (e) {
-    console.error('Divi cryptoID error:', e)
-  }
-
-  return 0
 }
 
 export async function getDiviBalances(address: string): Promise<WalletToken[]> {
