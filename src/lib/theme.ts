@@ -22,7 +22,7 @@ export interface LoginTheme {
 export const DEFAULT_THEME: Required<LoginTheme> = {
   primary_color: '#6a24fa',
   primary_hover_color: '#7f4ae8',
-  bg_color: '#0c0b0b',
+  bg_color: '#444444',
   panel_bg_color: 'rgba(0, 0, 0, 0.8)',
   text_color: '#e4dad1',
   text_secondary_color: '#bab1a8',
