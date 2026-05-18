@@ -634,9 +634,9 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
             <span className="lw-row-value">DiviGo Wallet</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-            <button className="lw-btn" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', backgroundColor: '#3a3938', color: '#e4dad1', opacity: 0.5, cursor: 'not-allowed', minWidth: '100px' }}>
-              Coming Soon
-            </button>
+            <a href="/wallet/divi" className="lw-btn lw-btn-connect" style={{ width: 'auto', padding: '0.25rem 1rem', fontSize: '0.875rem', textDecoration: 'none', minWidth: '100px', textAlign: 'center' }}>
+              Open
+            </a>
             <span style={{ width: '1.5rem', flexShrink: 0 }}></span>
           </div>
         </div>
