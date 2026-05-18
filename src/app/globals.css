@@ -79,9 +79,6 @@ body {
   justify-content: center;
   padding: 1rem;
   background-color: var(--lw-bg-page);
-  background-image: url('/bkgd_comics.webp');
-  background-repeat: repeat;
-  background-size: 400px;
 }
 
 .lw-page-inner {
@@ -420,9 +417,6 @@ input.lw-input::placeholder {
   min-height: 100vh;
   padding: 1rem;
   background-color: var(--lw-bg-page);
-  background-image: url('/bkgd_comics.webp');
-  background-repeat: repeat;
-  background-size: 400px;
   display: flex;
   flex-direction: column;
   align-items: center;
