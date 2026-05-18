@@ -15,7 +15,7 @@
   --lw-input-bg: rgba(26, 17, 46, 1); /* HSB 275 64 18 */
 
   /* Background Colors */
-  --lw-bg-page: #0c0b0b;
+  --lw-bg-page: #444444;
   --lw-bg-dark: #1a1a1a;
   --lw-bg-input: #000000;
   --lw-wallet-row-bg: rgb(26, 26, 28);
@@ -146,6 +146,9 @@ body {
   z-index: 10;
   align-self: flex-end;
   bottom: 44px;
+  /* Keep the character at a constant size regardless of the panel/chat
+     beside it — flexbox must never compress it. */
+  flex-shrink: 0;
 }
 
 .lw-character {
