@@ -437,7 +437,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
           {chain === 'wax' || chain === 'evm' || chain === 'solana' || chain === 'divi' ? (
             <>
               <a
-                href={chain === 'divi' ? '#' : chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
+                href={chain === 'divi' ? `/wallet/divi?address=${encodeURIComponent(addr)}` : chain === 'wax' ? `/wallet/wax?account=${encodeURIComponent(addr)}` : chain === 'solana' ? `/wallet/solana?address=${encodeURIComponent(addr)}` : `/wallet/evm?address=${encodeURIComponent(addr)}`}
                 style={{
                   color: isActive ? 'var(--lw-success)' : 'rgb(99, 176, 79)',
                   fontSize: '0.7rem',

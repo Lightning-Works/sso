@@ -1,32 +1,35 @@
 /**
- * Divi Balance Checker via RPC
- * Queries the Divi node for address balance
+ * Divi Balance Checker
+ *
+ * The old hardcoded JSON-RPC endpoint (services.divi.domains/testnet/rpc/)
+ * is dead — it returns 405/HTML, so every balance call was silently
+ * failing and returning 0. This uses a public, no-auth MAINNET REST API
+ * instead (cryptoID, verified reachable; returns the balance in DIVI as
+ * a plain number). Override with NEXT_PUBLIC_DIVI_BALANCE_API if needed.
  */
 
 import type { WalletToken } from '../types'
 
-const DIVI_RPC = 'https://services.divi.domains/testnet/rpc/'
+const DIVI_BALANCE_API =
+  process.env.NEXT_PUBLIC_DIVI_BALANCE_API || 'https://chainz.cryptoid.info/divi/api.dws'
 
 export async function getDiviBalance(address: string): Promise<number> {
   try {
-    // Try getaddressbalance (requires addressindex on the node)
-    const res = await fetch(DIVI_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        jsonrpc: '1.0',
-        id: 'balance',
-        method: 'getaddressbalance',
-        params: [{ addresses: [address] }],
-      }),
-      signal: AbortSignal.timeout(10000),
-    })
-    const data = await res.json()
-    if (data.result && typeof data.result.balance === 'number') {
-      // Balance is in satoshis (1 DIVI = 100,000,000 satoshis)
-      return data.result.balance / 1e8
+    const res = await fetch(
+      `${DIVI_BALANCE_API}?q=getbalance&a=${encodeURIComponent(address)}`,
+      { signal: AbortSignal.timeout(10000), headers: { Accept: 'text/plain' } },
+    )
+    if (!res.ok) {
+      console.error('Divi balance HTTP', res.status)
+      return 0
     }
-    return 0
+    const text = (await res.text()).trim()
+    const n = Number(text)
+    if (!Number.isFinite(n)) {
+      console.error('Divi balance unparseable:', text.slice(0, 80))
+      return 0
+    }
+    return n
   } catch (error) {
     console.error('Divi balance error:', error)
     return 0
