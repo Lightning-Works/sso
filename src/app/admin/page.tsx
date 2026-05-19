@@ -806,6 +806,9 @@ export default function AdminPage() {
             <a href="/admin/logs" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.15rem 1rem', fontSize: '0.85rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px', minWidth: 0 }}>
               Logs
             </a>
+            <a href="/admin/arweave" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.15rem 1rem', fontSize: '0.85rem', fontFamily: 'var(--lw-font-display)', borderRadius: '4px', minWidth: 0 }}>
+              Arweave
+            </a>
           </div>
         </div>
 

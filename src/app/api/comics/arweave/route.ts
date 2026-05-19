@@ -14,6 +14,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 import { arweaveConfigured, arweavePut, ArweaveNotConfigured } from '@/lib/arweave'
+import { turboConfigured, turboUpload, TurboNotConfigured } from '@/lib/arweave/turbo'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -25,8 +26,10 @@ interface Page { label: string; file?: string; ar?: Record<string, string> }
 export async function POST(request: Request) {
   const admin = await verifyAdmin(request)
   if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
-  if (!arweaveConfigured()) {
-    return NextResponse.json({ error: 'Arweave not configured — set ARWEAVE_JWK (see docs/ARWEAVE-DOUBLE-FALLBACK.md)' }, { status: 503 })
+  // Turbo (card/crypto credits, no AR) preferred; raw AR JWK is the fallback.
+  const useTurbo = turboConfigured()
+  if (!useTurbo && !arweaveConfigured()) {
+    return NextResponse.json({ error: 'Arweave not configured — set TURBO_ETH_KEY or ARWEAVE_JWK (see docs/ARWEAVE-DOUBLE-FALLBACK.md)' }, { status: 503 })
   }
 
   const body = await request.json().catch(() => ({}))
@@ -50,16 +53,17 @@ export async function POST(request: Request) {
       if (dl.error || !dl.data) throw new Error(dl.error?.message || 'download failed')
       const buf = new Uint8Array(await dl.data.arrayBuffer())
       const ct = dl.data.type || 'image/webp'
-      const { id } = await arweavePut(buf, ct, [
+      const tags = [
         { name: 'App', value: 'LightningWorks-Comics' },
         { name: 'Comic', value: cid },
         { name: 'Page', value: p.label },
         { name: 'Variant', value: variant },
-      ])
+      ]
+      const { id } = useTurbo ? await turboUpload(buf, ct, tags) : await arweavePut(buf, ct, tags)
       p.ar = { ...(p.ar || {}), [variant]: id }
       uploaded++
     } catch (e) {
-      if (e instanceof ArweaveNotConfigured) return NextResponse.json({ error: e.message }, { status: 503 })
+      if (e instanceof ArweaveNotConfigured || e instanceof TurboNotConfigured) return NextResponse.json({ error: e.message }, { status: 503 })
       errors.push(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }

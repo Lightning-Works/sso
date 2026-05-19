@@ -36,7 +36,45 @@ No DB migration needed — `ar` is just extra keys inside the existing
   "ar": { "full": "<txid>", "thumb": "<txid>", "atlas": "<txid>" } }
 ```
 
-## What YOU need to do (when ready)
+## Paying WITHOUT buying AR — Turbo (card or MetaMask)  ← recommended
+
+You don't need any AR. **Turbo (ArDrive)** sells prepaid upload credits
+for a **credit card** or **EVM crypto**, and the backup uploader spends
+those credits. Built:
+
+- `src/lib/arweave/turbo.ts` — Turbo provider (`turboUpload`,
+  `turboCardCheckout`, `turboBalance`). Reusable like the AR module.
+- `GET /api/arweave/credits`, `POST /api/arweave/checkout` (admin).
+- The comic backfill auto-uses Turbo when configured (else raw AR).
+- **Admin → Arweave** page (`/admin/arweave`, superadmin): shows the
+  balance, **Buy with card** (opens Stripe checkout), and **Pay with
+  MetaMask** (EVM top-up).
+
+**One-wallet model:** configure **`TURBO_ETH_KEY`** = an Ethereum
+private key you control. That one wallet:
+- is credited by the **card** checkout (`owner` = its address),
+- is the wallet you top up from **MetaMask** (use that same wallet in
+  MetaMask so credits land on the account the server uploads with),
+- signs the uploads.
+
+Steps:
+1. Make/pick an EVM wallet (e.g. a fresh MetaMask account). Export its
+   **private key** → set `TURBO_ETH_KEY` in Vercel (server env, NOT
+   `NEXT_PUBLIC`). (Alternatively set `ARWEAVE_JWK` for card-only.)
+2. `npm i @ardrive/turbo-sdk` — the one dependency (pure JS; safe with
+   `ignore-scripts`). Not auto-installed, on purpose.
+3. Redeploy. Go to **Admin → Arweave**:
+   - **Buy with card** → enter USD → Stripe checkout → done, or
+   - **Pay with MetaMask** → connect that same wallet → top up with ETH.
+4. Per comic, hit the reader's **Arweave** button (admin) to mirror it.
+
+Caveat I can't verify from here: the MetaMask path uses the documented
+`@ardrive/turbo-sdk` `topUpWithTokens` with an injected Ethereum signer;
+if the SDK's injected-signer export name differs in the installed
+version, that button shows a clear error and the signer line is a
+one-line fix. The **card** path and uploads use stable documented APIs.
+
+## (Alternative) Raw AR with your own AR balance
 
 1. **Make an Arweave wallet** (a JWK key file):
    - Easiest: <https://arweave.app> → create wallet → export the **JWK
