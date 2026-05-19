@@ -518,15 +518,17 @@ export default function AccountPage() {
               View →
             </a>
           </div>
-          <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.5 }}>
+          <div style={{ backgroundColor: 'var(--lw-wallet-row-bg)', borderRadius: 'var(--lw-radius-sm)', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7a7572', fontSize: '0.7rem' }}>?</div>
+              <img src={`${STORAGE_BASE}/app_logo/dreadroot_words_logo_horiz_2400px.webp`} alt="Dreadroot" style={{ height: '32px' }} />
               <div>
                 <p className="lw-game-title">Dreadroot</p>
-                <p className="lw-game-subtitle">Coming Soon</p>
+                <p className="lw-game-subtitle">Game</p>
               </div>
             </div>
-            <span className="lw-footer-text">Coming Soon</span>
+            <a href="https://dreadroot.com" target="_blank" className="lw-link" style={{ fontSize: '0.875rem' }}>
+              Play →
+            </a>
           </div>
         </div>
 

@@ -262,6 +262,24 @@ function DiviPortfolioContent() {
             )}
           </div>
 
+          {/* DiviGo (pooled custodial wallet) — status */}
+          <div style={{ ...SUBPANEL, padding: '1rem', marginTop: '1.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width={22} height={22} style={{ borderRadius: '50%' }} />
+              <strong style={{ color: 'var(--lw-text-white)' }}>DiviGo (pooled wallet)</strong>
+              <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--lw-text-muted)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', padding: '1px 6px' }}>
+                Integration pending
+              </span>
+            </div>
+            <p style={{ color: 'var(--lw-text-secondary)', fontSize: '0.8rem', margin: 0 }}>
+              DiviGo is a custodial Telegram wallet — DIVI held there is pooled and staked off-chain, so a DiviGo
+              deposit address correctly shows 0 above. The connection is built; once DiviGo issues an API key this
+              will show your DiviGo balance &amp; staking and allow Telegram-approved transfers. No funds can be
+              moved from here.
+            </p>
+          </div>
+
           <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
             <a href="/account" className="lw-link" style={{ fontSize: '0.85rem' }}>← Back to account</a>
           </div>
