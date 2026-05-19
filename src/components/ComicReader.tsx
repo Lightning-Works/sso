@@ -348,8 +348,24 @@ export function ComicReader(
       const label = await ask.prompt('Page label (e.g. COVER, L1, 1, AD1, BC):', dft, 'Page label')
       if (label == null) return
       fd.append('label', label)
+    } else if (job.mode === 'replace') {
+      // Multi-file replace: keep the existing page labels at each slot being
+      // overwritten. The source filename is irrelevant to the comic's page name.
+      files.forEach((_, i) => {
+        const existing = pages[job.index + i]?.label
+        fd.append('label', existing || `PAGE ${job.index + i + 1}`)
+      })
     } else {
-      files.forEach(f => fd.append('label', f.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'PAGE'))
+      // Multi-file insert/append: ask for ONE base label and number them
+      // sequentially (e.g. "P" → P1, P2; "" → 1, 2). Never use filenames.
+      const baseRaw = await ask.prompt(
+        `Label for ${files.length} new pages — they'll be numbered (e.g. "P" → P1, P${files.length}; or leave blank → 1, ${files.length}):`,
+        '',
+        `Label ${files.length} pages`,
+      )
+      if (baseRaw == null) return
+      const base = baseRaw.trim()
+      files.forEach((_, i) => fd.append('label', `${base}${i + 1}`))
     }
     files.forEach(f => fd.append('file', f))
     try {
