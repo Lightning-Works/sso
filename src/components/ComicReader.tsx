@@ -21,10 +21,10 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { ComicPageTurn, type TurnEffect } from './ComicPageTurn'
+import { ComicPageTurn, buildLeafSpreads, type TurnEffect } from './ComicPageTurn'
 
 // One place to switch the page-turn effect — see ComicPageTurn.tsx.
-const PAGE_TURN_EFFECT: TurnEffect = 'slide'
+const PAGE_TURN_EFFECT: TurnEffect = 'bookflip'
 
 const GATEWAYS = [
   'https://dweb.link/ipfs/', 'https://w3s.link/ipfs/',
@@ -169,7 +169,12 @@ export function ComicReader(
     window.setTimeout(() => setToast(null), kind === 'ok' ? 2200 : 5000)
   }, [])
 
-  const spreads = useMemo(() => buildSpreads(pages, narrow), [pages, narrow])
+  // Book-flip uses sequential pair leaves (cover alone, then 2-up pairs,
+  // optional trailing solo). Other effects use the user's solo-aware layout.
+  const spreads = useMemo(
+    () => PAGE_TURN_EFFECT === 'bookflip' ? buildLeafSpreads(pages.length, narrow) : buildSpreads(pages, narrow),
+    [pages, narrow],
+  )
 
   useEffect(() => {
     audio.current = typeof Audio !== 'undefined' ? new Audio('/page-flip.mp3') : null
@@ -347,8 +352,17 @@ export function ComicReader(
       if (!ok) return
       files = await Promise.all(list.map(f => fileToWebp(f).catch(() => f)))
     }
+    // For multi-file inserts/appends, switch to 'fill' mode so the server
+    // first fills any empty slots (keeping their existing labels), then
+    // inserts only the overflow as new pages — and auto-renumbers any
+    // numeric labels that come after.
+    const isMultiInsert = files.length > 1 && job.mode !== 'replace'
+    const serverMode = isMultiInsert ? 'fill' : job.mode
+    const serverIndex = isMultiInsert
+      ? (job.mode === 'after' ? job.index + 1 : job.mode === 'before' ? job.index : pages.length)
+      : job.index
     const fd = new FormData()
-    fd.append('cid', cid); fd.append('mode', job.mode); fd.append('index', String(job.index))
+    fd.append('cid', cid); fd.append('mode', serverMode); fd.append('index', String(serverIndex))
     if (files.length === 1) {
       const dft = job.mode === 'replace' ? (pages[job.index]?.label || 'PAGE') : 'PAGE'
       const label = await ask.prompt('Page label (e.g. COVER, L1, 1, AD1, BC):', dft, 'Page label')
@@ -362,10 +376,10 @@ export function ComicReader(
         fd.append('label', existing || `PAGE ${job.index + i + 1}`)
       })
     } else {
-      // Multi-file insert/append: ask for ONE base label and number them
-      // sequentially (e.g. "P" → P1, P2; "" → 1, 2). Never use filenames.
+      // Multi-file fill/insert: empty slots keep their labels server-side; only
+      // the overflow uses these. Ask for a base label and number sequentially.
       const baseRaw = await ask.prompt(
-        `Label for ${files.length} new pages — they'll be numbered (e.g. "P" → P1, P${files.length}; or leave blank → 1, ${files.length}):`,
+        `Label for any uploads that overflow past empty slots (existing empties keep their labels). "P" → P1, P${files.length}; blank → 1, ${files.length}:`,
         '',
         `Label ${files.length} pages`,
       )
@@ -377,9 +391,10 @@ export function ComicReader(
     try {
       const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
       if (!r.ok) throw new Error(await errFromResponse(r))
-      // Compute where the new pages will sit after the server reorders, then
-      // queue a jump so the just-uploaded page is what the reader shows next.
-      const insertAt = job.mode === 'replace' ? job.index
+      // Compute where the just-uploaded content will sit after the server
+      // applies the mode, then queue a jump so the reader shows it next.
+      const insertAt = isMultiInsert ? serverIndex
+        : job.mode === 'replace' ? job.index
         : job.mode === 'before' ? job.index
         : job.mode === 'after' ? job.index + 1
         : pages.length
@@ -506,6 +521,10 @@ export function ComicReader(
                 onImageFailed={() => setFailed(true)}
                 admin={admin}
                 effect={PAGE_TURN_EFFECT}
+                allPages={pages.map(pg => ({ label: pg.label, img: pg.img || '', ar: pg.ar || '' }))}
+                currentLeaf={sIdx}
+                narrow={narrow}
+                onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
               />
               {sIdx > 0 && <button style={floatBtn('left')} title="Previous" onClick={() => go(sIdx - 1, 'prev')}>&#8249;</button>}
               {sIdx < spreads.length - 1 && <button style={floatBtn('right')} title="Next" onClick={() => go(sIdx + 1, 'next')}>&#8250;</button>}
@@ -583,26 +602,33 @@ export function ComicReader(
         </div>
       </div>
 
-      {ctx && admin && (
-        <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left: ctx.x, top: ctx.y, zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 8, padding: '4px 0', minWidth: 170, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
-          {(() => {
-            const items: [string, () => void, boolean?][] = [
-              ['Replace current image', () => startUpload('replace', ctx.index)],
-              ['Insert before', () => startUpload('before', ctx.index)],
-              ['Insert after', () => startUpload('after', ctx.index)],
-              ['Rename', () => rename(ctx.index)],
-            ]
-            if (notWebp(pages[ctx.index]?.file)) items.push(['Convert to WEBP', () => convertExisting(ctx.index)])
-            items.push(['Delete', () => del([ctx.index]), true])
-            return items.map(([t, fn, danger]) => (
+      {ctx && admin && (() => {
+        const items: [string, () => void, boolean?][] = [
+          ['Replace current image', () => startUpload('replace', ctx.index)],
+          ['Insert before', () => startUpload('before', ctx.index)],
+          ['Insert after', () => startUpload('after', ctx.index)],
+          ['Rename', () => rename(ctx.index)],
+        ]
+        if (notWebp(pages[ctx.index]?.file)) items.push(['Convert to WEBP', () => convertExisting(ctx.index)])
+        items.push(['Delete', () => del([ctx.index]), true])
+        // Clamp so the whole menu fits on screen — flip to above/left if it would overflow.
+        const menuW = 240
+        const menuH = items.length * 34 + 12
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+        const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+        const left = Math.max(8, Math.min(ctx.x, vw - menuW - 8))
+        const top = Math.max(8, Math.min(ctx.y, vh - menuH - 8))
+        return (
+          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left, top, zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 8, padding: '4px 0', minWidth: 170, maxWidth: menuW, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
+            {items.map(([t, fn, danger]) => (
               <button key={t} onClick={() => { setCtx(null); fn() }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.5rem 1rem', background: 'none', border: 'none', color: danger ? '#ff6b6b' : '#fff', fontSize: '.8rem', cursor: 'pointer' }}>
                 {pages[ctx.index]?.label}: {t}
               </button>
-            ))
-          })()}
-        </div>
-      )}
+            ))}
+          </div>
+        )
+      })()}
 
       {/* In-app modal — replaces window.prompt / confirm / alert */}
       {modal && (

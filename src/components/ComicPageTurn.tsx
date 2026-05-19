@@ -28,10 +28,31 @@ export interface PageTurnProps {
   onImageFailed: () => void
   admin?: boolean
   effect?: TurnEffect
+  // BookFlipEffect-only (other effects ignore these):
+  allPages?: PageDisplay[]   // every page in order (not just current spread)
+  currentLeaf?: number       // = sIdx when book-flip leaf spreads are used
+  narrow?: boolean
+  onPageAdvance?: (dir: 'next' | 'prev') => void
 }
 
 // One place to tune duration across all effects.
 const DURATION_MS = 500
+// Book-flip uses its own duration (original CodePen was 1.4s; user wants 2x faster).
+const FLIP_MS = 700
+
+/**
+ * Spread layout for the book-flip effect — pairs pages sequentially as
+ * "leaves" (cover alone on right, then 2-up middle, optional solo end).
+ * Use INSTEAD of the reader's normal buildSpreads when effect='bookflip'.
+ */
+export function buildLeafSpreads(pageCount: number, narrow: boolean): number[][] {
+  if (narrow) return Array.from({ length: pageCount }, (_, i) => [i])
+  if (pageCount <= 0) return []
+  const out: number[][] = [[0]]  // closed book — cover alone on right
+  for (let i = 1; i + 1 < pageCount; i += 2) out.push([i, i + 1])
+  if (pageCount > 1 && pageCount % 2 === 0) out.push([pageCount - 1])  // trailing solo
+  return out
+}
 
 /** The bare images/placeholders — every effect wraps this. */
 function Pages(p: PageTurnProps) {
@@ -94,17 +115,77 @@ function CrossFadeEffect(p: PageTurnProps) {
 }
 
 /**
- * BookFlipEffect — placeholder for the CodePen book-flip the user wants
- * (https://codepen.io/Maseone/pen/WbbGxeO). CodePen blocks automated
- * scraping, so until the user pastes the source here, this effect
- * delegates to SlideEffect so the reader still works.
+ * BookFlipEffect — pure-CSS perspective book based on Jason Hibbs'
+ * CodePen "Page Flip" (https://codepen.io/jasonhibbs/pen/MPbwwj),
+ * ported to React + TypeScript. The jQuery click-flip is replaced by
+ * React state driven from currentLeaf; sequential pairing (cover alone,
+ * then leaves of 2 pages) comes from buildLeafSpreads.
  *
- * When the source arrives, replace the body with the keyframes / DOM /
- * any helper logic that effect needs. Keep the spreadKey trigger and
- * the <Pages /> render so the rest of the reader keeps working.
+ * Falls back to SlideEffect when:
+ *   - narrow mode (mobile) — book requires two-page width
+ *   - allPages / currentLeaf not provided
  */
 function BookFlipEffect(p: PageTurnProps) {
-  return <SlideEffect {...p} />
+  if (!p.allPages || p.currentLeaf == null || p.narrow) return <SlideEffect {...p} />
+  const totalLeaves = Math.ceil(p.allPages.length / 2)
+  const cur = Math.max(0, Math.min(p.currentLeaf, totalLeaves))
+
+  return (
+    <>
+      <style>{`
+        .bf-perspective{position:absolute;inset:0;perspective:250vw;display:flex;align-items:center;justify-content:center;background:#111;padding:1rem}
+        .bf-pages{position:relative;width:min(100%,calc((100% - 2rem)));height:100%;max-width:none;transform:rotateX(8deg);transform-style:preserve-3d;box-shadow:0 0 0 1px rgba(255,255,255,.04)}
+        .bf-page{position:absolute;top:0;width:50%;height:100%;background:#111;transform-origin:0 0;transition:transform ${FLIP_MS}ms cubic-bezier(.4,.05,.3,1);backface-visibility:hidden;-webkit-backface-visibility:hidden;transform-style:preserve-3d;cursor:pointer;user-select:none;overflow:hidden}
+        .bf-page>img{width:100%;height:100%;object-fit:contain;background:#111;pointer-events:none}
+        .bf-page>div.bf-ph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;background:#161616;color:#7a7572;font-size:.85rem;text-align:center;padding:1rem}
+        .bf-page::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,0);transition:background ${FLIP_MS / 2}ms;z-index:2;pointer-events:none}
+        .bf-recto{right:0;border-radius:0 4px 4px 0;transform:rotateY(0deg);pointer-events:auto}
+        .bf-recto:hover{transform:rotateY(-10deg)}
+        .bf-recto:hover::before{background:rgba(0,0,0,.03)}
+        .bf-verso{left:0;transform-origin:100% 0;border-radius:4px 0 0 4px;transform:rotateY(180deg);pointer-events:none}
+        .bf-verso::before{background:rgba(0,0,0,.2)}
+        .bf-flipped.bf-recto{transform:rotateY(-180deg);pointer-events:none}
+        .bf-flipped.bf-recto::before{background:rgba(0,0,0,.2)}
+        .bf-flipped.bf-verso{transform:rotateY(0deg);pointer-events:auto}
+        .bf-flipped.bf-verso:hover{transform:rotateY(10deg)}
+        .bf-flipped.bf-verso:hover::before{background:rgba(0,0,0,.03)}
+        .bf-flipped.bf-verso::before{background:rgba(0,0,0,0)}
+      `}</style>
+      <div className="bf-perspective">
+        <div className="bf-pages">
+          {p.allPages.map((pg, i) => {
+            const isRecto = (i % 2) === 0  // DOM 1st, 3rd, 5th… → right-hand page
+            const flipped = i < (cur * 2)
+            const cls = `bf-page ${isRecto ? 'bf-recto' : 'bf-verso'}${flipped ? ' bf-flipped' : ''}`
+            // Stacking: only recto pages get explicit z-index, descending so
+            // earlier leaves render on top of later ones until flipped.
+            const z = isRecto ? (p.allPages!.length - i) : 1
+            const click = () => {
+              if (isRecto && !flipped) p.onPageAdvance?.('next')
+              else if (!isRecto && flipped) p.onPageAdvance?.('prev')
+            }
+            return (
+              <div key={i} className={cls} style={{ zIndex: z }} onClick={click}>
+                {pg.img ? (
+                  <img src={pg.img} alt={`${p.name} — ${pg.label}`}
+                    onError={e => {
+                      const im = e.currentTarget
+                      if (pg.ar && im.getAttribute('data-ar') !== '1') { im.setAttribute('data-ar', '1'); im.src = pg.ar }
+                      else p.onImageFailed()
+                    }} />
+                ) : (
+                  <div className="bf-ph">
+                    <span style={{ color: '#bab1a8' }}>&ldquo;{pg.label}&rdquo;</span>
+                    <span>No image yet{p.admin ? ' — right-click this page button below to upload' : ''}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
 }
 
 const EFFECTS: Record<TurnEffect, React.FC<PageTurnProps>> = {

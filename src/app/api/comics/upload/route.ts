@@ -4,10 +4,16 @@
  * Uploads a page image to the private comic_pages bucket and updates the
  * comic's pages JSON. Fields:
  *   cid    — comic bundle CID
- *   mode   — 'replace' | 'before' | 'after' | 'append'
- *   index  — target page index (for replace/before/after)
+ *   mode   — 'replace' | 'before' | 'after' | 'append' | 'fill'
+ *   index  — target page index (for replace/before/after/fill)
  *   label  — page label (COVER, L1, 1, BC, …)
  *   file   — the image (webp/png/jpg)
+ *
+ * 'fill' mode: starting at `index`, fills consecutive empty page slots
+ * (file === '') keeping their existing labels; any uploads beyond the
+ * empties are inserted as new pages. Numeric page labels AFTER the
+ * insert position auto-renumber by the overflow count so the comic's
+ * page numbering stays continuous.
  */
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
@@ -61,6 +67,31 @@ export async function POST(request: Request) {
   if (mode === 'replace' && index >= 0 && index < pages.length) pages.splice(index, 1, ...entries)
   else if (mode === 'before' && index >= 0 && index <= pages.length) pages.splice(index, 0, ...entries)
   else if (mode === 'after' && index >= 0 && index < pages.length) pages.splice(index + 1, 0, ...entries)
+  else if (mode === 'fill' && index >= 0 && index <= pages.length) {
+    let entriesIdx = 0
+    let pageIdx = Math.max(0, index)
+    // Phase 1: fill consecutive empty slots, keeping their existing labels.
+    while (entriesIdx < entries.length && pageIdx < pages.length) {
+      if (!pages[pageIdx].file) {
+        pages[pageIdx] = { label: pages[pageIdx].label, file: entries[entriesIdx].file }
+        entriesIdx++
+      }
+      pageIdx++
+    }
+    // Phase 2: any uploads beyond the empties get inserted as new pages.
+    const overflow = entries.slice(entriesIdx)
+    if (overflow.length > 0) {
+      const insertAt = pageIdx
+      // Auto-renumber: bump numeric labels at insertAt..end by overflow count so
+      // a comic with pages "...5,6,7" stays continuous after a mid-insert.
+      for (let k = insertAt; k < pages.length; k++) {
+        if (/^\d+$/.test(pages[k].label)) {
+          pages[k].label = String(parseInt(pages[k].label, 10) + overflow.length)
+        }
+      }
+      pages.splice(insertAt, 0, ...overflow)
+    }
+  }
   else pages.push(...entries)
 
   const { data, error } = await db.from('comics')
