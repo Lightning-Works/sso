@@ -26,6 +26,7 @@ const GATEWAYS = [
   'https://nftstorage.link/ipfs/', 'https://4everland.io/ipfs/', 'https://ipfs.io/ipfs/',
 ]
 const NARROW_MAX = 860
+const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'AD1', 'BC']
 
 interface Pg { label: string; file?: string; img?: string | null }
 
@@ -132,15 +133,15 @@ export function ComicReader(
   const go = useCallback((target: number, dir: 'next' | 'prev') => {
     if (mode !== 'image' || target < 0 || target >= spreads.length || target === sIdx) return
     setFailed(false)
-    const urls = spreads[target].map(pi => pages[pi]?.img || '')
-    Promise.all(urls.map(u => u
-      ? new Promise<void>((res, rej) => { const im = new Image(); im.onload = () => res(); im.onerror = () => rej(); im.src = u })
-      : Promise.reject()))
-      .then(() => {
-        setSIdx(target); showSpread(target); setAnim(dir); playFlip()
-        window.setTimeout(() => setAnim('none'), 480)
-      })
-      .catch(() => { setSIdx(target); showSpread(target); setFailed(true) })
+    const commit = () => {
+      setSIdx(target); showSpread(target); setAnim(dir); playFlip()
+      window.setTimeout(() => setAnim('none'), 480)
+    }
+    const real = spreads[target].map(pi => pages[pi]?.img || '').filter(Boolean)
+    if (real.length === 0) { commit(); return }   // unconfigured pages → placeholders, not an error
+    Promise.all(real.map(u => new Promise<void>((res, rej) => { const im = new Image(); im.onload = () => res(); im.onerror = () => rej(); im.src = u })))
+      .then(commit)
+      .catch(() => { commit(); setFailed(true) })
   }, [mode, spreads, sIdx, pages, showSpread])
 
   const spreadOf = (pageIndex: number) => spreads.findIndex(sp => sp.includes(pageIndex))
@@ -185,6 +186,17 @@ export function ComicReader(
       })
       if (!r.ok) throw new Error()
     } catch { setPages(pages); window.alert('Rename failed.') }
+  }
+  const makeFallback = async () => {
+    const tpl = FALLBACK_TEMPLATE.map(l => ({ label: l, file: '' }))
+    try {
+      const r = await fetch('/api/comics', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, name, pages: tpl }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'failed')
+      await resolve()
+    } catch (e) { window.alert('Could not create fallback: ' + (e instanceof Error ? e.message : String(e))) }
   }
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
     pending.current = { mode: m, index }
@@ -260,7 +272,18 @@ export function ComicReader(
             <div style={msg}>
               <p style={{ color: '#e4dad1', fontSize: '1rem', margin: 0 }}>{reason}</p>
               <p style={{ color: '#7a7572', fontSize: '.78rem', margin: 0, wordBreak: 'break-all' }}>CID {cid}</p>
-              <button style={{ ...sel, marginTop: '.5rem' }} onClick={resolve}>Retry</button>
+              <div style={{ display: 'flex', gap: '.5rem', marginTop: '.5rem' }}>
+                <button style={sel} onClick={resolve}>Retry</button>
+                {admin && (
+                  <button style={{ ...sel, fontWeight: 700 }} onClick={makeFallback}>MAKE FALLBACK</button>
+                )}
+              </div>
+              {admin && (
+                <p style={{ color: '#7a7572', fontSize: '.72rem', margin: '.25rem 0 0', maxWidth: '32rem' }}>
+                  Creates an empty page template (COVER, CR1, L1, 1–12, AD1, BC). Then right-click each
+                  page button to upload its image.
+                </p>
+              )}
             </div>
           )}
           {phase === 'ready' && mode === 'interactive' && ipfsEntry && (
@@ -270,10 +293,15 @@ export function ComicReader(
             <>
               <div className={anim === 'next' ? 'cr-stage--next' : anim === 'prev' ? 'cr-stage--prev' : undefined}
                 style={{ position: 'absolute', inset: 0, display: 'flex', gap: display.length > 1 ? '4px' : 0, background: '#111111' }}>
-                {display.map((d, i) => (
+                {display.map((d, i) => d.img ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={d.img || undefined} alt={`${name} — ${d.label}`} onError={() => setFailed(true)}
+                  <img key={i} src={d.img} alt={`${name} — ${d.label}`} onError={() => setFailed(true)}
                     style={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain', background: '#111111' }} />
+                ) : (
+                  <div key={i} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '.4rem', background: '#161616', color: '#7a7572', fontSize: '.85rem', textAlign: 'center', padding: '1rem' }}>
+                    <span style={{ color: '#bab1a8' }}>&ldquo;{d.label}&rdquo;</span>
+                    <span>No image yet{admin ? ' — right-click this page button below to upload' : ''}</span>
+                  </div>
                 ))}
               </div>
               {anim !== 'none' && <div className={`cr-sweep cr-sweep--${anim}`} />}
@@ -312,13 +340,17 @@ export function ComicReader(
             <button style={{ ...btn, marginLeft: 'auto', background: 'rgba(106,36,250,.25)', color: '#fff' }}
               title="Add a page at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
           )}
+          {admin && phase === 'ready' && mode === 'interactive' && (
+            <button style={{ ...sel, marginLeft: 'auto', fontWeight: 700 }}
+              title="Create an editable fallback page template for this comic" onClick={makeFallback}>MAKE FALLBACK</button>
+          )}
         </div>
       </div>
 
       {ctx && admin && (
         <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left: ctx.x, top: ctx.y, zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 8, padding: '4px 0', minWidth: 170, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
           {([
-            ['Replace image', () => startUpload('replace', ctx.index)],
+            ['Replace current image', () => startUpload('replace', ctx.index)],
             ['Insert before', () => startUpload('before', ctx.index)],
             ['Insert after', () => startUpload('after', ctx.index)],
             ['Rename', () => rename(ctx.index)],
