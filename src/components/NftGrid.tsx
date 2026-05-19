@@ -1086,6 +1086,7 @@ export function NftGrid({
         <ComicReader
           name={readerNft.name}
           url={readerNft.animationUrl}
+          isAdmin={isSuperadmin}
           onClose={() => setReaderNft(null)}
         />
       )}
