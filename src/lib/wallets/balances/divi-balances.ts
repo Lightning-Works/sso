@@ -47,6 +47,24 @@ export async function getDiviBalance(address: string): Promise<number> {
   }
 }
 
+/** Spendable vs. staking-vault breakdown (DIVI), for the portfolio view. */
+export async function getDiviBreakdown(
+  address: string,
+): Promise<{ spendable: number; staked: number; total: number }> {
+  try {
+    const [s, v] = await Promise.all([
+      rpcBalanceSats(address, false),
+      rpcBalanceSats(address, true).catch(() => 0),
+    ])
+    const spendable = s / 1e8
+    const staked = v / 1e8
+    return { spendable, staked, total: spendable + staked }
+  } catch (error) {
+    console.error('Divi breakdown error:', error)
+    return { spendable: 0, staked: 0, total: 0 }
+  }
+}
+
 export async function getDiviBalances(address: string): Promise<WalletToken[]> {
   const balance = await getDiviBalance(address)
   return [{

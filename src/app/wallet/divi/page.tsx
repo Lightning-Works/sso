@@ -1,168 +1,243 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { getDiviBalances } from '@/lib/wallets/balances/divi-balances'
+import { useSearchParams } from 'next/navigation'
+import { getDiviBreakdown } from '@/lib/wallets/balances/divi-balances'
 import { getTokenPrices } from '@/lib/wallets/balances/prices'
 import { validateDiviAddress } from '@/lib/wallets/divi'
-import { TokenGrid } from '@/components/TokenGrid'
 import { createClient } from '@/lib/supabase/client'
-import type { WalletToken } from '@/lib/wallets/types'
 
 interface Favorite { id: string; address: string; label: string | null }
+interface Breakdown { spendable: number; staked: number; total: number }
+interface Row { key: string; favId: string | null; address: string; label: string | null; bd: Breakdown }
 
-const EXPLORER = (addr: string) =>
-  `https://chainz.cryptoid.info/divi/address.dws?${encodeURIComponent(addr)}.htm`
+const EXPLORER = (a: string) =>
+  `https://chainz.cryptoid.info/divi/address.dws?${encodeURIComponent(a)}.htm`
+const fmtDivi = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+const fmtUsd = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const PANEL: React.CSSProperties = { backgroundColor: '#0b0b0b', borderRadius: 'var(--lw-radius, 8px)', border: '1px solid rgba(255,255,255,0.06)' }
+const SUBPANEL: React.CSSProperties = { backgroundColor: '#181818', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.6rem' }
+
+function DiviLogo({ size = 44 }: { size?: number }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%', background: '#cf2e2e',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      fontFamily: 'var(--lw-font-display, sans-serif)', fontWeight: 800, color: '#fff',
+      fontSize: size * 0.55,
+    }}>D</div>
+  )
+}
 
 function DiviPortfolioContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
-  const address = searchParams.get('address') || ''
+  const queryAddr = (searchParams.get('address') || '').trim()
   const supabase = useMemo(() => createClient(), [])
 
-  const [tokens, setTokens] = useState<WalletToken[]>([])
-  const [prices, setPrices] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(false)
-
   const [userId, setUserId] = useState<string | null>(null)
-  const [favorites, setFavorites] = useState<Favorite[]>([])
+  const [rows, setRows] = useState<Row[]>([])
+  const [price, setPrice] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [newAddr, setNewAddr] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [msg, setMsg] = useState('')
 
-  // Current signed-in user (favorites are per-user via RLS)
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null))
-  }, [])
+  }, [supabase])
 
-  const loadFavorites = useCallback(async () => {
-    const { data } = await supabase
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data: favData } = await supabase
       .from('favorite_addresses')
       .select('id, address, label')
       .eq('chain', 'divi')
       .order('created_at', { ascending: false })
-    setFavorites((data as Favorite[]) || [])
-  }, [supabase])
+    const favs = (favData as Favorite[]) || []
 
-  useEffect(() => { if (userId) loadFavorites() }, [userId, loadFavorites])
+    // A ?address= that isn't saved yet is shown as a transient row at the top.
+    const transient = queryAddr && !favs.some(f => f.address === queryAddr) && validateDiviAddress(queryAddr)
+      ? { id: null as string | null, address: queryAddr, label: null as string | null }
+      : null
 
-  // Load balance for the address being viewed
-  useEffect(() => {
-    if (!address) return
-    let cancelled = false
-    setLoading(true)
-    Promise.all([getDiviBalances(address), getTokenPrices()]).then(([t, p]) => {
-      if (cancelled) return
-      setTokens(t)
-      setPrices(p)
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [address])
+    const entries = [
+      ...(transient ? [transient] : []),
+      ...favs.map(f => ({ id: f.id as string | null, address: f.address, label: f.label })),
+    ]
+
+    const [prices, ...bds] = await Promise.all([
+      getTokenPrices(),
+      ...entries.map(e => getDiviBreakdown(e.address)),
+    ])
+    setPrice((prices as Record<string, number>)['DIVI'] || 0)
+
+    const built: Row[] = entries.map((e, i) => ({
+      key: e.id ?? `q:${e.address}`,
+      favId: e.id,
+      address: e.address,
+      label: e.label,
+      bd: bds[i] as Breakdown,
+    }))
+
+    // Transient (the one being viewed) stays on top; the rest sort by most DIVI.
+    const transientRows = built.filter(r => r.favId === null)
+    const favRows = built.filter(r => r.favId !== null).sort((a, b) => b.bd.total - a.bd.total)
+    const ordered = [...transientRows, ...favRows]
+
+    setRows(ordered)
+    setExpandedKey(ordered[0]?.key ?? null) // most-DIVI (or viewed) is open by default
+    setLoading(false)
+  }, [supabase, queryAddr])
+
+  useEffect(() => { load() }, [load])
 
   const addFavorite = async (addr: string, label: string) => {
     setMsg('')
     const a = addr.trim()
     if (!validateDiviAddress(a)) { setMsg('Error: that is not a valid DIVI address.'); return }
-    if (!userId) { setMsg('Error: sign in to save favorites.'); return }
-    const { error } = await supabase.from('favorite_addresses').upsert({
-      user_id: userId, chain: 'divi', address: a, label: label.trim() || null,
-    }, { onConflict: 'user_id,chain,address' })
+    if (!userId) { setMsg('Error: sign in to save addresses.'); return }
+    const { error } = await supabase.from('favorite_addresses').upsert(
+      { user_id: userId, chain: 'divi', address: a, label: label.trim() || null },
+      { onConflict: 'user_id,chain,address' },
+    )
     if (error) { setMsg('Error: ' + error.message); return }
     setNewAddr(''); setNewLabel(''); setMsg('Saved.')
-    loadFavorites()
+    load()
   }
 
   const removeFavorite = async (id: string) => {
     const { error } = await supabase.from('favorite_addresses').delete().eq('id', id)
     if (error) { setMsg('Error: ' + error.message); return }
-    loadFavorites()
+    load()
   }
 
-  const isViewedSaved = favorites.some(f => f.address === address)
+  const totalUsd = rows.reduce((s, r) => s + r.bd.total, 0) * price
 
   return (
     <div className="lw-account-page">
-      <div style={{ maxWidth: '60rem', margin: '0 auto', padding: '2rem 1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-          <div>
-            <h1 className="lw-heading-xl" style={{ margin: 0 }}>Divi Portfolio</h1>
-            {address && (
-              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', marginTop: '0.25rem', fontFamily: 'monospace' }}>
-                {address.slice(0, 10)}...{address.slice(-8)}{' · '}
-                <a href={EXPLORER(address)} target="_blank" rel="noopener noreferrer" className="lw-link">explorer ↗</a>
-              </p>
-            )}
-          </div>
-          <a href="/account" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>← Back</a>
-        </div>
+      <div style={{ maxWidth: '46rem', margin: '0 auto', padding: '2rem 1rem', width: '100%' }}>
+        <div style={{ ...PANEL, padding: '1.5rem' }}>
 
-        {msg && (
-          <div style={{
-            padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: 'var(--lw-radius-sm)', textAlign: 'center',
-            background: msg.startsWith('Error') ? 'rgba(255,68,68,0.2)' : 'rgba(68,255,68,0.2)',
-            color: msg.startsWith('Error') ? 'var(--lw-error)' : 'var(--lw-success)',
-          }}>{msg}</div>
-        )}
-
-        {address && (
-          <div className="lw-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 className="lw-section-title" style={{ margin: 0 }}>Balance</h2>
-              {userId && !isViewedSaved && (
-                <button onClick={() => addFavorite(address, '')} className="lw-btn lw-btn-secondary"
-                  style={{ width: 'auto', padding: '0.3rem 0.9rem', fontSize: '0.8rem' }}>★ Save to favorites</button>
-              )}
+          {/* Header: Divi logo + total USD */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+              <DiviLogo size={48} />
+              <div>
+                <h1 style={{ margin: 0, color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.6rem' }}>Divi Portfolio</h1>
+                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem' }}>
+                  {rows.length} address{rows.length === 1 ? '' : 'es'}
+                </span>
+              </div>
             </div>
-            {loading
-              ? <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2rem 0' }}>Loading balance…</p>
-              : <TokenGrid tokens={tokens} prices={prices} nativeSymbol="DIVI" storageKey={`token-spam-divi-${address}`} />}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: 'var(--lw-text-white)', fontSize: '1.5rem', fontWeight: 600 }}>
+                {loading ? '…' : price ? fmtUsd(totalUsd) : '—'}
+              </div>
+              <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>total value (USD)</span>
+            </div>
           </div>
-        )}
 
-        {/* Favorites */}
-        <div className="lw-section" style={{ marginTop: address ? '1.5rem' : 0 }}>
-          <h2 className="lw-section-title">Saved Divi Addresses</h2>
-
-          {!userId && (
-            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>
-              <a href="/login" className="lw-link">Sign in</a> to save favorite Divi addresses.
-            </p>
+          {msg && (
+            <div style={{
+              padding: '0.55rem 1rem', marginBottom: '1rem', borderRadius: 'var(--lw-radius-sm)', textAlign: 'center',
+              background: msg.startsWith('Error') ? 'rgba(255,68,68,0.2)' : 'rgba(68,255,68,0.2)',
+              color: msg.startsWith('Error') ? 'var(--lw-error)' : 'var(--lw-success)',
+            }}>{msg}</div>
           )}
 
-          {userId && (
-            <>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 2, minWidth: '220px' }}
+          {/* Middle: the addresses */}
+          {loading ? (
+            <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2.5rem 0' }}>Loading balances…</p>
+          ) : rows.length === 0 ? (
+            <p style={{ color: 'var(--lw-text-muted)', textAlign: 'center', padding: '2rem 0', fontSize: '0.9rem' }}>
+              No Divi addresses yet. Add one below.
+            </p>
+          ) : rows.map(r => {
+            const open = expandedKey === r.key
+            return (
+              <div key={r.key} style={SUBPANEL}>
+                {/* Clickable header toggles the panel */}
+                <div
+                  onClick={() => setExpandedKey(open ? null : r.key)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1rem', cursor: 'pointer' }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: 'var(--lw-text-white)', fontWeight: 500 }}>
+                      {r.label || (r.favId ? 'Saved address' : 'Viewing')}
+                    </div>
+                    <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                      {r.address.slice(0, 12)}…{r.address.slice(-8)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: 'var(--lw-text-white)', fontWeight: 600 }}>{fmtDivi(r.bd.total)} DIVI</div>
+                      {price > 0 && <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>{fmtUsd(r.bd.total * price)}</div>}
+                    </div>
+                    <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+                  </div>
+                </div>
+
+                {/* Expanded details — inside this sub-panel */}
+                {open && (
+                  <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', margin: '0.9rem 0' }}>
+                      {[
+                        ['Balance', `${fmtDivi(r.bd.spendable)} DIVI`, 'spendable'],
+                        ['Staking', `${fmtDivi(r.bd.staked)} DIVI`, 'in staking vaults'],
+                        ['Total', `${fmtDivi(r.bd.total)} DIVI`, price > 0 ? fmtUsd(r.bd.total * price) : ''],
+                      ].map(([label, val, sub]) => (
+                        <div key={label}>
+                          <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{label}</div>
+                          <div style={{ color: 'var(--lw-text-white)', fontSize: '0.95rem', fontWeight: 600 }}>{val}</div>
+                          {sub && <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.68rem' }}>{sub}</div>}
+                        </div>
+                      ))}
+                    </div>
+                    {r.bd.staked > 0 && (
+                      <p style={{ color: 'var(--lw-text-secondary)', fontSize: '0.78rem', margin: '0 0 0.75rem' }}>
+                        {fmtDivi(r.bd.staked)} DIVI is locked in Divi staking vaults and earning staking rewards.
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <a href={EXPLORER(r.address)} target="_blank" rel="noopener noreferrer" className="lw-btn lw-btn-secondary"
+                        style={{ width: 'auto', padding: '0.3rem 0.9rem', fontSize: '0.78rem', textDecoration: 'none' }}>Explorer ↗</a>
+                      {r.favId
+                        ? <button onClick={() => removeFavorite(r.favId!)} className="lw-btn" style={{ width: 'auto', padding: '0.3rem 0.9rem', fontSize: '0.78rem', backgroundColor: 'rgba(255,68,68,0.12)', color: 'var(--lw-error)', cursor: 'pointer' }}>Remove</button>
+                        : userId && <button onClick={() => addFavorite(r.address, '')} className="lw-btn lw-btn-secondary" style={{ width: 'auto', padding: '0.3rem 0.9rem', fontSize: '0.78rem' }}>★ Save</button>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Bottom: manage saved addresses */}
+          <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <h2 style={{ color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
+              Saved Divi Addresses
+            </h2>
+            {!userId ? (
+              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>
+                <a href="/login" className="lw-link">Sign in</a> to save Divi addresses.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 2, minWidth: '210px' }}
                   placeholder="DIVI address (starts with D)" value={newAddr} onChange={e => setNewAddr(e.target.value)} />
-                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '140px' }}
+                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '130px' }}
                   placeholder="Label (optional)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
                 <button onClick={() => addFavorite(newAddr, newLabel)} className="lw-btn lw-btn-primary"
                   style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>Add</button>
               </div>
+            )}
+          </div>
 
-              {favorites.length === 0
-                ? <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>No saved addresses yet.</p>
-                : favorites.map(f => (
-                  <div key={f.id} className="lw-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.9rem', marginBottom: '0.4rem' }}>
-                    <div style={{ minWidth: 0 }}>
-                      {f.label && <span style={{ color: 'var(--lw-text-white)', fontWeight: 500, marginRight: '0.5rem' }}>{f.label}</span>}
-                      <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.78rem', fontFamily: 'monospace' }}>
-                        {f.address.slice(0, 12)}…{f.address.slice(-8)}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                      <button onClick={() => router.push(`/wallet/divi?address=${encodeURIComponent(f.address)}`)}
-                        className="lw-btn lw-btn-secondary" style={{ width: 'auto', padding: '0.25rem 0.8rem', fontSize: '0.78rem' }}>View</button>
-                      <button onClick={() => removeFavorite(f.id)} className="lw-btn" style={{
-                        width: 'auto', padding: '0.25rem 0.7rem', fontSize: '0.78rem',
-                        backgroundColor: 'rgba(255,68,68,0.12)', color: 'var(--lw-error)', cursor: 'pointer',
-                      }}>✕</button>
-                    </div>
-                  </div>
-                ))}
-            </>
-          )}
+          <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+            <a href="/account" className="lw-link" style={{ fontSize: '0.85rem' }}>← Back to account</a>
+          </div>
         </div>
       </div>
     </div>
