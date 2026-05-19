@@ -191,14 +191,24 @@ export function ComicReader(
     if (fb?.isAdmin) setAdmin(true)
     setIpfsEntry(gw ? gw + entry : null)
     if (fb?.pages?.length) {
-      setPages(fb.pages.map(p => ({ label: p.label, file: p.file, img: p.url ?? null, ar: p.ar ?? null })))
+      // The NFT image IS the cover. Whenever a COVER slot has no uploaded
+      // image, fall back to the NFT image at render time — no upload needed,
+      // works on every comic, no CORS-on-upload to deal with.
+      const isCoverSlot = (label: string, i: number) =>
+        i === 0 || /^cover$|^front\s*cover$/i.test(label || '')
+      setPages(fb.pages.map((p, i) => ({
+        label: p.label,
+        file: p.file,
+        img: p.url ?? (coverUrl && isCoverSlot(p.label, i) ? coverUrl : null),
+        ar: p.ar ?? null,
+      })))
       setMode('image'); setSIdx(0); setPhase('ready'); return
     }
     if (gw) { setPages([{ label: name }]); setMode('interactive'); setSIdx(0); setPhase('ready'); return }
     setReason(st === 401 ? 'Sign in to read this comic.' : st === 403 ? 'You must own this NFT to read it.'
       : 'This comic isn’t available — no fallback configured and the IPFS copy is missing/unpinned.')
     setPhase('unavailable')
-  }, [cid, entry, name])
+  }, [cid, entry, name, coverUrl])
 
   useEffect(() => { resolve() }, [resolve])
 
@@ -298,22 +308,6 @@ export function ComicReader(
       flashToast('ok', `Renamed to "${next}"`)
     } catch (e) { setPages(pages); flashToast('err', 'Rename failed: ' + (e instanceof Error ? e.message : String(e))) }
   }
-  // Best-effort: pull the NFT cover image straight into the COVER slot so the
-  // template isn't empty at the start. Silent if the host blocks cross-origin
-  // canvas reads — user can still upload manually.
-  const tryAutoCover = async (): Promise<void> => {
-    if (!coverUrl) return
-    try {
-      const wf = await urlToWebp(coverUrl, 'cover.webp')
-      const fd = new FormData()
-      fd.append('cid', cid); fd.append('mode', 'replace'); fd.append('index', '0')
-      fd.append('label', 'COVER'); fd.append('file', wf)
-      const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
-      if (!r.ok) throw new Error(await errFromResponse(r))
-    } catch (e) {
-      flashToast('err', 'Auto-cover skipped (host may block cross-origin). You can upload it manually. ' + (e instanceof Error ? e.message : ''))
-    }
-  }
   const makeFallback = async () => {
     const tpl = FALLBACK_TEMPLATE.map(l => ({ label: l, file: '' }))
     try {
@@ -322,9 +316,8 @@ export function ComicReader(
         body: JSON.stringify({ cid, name, pages: tpl }),
       })
       if (!r.ok) throw new Error(await errFromResponse(r))
-      await tryAutoCover()
-      await resolve()
-      flashToast('ok', 'Fallback template created' + (coverUrl ? ' (with cover)' : ''))
+      await resolve()  // cover slot will auto-render the NFT image (see resolve()).
+      flashToast('ok', 'Fallback template created')
     } catch (e) { await ask.alert(`Could not create fallback (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e)), 'Make fallback failed') }
   }
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
