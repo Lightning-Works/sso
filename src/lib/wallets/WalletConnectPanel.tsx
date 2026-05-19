@@ -643,7 +643,7 @@ export function WalletConnectPanel({ userId, savedWallets, onWalletSaved }: Wall
 
       <WalletRow
         id="divi" name="Divi Wallet"
-        icon={<img src="/bert_divi_wallet_logo_v2.webp" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
+        icon={<img src="/divi_logo.png" alt="Divi" width="24" height="24" style={{ borderRadius: '50%' }} />}
         provider="divi" chain="divi"
         isSaved={diviSaved}
         onConnect={handleDiviOpen}

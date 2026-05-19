@@ -41,14 +41,8 @@ const PANEL: React.CSSProperties = { backgroundColor: '#0b0b0b', borderRadius: '
 const SUBPANEL: React.CSSProperties = { backgroundColor: '#181818', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.6rem' }
 
 function DiviLogo({ size = 44 }: { size?: number }) {
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', background: '#cf2e2e',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      fontFamily: 'var(--lw-font-display, sans-serif)', fontWeight: 800, color: '#fff',
-      fontSize: size * 0.55,
-    }}>D</div>
-  )
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/divi_logo.png" alt="Divi" width={size} height={size} style={{ display: 'block', flexShrink: 0 }} />
 }
 
 function DiviPortfolioContent() {
@@ -143,7 +137,7 @@ function DiviPortfolioContent() {
 
           {/* Divi unit price — at the top */}
           <div style={{ textAlign: 'center', color: 'var(--lw-text-secondary)', fontSize: '0.9rem', marginBottom: '1.1rem' }}>
-            1 DIVI = <strong style={{ color: 'var(--lw-text-white)' }}>{loading ? '…' : price ? fmtPrice(price) : '—'}</strong>
+            1 DIVI = <strong style={{ color: 'var(--lw-text-white)' }}>{loading ? '—' : price ? fmtPrice(price) : '—'}</strong>
           </div>
 
           {/* Header: Divi logo + total USD */}
@@ -159,7 +153,7 @@ function DiviPortfolioContent() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: 'var(--lw-text-white)', fontSize: '1.5rem', fontWeight: 600 }}>
-                {loading ? '…' : price ? fmtUsd(totalUsd) : '—'}
+                {loading ? '—' : price ? fmtUsd(totalUsd) : '—'}
               </div>
               <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem' }}>total value (USD)</span>
             </div>
@@ -175,7 +169,7 @@ function DiviPortfolioContent() {
 
           {/* Middle: the addresses */}
           {loading ? (
-            <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2.5rem 0' }}>Loading balances…</p>
+            <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2.5rem 0' }}>Loading balances</p>
           ) : rows.length === 0 ? (
             <p style={{ color: 'var(--lw-text-muted)', textAlign: 'center', padding: '2rem 0', fontSize: '0.9rem' }}>
               No Divi addresses yet. Add one below.
@@ -193,8 +187,8 @@ function DiviPortfolioContent() {
                     <div style={{ color: 'var(--lw-text-white)', fontWeight: 500 }}>
                       {r.label || (r.favId ? 'Saved address' : 'Viewing')}
                     </div>
-                    <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                      {r.address.slice(0, 12)}…{r.address.slice(-8)}
+                    <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.72rem', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {r.address}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexShrink: 0 }}>
