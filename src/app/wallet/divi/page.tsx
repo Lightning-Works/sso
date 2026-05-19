@@ -262,22 +262,35 @@ function DiviPortfolioContent() {
             )}
           </div>
 
-          {/* DiviGo (pooled custodial wallet) — status */}
-          <div style={{ ...SUBPANEL, padding: '1rem', marginTop: '1.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+          {/* DiviGo wallet — full UI, greyed out until the API key is set */}
+          <div style={{ marginTop: '1.75rem' }}>
+            <h2 style={{ color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width={22} height={22} style={{ borderRadius: '50%' }} />
-              <strong style={{ color: 'var(--lw-text-white)' }}>DiviGo (pooled wallet)</strong>
+              DiviGo Wallet
               <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--lw-text-muted)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', padding: '1px 6px' }}>
-                Integration pending
+                Inactive — no API key
               </span>
+            </h2>
+            <div style={{ ...SUBPANEL, padding: '1rem', opacity: 0.5, pointerEvents: 'none' }} aria-disabled="true">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                {[['Balance', '— DIVI'], ['Staking', '— DIVI'], ['Value', '—']].map(([l, v]) => (
+                  <div key={l}>
+                    <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{l}</div>
+                    <div style={{ color: 'var(--lw-text-white)', fontSize: '0.95rem', fontWeight: 600 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <input className="lw-input" disabled placeholder="Amount (DIVI)"
+                  style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '120px' }} />
+                <input className="lw-input" disabled placeholder="Destination address"
+                  style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 2, minWidth: '200px' }} />
+                <button className="lw-btn lw-btn-primary" disabled style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>
+                  Send
+                </button>
+              </div>
             </div>
-            <p style={{ color: 'var(--lw-text-secondary)', fontSize: '0.8rem', margin: 0 }}>
-              DiviGo is a custodial Telegram wallet — DIVI held there is pooled and staked off-chain, so a DiviGo
-              deposit address correctly shows 0 above. The connection is built; once DiviGo issues an API key this
-              will show your DiviGo balance &amp; staking and allow Telegram-approved transfers. No funds can be
-              moved from here.
-            </p>
           </div>
 
           <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
