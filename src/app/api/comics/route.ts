@@ -31,12 +31,22 @@ export async function PATCH(request: Request) {
     }))
   }
 
-  const { data, error } = await svc()
+  const db = svc()
+  const { data, error } = await db
     .from('comics')
     .upsert(row, { onConflict: 'cid' })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Best-effort cleanup of orphaned page images after a delete.
+  if (Array.isArray(body.deleteFiles) && body.deleteFiles.length) {
+    const paths = body.deleteFiles
+      .map((f: unknown) => String(f).replace(/[^A-Za-z0-9._-]/g, ''))
+      .filter(Boolean)
+      .map((f: string) => `${cid}/${f}`)
+    if (paths.length) await db.storage.from('comic_pages').remove(paths).catch(() => {})
+  }
 
   return NextResponse.json({ comic: data })
 }

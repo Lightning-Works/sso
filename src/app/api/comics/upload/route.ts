@@ -30,33 +30,38 @@ export async function POST(request: Request) {
   const cid = String(form.get('cid') || '').trim()
   const mode = String(form.get('mode') || 'append')
   const index = parseInt(String(form.get('index') ?? '-1'), 10)
-  const label = (String(form.get('label') || 'PAGE').trim() || 'PAGE').slice(0, 40)
-  const file = form.get('file')
+  const files = form.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+  const labels = form.getAll('label').map(String)
 
   if (!/^[A-Za-z0-9]+$/.test(cid)) return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
-  if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: 'No file' }, { status: 400 })
-  if (file.size > 25 * 1024 * 1024) return NextResponse.json({ error: 'File too large (max 25MB)' }, { status: 400 })
-  if (!file.type.startsWith('image/')) return NextResponse.json({ error: 'Must be an image' }, { status: 400 })
-
-  const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp'
-  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'page'
-  const filename = `${Date.now().toString(36)}-${slug}.${ext}`
+  if (files.length === 0) return NextResponse.json({ error: 'No file' }, { status: 400 })
+  for (const f of files) {
+    if (f.size > 25 * 1024 * 1024) return NextResponse.json({ error: `${f.name}: too large (max 25MB)` }, { status: 400 })
+    if (!f.type.startsWith('image/')) return NextResponse.json({ error: `${f.name}: must be an image` }, { status: 400 })
+  }
 
   const db = svc()
-  const buf = Buffer.from(await file.arrayBuffer())
-  const up = await db.storage.from('comic_pages').upload(`${cid}/${filename}`, buf, {
-    contentType: file.type || 'image/webp', upsert: true,
-  })
-  if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 })
+  const entries: Page[] = []
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]
+    const label = ((labels[i] || '').trim() || 'PAGE').slice(0, 40)
+    const ext = (f.name.split('.').pop() || f.type.split('/')[1] || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp'
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'page'
+    const filename = `${Date.now().toString(36)}-${i}-${slug}.${ext}`
+    const up = await db.storage.from('comic_pages').upload(`${cid}/${filename}`, Buffer.from(await f.arrayBuffer()), {
+      contentType: f.type || 'image/webp', upsert: true,
+    })
+    if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 })
+    entries.push({ label, file: filename })
+  }
 
   const { data: comic } = await db.from('comics').select('name, pages').eq('cid', cid).maybeSingle()
   const pages: Page[] = Array.isArray(comic?.pages) ? comic!.pages as Page[] : []
-  const entry: Page = { label, file: filename }
 
-  if (mode === 'replace' && index >= 0 && index < pages.length) pages[index] = entry
-  else if (mode === 'before' && index >= 0 && index <= pages.length) pages.splice(index, 0, entry)
-  else if (mode === 'after' && index >= 0 && index < pages.length) pages.splice(index + 1, 0, entry)
-  else pages.push(entry)
+  if (mode === 'replace' && index >= 0 && index < pages.length) pages.splice(index, 1, ...entries)
+  else if (mode === 'before' && index >= 0 && index <= pages.length) pages.splice(index, 0, ...entries)
+  else if (mode === 'after' && index >= 0 && index < pages.length) pages.splice(index + 1, 0, ...entries)
+  else pages.push(...entries)
 
   const { data, error } = await db.from('comics')
     .upsert({ cid, name: comic?.name ?? '', pages, updated_at: new Date().toISOString() }, { onConflict: 'cid' })

@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 
 /**
  * ComicReader — LightningWorks readable comics.
@@ -55,6 +56,28 @@ function buildSpreads(pages: Pg[], narrow: boolean): number[][] {
   return out
 }
 
+const notWebp = (f?: string) => !!f && !/\.webp$/i.test(f)
+
+async function fileToWebp(file: File): Promise<File> {
+  if (file.type === 'image/webp') return file
+  const bmp = await createImageBitmap(file)
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height
+  c.getContext('2d')!.drawImage(bmp, 0, 0)
+  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', 0.92))
+  return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
+}
+
+async function urlToWebp(url: string, baseName: string): Promise<File> {
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const im = new Image(); im.crossOrigin = 'anonymous'
+    im.onload = () => res(im); im.onerror = () => rej(new Error('image load failed (CORS?)')); im.src = url
+  })
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
+  c.getContext('2d')!.drawImage(img, 0, 0)
+  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', 0.92))
+  return new File([blob], baseName.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
+}
+
 export function ComicReader(
   { name, url, onClose, isAdmin = false }: { name: string; url: string; onClose: () => void; isAdmin?: boolean },
 ) {
@@ -73,6 +96,8 @@ export function ComicReader(
   const [failed, setFailed] = useState(false)
   const [perGroup, setPerGroup] = useState(10)
   const [ctx, setCtx] = useState<{ x: number; y: number; index: number } | null>(null)
+  const [gridOpen, setGridOpen] = useState(false)
+  const [gsel, setGsel] = useState<Set<number>>(new Set())
   const barRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ mode: string; index: number } | null>(null)
@@ -203,20 +228,60 @@ export function ComicReader(
     fileRef.current?.click()
   }
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; const job = pending.current
+    const list = Array.from(e.target.files || []); const job = pending.current
     e.target.value = ''
-    if (!f || !job) return
-    const dft = job.mode === 'replace' ? (pages[job.index]?.label || 'PAGE') : 'PAGE'
-    const label = window.prompt('Page label (e.g. COVER, L1, 1, AD1, BC)', dft)
-    if (label == null) return
+    if (!list.length || !job) return
+    let files = list
+    const nonWebp = list.filter(f => f.type !== 'image/webp')
+    if (nonWebp.length && window.confirm(`${nonWebp.length} of ${list.length} file(s) are not WEBP. Convert to WEBP before upload?`)) {
+      files = await Promise.all(list.map(f => f.type === 'image/webp' ? Promise.resolve(f) : fileToWebp(f).catch(() => f)))
+    }
     const fd = new FormData()
     fd.append('cid', cid); fd.append('mode', job.mode); fd.append('index', String(job.index))
-    fd.append('label', label); fd.append('file', f)
+    if (files.length === 1) {
+      const dft = job.mode === 'replace' ? (pages[job.index]?.label || 'PAGE') : 'PAGE'
+      const label = window.prompt('Page label (e.g. COVER, L1, 1, AD1, BC)', dft)
+      if (label == null) return
+      fd.append('label', label)
+    } else {
+      files.forEach(f => fd.append('label', f.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'PAGE'))
+    }
+    files.forEach(f => fd.append('file', f))
     try {
       const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'upload failed')
-      await resolve()
+      setGsel(new Set()); await resolve()
     } catch (err) { window.alert('Upload failed: ' + (err instanceof Error ? err.message : String(err))) }
+  }
+
+  const del = async (idxs: number[]) => {
+    const listed = [...new Set(idxs)].sort((a, b) => a - b)
+    if (!listed.length || !window.confirm(`Delete ${listed.length} page(s)? This cannot be undone.`)) return
+    const set = new Set(listed)
+    const deleteFiles = listed.map(i => pages[i]?.file).filter(Boolean)
+    const next = pages.filter((_, k) => !set.has(k)).map(p => ({ label: p.label, file: p.file || '' }))
+    try {
+      const r = await fetch('/api/comics', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, pages: next, deleteFiles }),
+      })
+      if (!r.ok) throw new Error()
+      setGsel(new Set()); await resolve()
+    } catch { window.alert('Delete failed.') }
+  }
+
+  const convertExisting = async (i: number) => {
+    const p = pages[i]
+    if (!p.img || !p.file) { window.alert('No image to convert.'); return }
+    try {
+      const wf = await urlToWebp(p.img, p.file)
+      const fd = new FormData()
+      fd.append('cid', cid); fd.append('mode', 'replace'); fd.append('index', String(i))
+      fd.append('label', p.label); fd.append('file', wf)
+      const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'failed')
+      await resolve()
+    } catch (err) { window.alert('Convert failed (image CORS?): ' + (err instanceof Error ? err.message : String(err))) }
   }
 
   const total = pages.length
@@ -264,7 +329,7 @@ export function ComicReader(
           </button>
         )}
 
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onFile} />
 
         <div style={{ flex: 1, position: 'relative', background: '#111111' }}>
           {phase === 'resolving' && <div style={msg}><p style={{ color: '#bab1a8', fontSize: '.9rem', margin: 0 }}>Checking comic data&hellip;</p></div>}
@@ -289,12 +354,11 @@ export function ComicReader(
           {phase === 'ready' && mode === 'interactive' && ipfsEntry && (
             <iframe src={ipfsEntry} title={name} sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#111111' }} />
           )}
-          {phase === 'ready' && mode === 'image' && (
+          {phase === 'ready' && mode === 'image' && !gridOpen && (
             <>
               <div className={anim === 'next' ? 'cr-stage--next' : anim === 'prev' ? 'cr-stage--prev' : undefined}
                 style={{ position: 'absolute', inset: 0, display: 'flex', gap: display.length > 1 ? '4px' : 0, background: '#111111' }}>
                 {display.map((d, i) => d.img ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img key={i} src={d.img} alt={`${name} — ${d.label}`} onError={() => setFailed(true)}
                     style={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain', background: '#111111' }} />
                 ) : (
@@ -315,6 +379,34 @@ export function ComicReader(
                 </div>
               )}
             </>
+          )}
+          {phase === 'ready' && mode === 'image' && gridOpen && (
+            <div style={{ position: 'absolute', inset: 0, overflow: 'auto', background: '#111111', padding: '.75rem' }}>
+              {gsel.size > 0 && (
+                <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', gap: '.5rem', alignItems: 'center', background: '#0b0b0b', padding: '.4rem .5rem', marginBottom: '.5rem', borderRadius: 6 }}>
+                  <span style={{ color: '#bab1a8', fontSize: '.72rem' }}>{gsel.size} selected</span>
+                  <button style={sel} title="Insert files before the first selected page" onClick={() => startUpload('before', Math.min(...Array.from(gsel)))}>Insert files here&hellip;</button>
+                  <button style={{ ...sel, background: '#b3324a' }} onClick={() => del([...gsel])}>Delete ({gsel.size})</button>
+                  <button style={btn} onClick={() => setGsel(new Set())}>Clear</button>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: '.6rem' }}>
+                {pages.map((p, i) => (
+                  <div key={i}
+                    onClick={e => { if (e.metaKey || e.ctrlKey || e.shiftKey) setGsel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n }); else setCtx({ x: e.clientX, y: e.clientY, index: i }) }}
+                    onContextMenu={e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, index: i }) }}
+                    style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: '#1a1a1c', outline: gsel.has(i) ? '2px solid var(--lw-purple,#6a24fa)' : '2px solid transparent' }}>
+                    <div style={{ aspectRatio: '5 / 7', background: '#0d0d0d', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {p.img ? <img src={p.img} alt={p.label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ color: '#555', fontSize: '.7rem' }}>no image</span>}
+                    </div>
+                    <div style={{ padding: '.35rem .4rem' }}>
+                      <div style={{ color: '#fff', fontWeight: 700, fontSize: '.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.label}</div>
+                      <div style={{ color: '#7a7572', fontSize: '.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>- {p.file || '(none)'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -337,8 +429,12 @@ export function ComicReader(
           <button style={nav} title="Next" onClick={() => go(sIdx + 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&#8250;</button>
           <button style={btn} title="Last" onClick={() => go(spreads.length - 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&rsaquo;|</button>
           {admin && navOk && (
-            <button style={{ ...btn, marginLeft: 'auto', background: 'rgba(106,36,250,.25)', color: '#fff' }}
-              title="Add a page at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: '.25rem' }}>
+              <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
+                title="Toggle admin page grid" onClick={() => { setGridOpen(g => !g); setGsel(new Set()) }}>{gridOpen ? 'Reader' : 'Grid'}</button>
+              <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
+                title="Add page(s) at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
+            </span>
           )}
           {admin && phase === 'ready' && mode === 'interactive' && (
             <button style={{ ...sel, marginLeft: 'auto', fontWeight: 700 }}
@@ -349,17 +445,22 @@ export function ComicReader(
 
       {ctx && admin && (
         <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left: ctx.x, top: ctx.y, zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 8, padding: '4px 0', minWidth: 170, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
-          {([
-            ['Replace current image', () => startUpload('replace', ctx.index)],
-            ['Insert before', () => startUpload('before', ctx.index)],
-            ['Insert after', () => startUpload('after', ctx.index)],
-            ['Rename', () => rename(ctx.index)],
-          ] as [string, () => void][]).map(([t, fn]) => (
-            <button key={t} onClick={() => { setCtx(null); fn() }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.5rem 1rem', background: 'none', border: 'none', color: '#fff', fontSize: '.8rem', cursor: 'pointer' }}>
-              {pages[ctx.index]?.label}: {t}
-            </button>
-          ))}
+          {(() => {
+            const items: [string, () => void, boolean?][] = [
+              ['Replace current image', () => startUpload('replace', ctx.index)],
+              ['Insert before', () => startUpload('before', ctx.index)],
+              ['Insert after', () => startUpload('after', ctx.index)],
+              ['Rename', () => rename(ctx.index)],
+            ]
+            if (notWebp(pages[ctx.index]?.file)) items.push(['Convert to WEBP', () => convertExisting(ctx.index)])
+            items.push(['Delete', () => del([ctx.index]), true])
+            return items.map(([t, fn, danger]) => (
+              <button key={t} onClick={() => { setCtx(null); fn() }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.5rem 1rem', background: 'none', border: 'none', color: danger ? '#ff6b6b' : '#fff', fontSize: '.8rem', cursor: 'pointer' }}>
+                {pages[ctx.index]?.label}: {t}
+              </button>
+            ))
+          })()}
         </div>
       )}
     </div>,
