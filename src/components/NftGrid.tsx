@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { ComicReader } from './ComicReader'
+
+/** A readable comic = has a comic HTML bundle (animationUrl) + a comic marker. */
+function isComic(n: NftItem): boolean {
+  if (!n.animationUrl) return false
+  const attrComic = (n.attributes || []).some(a =>
+    a.key.toLowerCase() === 'media type' && a.value.toLowerCase().includes('comic'))
+  return attrComic || /comic/i.test(n.collection || '') || /comic/i.test(n.name || '')
+}
 
 function isUltraRare(nft: NftItem): boolean {
   if (!nft.attributes) return false
@@ -49,6 +58,7 @@ export interface NftItem {
   floorPrice?: number | null
   floorPriceSymbol?: string
   externalUrl?: string | null
+  animationUrl?: string | null
   attributes?: { key: string; value: string }[]
 }
 
@@ -116,6 +126,8 @@ export function NftGrid({
   const [tags, setTags] = useState<NftTagData>({ spam: new Set(), favorite: new Set(), hidden: new Set() })
   const [viewMode, setViewMode] = useState<'all' | 'spam'>('all')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [contextNft, setContextNft] = useState<NftItem | null>(null)
+  const [readerNft, setReaderNft] = useState<NftItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [globalBlacklist, setGlobalBlacklist] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
@@ -301,6 +313,7 @@ export function NftGrid({
 
   const handleContextMenu = (e: React.MouseEvent, nft: NftItem) => {
     e.preventDefault()
+    setContextNft(nft)
     // If right-clicked item isn't in selection, select only it
     if (!selected.has(nft.id)) {
       setSelected(new Set([nft.id]))
@@ -796,6 +809,15 @@ export function NftGrid({
       {/* Context menu */}
       {contextMenu && typeof document !== 'undefined' && createPortal(
         <div className="nft-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+          {contextNft && isComic(contextNft) && (
+            <button
+              className="nft-context-item"
+              style={{ fontWeight: 600 }}
+              onClick={() => { setReaderNft(contextNft); setContextMenu(null); setConfirmDelete(false) }}
+            >
+              &#128214; Read Comic
+            </button>
+          )}
           {viewMode === 'spam' ? (
             <button className="nft-context-item" onClick={() => unspamSelected()}>
               &#x2716; Remove from Spam
@@ -1057,6 +1079,15 @@ export function NftGrid({
           >&#x2715;</button>
         </div>,
         document.body
+      )}
+
+      {/* Comic Reader (separate feature/file) */}
+      {readerNft?.animationUrl && (
+        <ComicReader
+          name={readerNft.name}
+          url={readerNft.animationUrl}
+          onClose={() => setReaderNft(null)}
+        />
       )}
     </>
   )

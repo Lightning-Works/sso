@@ -65,6 +65,7 @@ function lwToNftItems(nfts: LwNft[], contract: LwContract): NftItem[] {
       name: `Mint# ${nft.token_id}`,
       imageUrl: normalizeImageUrl(nft.image_url),
       videoUrl: nft.animation_url && isVideoUrl(nft.animation_url) ? normalizeImageUrl(nft.animation_url) : undefined,
+      animationUrl: nft.animation_url || undefined,
       collection: contract.collection_name,
       description: nft.description,
       chain: contract.chain,
