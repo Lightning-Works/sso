@@ -21,6 +21,10 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { ComicPageTurn, type TurnEffect } from './ComicPageTurn'
+
+// One place to switch the page-turn effect — see ComicPageTurn.tsx.
+const PAGE_TURN_EFFECT: TurnEffect = 'slide'
 
 const GATEWAYS = [
   'https://dweb.link/ipfs/', 'https://w3s.link/ipfs/',
@@ -240,7 +244,9 @@ export function ComicReader(
     setFailed(false)
     const commit = () => {
       setSIdx(target); showSpread(target); setAnim(dir); playFlip()
-      window.setTimeout(() => setAnim('none'), 480)
+      // No reset timeout — ComicPageTurn keys on sIdx and runs its own
+      // CSS animation duration. The `anim` value is kept only as the
+      // "most recent direction" hint passed to the effect.
     }
     const real = spreads[target].map(pi => pages[pi]?.img || '').filter(Boolean)
     if (real.length === 0) { commit(); return }   // unconfigured pages → placeholders, not an error
@@ -456,19 +462,6 @@ export function ComicReader(
   return createPortal(
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <style>{`
-        @keyframes cr-next{0%{opacity:.3;transform:perspective(1700px) rotateY(11deg) translateX(5%)}100%{opacity:1;transform:none}}
-        @keyframes cr-prev{0%{opacity:.3;transform:perspective(1700px) rotateY(-11deg) translateX(-5%)}100%{opacity:1;transform:none}}
-        @keyframes cr-sweep-next{0%{transform:translateX(105%)}100%{transform:translateX(-105%)}}
-        @keyframes cr-sweep-prev{0%{transform:translateX(-105%)}100%{transform:translateX(105%)}}
-        .cr-stage--next{animation:cr-next .45s ease-out}
-        .cr-stage--prev{animation:cr-prev .45s ease-out}
-        .cr-sweep{position:absolute;inset:0;pointer-events:none;z-index:3;
-          background:linear-gradient(90deg,transparent,rgba(0,0,0,.55),transparent)}
-        .cr-sweep--next{animation:cr-sweep-next .45s ease-out}
-        .cr-sweep--prev{animation:cr-sweep-prev .45s ease-out}
-      `}</style>
-
       <div style={{ background: '#111111', borderRadius: 12, width: 'min(1200px,96vw)', height: '95vh', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 0 15px 5px rgba(80,40,200,.5),0 0 40px 15px rgba(60,30,160,.35),0 0 80px 30px rgba(40,20,120,.25),0 0 160px 60px rgba(20,10,60,.15)' }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 8, right: 8, zIndex: 8, background: 'rgba(0,0,0,.5)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>&#x2715;</button>
         {ipfsEntry && pages.some(p => p.img) && (
@@ -505,20 +498,15 @@ export function ComicReader(
           )}
           {phase === 'ready' && mode === 'image' && !gridOpen && (
             <>
-              <div className={anim === 'next' ? 'cr-stage--next' : anim === 'prev' ? 'cr-stage--prev' : undefined}
-                style={{ position: 'absolute', inset: 0, display: 'flex', gap: display.length > 1 ? '4px' : 0, background: '#111111' }}>
-                {display.map((d, i) => d.img ? (
-                  <img key={i} src={d.img} alt={`${name} — ${d.label}`}
-                    onError={e => { const im = e.currentTarget; if (d.ar && im.getAttribute('data-ar') !== '1') { im.setAttribute('data-ar', '1'); im.src = d.ar } else setFailed(true) }}
-                    style={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain', background: '#111111' }} />
-                ) : (
-                  <div key={i} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '.4rem', background: '#161616', color: '#7a7572', fontSize: '.85rem', textAlign: 'center', padding: '1rem' }}>
-                    <span style={{ color: '#bab1a8' }}>&ldquo;{d.label}&rdquo;</span>
-                    <span>No image yet{admin ? ' — right-click this page button below to upload' : ''}</span>
-                  </div>
-                ))}
-              </div>
-              {anim !== 'none' && <div className={`cr-sweep cr-sweep--${anim}`} />}
+              <ComicPageTurn
+                display={display}
+                name={name}
+                spreadKey={sIdx}
+                direction={anim}
+                onImageFailed={() => setFailed(true)}
+                admin={admin}
+                effect={PAGE_TURN_EFFECT}
+              />
               {sIdx > 0 && <button style={floatBtn('left')} title="Previous" onClick={() => go(sIdx - 1, 'prev')}>&#8249;</button>}
               {sIdx < spreads.length - 1 && <button style={floatBtn('right')} title="Next" onClick={() => go(sIdx + 1, 'next')}>&#8250;</button>}
               {failed && (
