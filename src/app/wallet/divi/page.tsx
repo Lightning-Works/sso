@@ -15,6 +15,27 @@ const EXPLORER = (a: string) =>
   `https://chainz.cryptoid.info/divi/address.dws?${encodeURIComponent(a)}.htm`
 const fmtDivi = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 const fmtUsd = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtPrice = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false)
+  return (
+    <button
+      onClick={async (e) => {
+        e.stopPropagation()
+        try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) } catch { /* clipboard blocked */ }
+      }}
+      title="Copy address"
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', color: done ? 'var(--lw-success)' : 'var(--lw-text-muted)', flexShrink: 0 }}
+    >
+      {done ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+      )}
+    </button>
+  )
+}
 
 const PANEL: React.CSSProperties = { backgroundColor: '#0b0b0b', borderRadius: 'var(--lw-radius, 8px)', border: '1px solid rgba(255,255,255,0.06)' }
 const SUBPANEL: React.CSSProperties = { backgroundColor: '#181818', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.6rem' }
@@ -120,6 +141,11 @@ function DiviPortfolioContent() {
       <div style={{ maxWidth: '46rem', margin: '0 auto', padding: '2rem 1rem', width: '100%' }}>
         <div style={{ ...PANEL, padding: '1.5rem' }}>
 
+          {/* Divi unit price — at the top */}
+          <div style={{ textAlign: 'center', color: 'var(--lw-text-secondary)', fontSize: '0.9rem', marginBottom: '1.1rem' }}>
+            1 DIVI = <strong style={{ color: 'var(--lw-text-white)' }}>{loading ? '…' : price ? fmtPrice(price) : '—'}</strong>
+          </div>
+
           {/* Header: Divi logo + total USD */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
@@ -183,6 +209,13 @@ function DiviPortfolioContent() {
                 {/* Expanded details — inside this sub-panel */}
                 {open && (
                   <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    {/* Full address (all digits, 2px larger than the header) + copy */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.9rem' }}>
+                      <span style={{ color: 'var(--lw-text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem', wordBreak: 'break-all' }}>
+                        {r.address}
+                      </span>
+                      <CopyButton text={r.address} />
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', margin: '0.9rem 0' }}>
                       {[
                         ['Balance', `${fmtDivi(r.bd.spendable)} DIVI`, 'spendable'],
