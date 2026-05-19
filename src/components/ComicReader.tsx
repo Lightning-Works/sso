@@ -113,6 +113,78 @@ async function urlToWebp(url: string, baseName: string): Promise<File> {
   return new File([blob], baseName.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
 }
 
+/**
+ * Right-click page action menu. Renders off-screen first to measure its real
+ * size, then clamps left/top so the whole menu fits inside the viewport with
+ * an 8px margin — never gets cut off no matter how long the page label is.
+ */
+function PageContextMenu(props: {
+  ctx: { x: number; y: number; index: number }
+  pageLabel: string
+  hasNonWebp: boolean
+  onClose: () => void
+  onReplace: () => void
+  onInsertBefore: () => void
+  onInsertAfter: () => void
+  onRename: () => void
+  onConvert: () => void
+  onDelete: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  useEffect(() => {
+    const r = ref.current
+    if (!r) return
+    const w = r.offsetWidth
+    const h = r.offsetHeight
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    setPos({
+      left: Math.max(8, Math.min(props.ctx.x, vw - w - 8)),
+      top: Math.max(8, Math.min(props.ctx.y, vh - h - 8)),
+    })
+  }, [props.ctx.x, props.ctx.y, props.ctx.index])
+
+  const items: { label: string; fn: () => void; danger?: boolean }[] = [
+    { label: 'Replace current image', fn: props.onReplace },
+    { label: 'Insert before',         fn: props.onInsertBefore },
+    { label: 'Insert after',          fn: props.onInsertAfter },
+    { label: 'Rename page',           fn: props.onRename },
+  ]
+  if (props.hasNonWebp) items.push({ label: 'Convert to WEBP', fn: props.onConvert })
+  items.push({ label: 'Delete page', fn: props.onDelete, danger: true })
+
+  return (
+    <div ref={ref} onClick={e => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        left: pos?.left ?? -9999,    // measure off-screen first
+        top:  pos?.top  ?? -9999,
+        visibility: pos ? 'visible' : 'hidden',
+        zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)',
+        borderRadius: 8, padding: 0, minWidth: 200, maxWidth: 280, boxShadow: '0 8px 24px rgba(0,0,0,.5)',
+      }}>
+      {/* Header: page label, truncated if long. Action items stay short. */}
+      <div style={{
+        padding: '.5rem .75rem', borderBottom: '1px solid rgba(255,255,255,.08)',
+        color: '#bab1a8', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{props.pageLabel || '(unnamed)'}</div>
+      {items.map(({ label, fn, danger }) => (
+        <button key={label} onClick={() => { props.onClose(); fn() }}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '.5rem .75rem', background: 'none', border: 'none',
+            color: danger ? '#ff6b6b' : '#fff', fontSize: '.82rem', cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 interface ModalState {
   kind: 'prompt' | 'confirm' | 'alert'
   title?: string
@@ -245,15 +317,20 @@ export function ComicReader(
   const playFlip = () => { const a = audio.current; if (a) { try { a.currentTime = 0; a.play().catch(() => {}) } catch { /* */ } } }
 
   const go = useCallback((target: number, dir: 'next' | 'prev') => {
-    if (mode !== 'image' || target < 0 || target >= spreads.length || target === sIdx) return
+    if (mode !== 'image' || !spreads.length) return
+    // Wrap-around: prev from the first spread → last; next past the last → first.
+    let wrapped = target
+    if (wrapped < 0) wrapped = spreads.length - 1
+    else if (wrapped >= spreads.length) wrapped = 0
+    if (wrapped === sIdx) return
     setFailed(false)
     const commit = () => {
-      setSIdx(target); showSpread(target); setAnim(dir); playFlip()
+      setSIdx(wrapped); showSpread(wrapped); setAnim(dir); playFlip()
       // No reset timeout — ComicPageTurn keys on sIdx and runs its own
       // CSS animation duration. The `anim` value is kept only as the
       // "most recent direction" hint passed to the effect.
     }
-    const real = spreads[target].map(pi => pages[pi]?.img || '').filter(Boolean)
+    const real = spreads[wrapped].map(pi => pages[pi]?.img || '').filter(Boolean)
     if (real.length === 0) { commit(); return }   // unconfigured pages → placeholders, not an error
     Promise.all(real.map(u => new Promise<void>((res, rej) => { const im = new Image(); im.onload = () => res(); im.onerror = () => rej(); im.src = u })))
       .then(commit)
@@ -568,23 +645,23 @@ export function ComicReader(
         </div>
 
         <div ref={barRef} style={{ display: 'flex', alignItems: 'center', gap: '.25rem', padding: '.4rem .6rem', background: '#0b0b0b', borderTop: '1px solid rgba(255,255,255,.08)', overflow: 'hidden' }}>
-          <span style={{ color: '#7a7572', fontSize: '.62rem', whiteSpace: 'nowrap', marginRight: '.2rem' }}>
+          <span style={{ color: '#7a7572', fontSize: '.62rem', whiteSpace: 'nowrap', marginRight: '.2rem', flexShrink: 0 }}>
             {navOk ? `${(spreads[sIdx] || []).map(p => pages[p]?.label).join(' / ')} · ${sIdx + 1}/${spreads.length}` : mode === 'interactive' ? 'Interactive comic' : 'Pages'}
           </span>
-          <button style={btn} title="First" onClick={() => go(0, 'prev')} disabled={!navOk || sIdx === 0}>|&lsaquo;</button>
-          <button style={nav} title="Previous" onClick={() => go(sIdx - 1, 'prev')} disabled={!navOk || sIdx === 0}>&#8249;</button>
-          {groups > 1 && navOk && <button style={btn} title="Prev group" onClick={() => go(spreadOf(Math.max(gStart - perGroup, 0)), 'prev')} disabled={group === 0}>&laquo;</button>}
+          <button style={{ ...btn, flexShrink: 0 }} title="First" onClick={() => go(0, 'prev')} disabled={!navOk || sIdx === 0}>|&lsaquo;</button>
+          <button style={{ ...nav, flexShrink: 0 }} title="Previous (wraps)" onClick={() => go(sIdx - 1, 'prev')} disabled={!navOk}>&#8249;</button>
+          {groups > 1 && navOk && <button style={{ ...btn, flexShrink: 0 }} title="Prev group" onClick={() => go(spreadOf(Math.max(gStart - perGroup, 0)), 'prev')} disabled={group === 0}>&laquo;</button>}
           {navOk && Array.from({ length: gEnd - gStart }, (_, i) => gStart + i).map(p => (
-            <button key={p} style={activeSet.has(p) ? sel : btn}
-              title={admin ? 'Right-click: upload / insert / rename' : undefined}
+            <button key={p} style={{ ...(activeSet.has(p) ? sel : btn), flexShrink: 0, whiteSpace: 'nowrap', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}
+              title={admin ? `${pages[p].label} — right-click for upload / insert / rename` : pages[p].label}
               onContextMenu={admin ? (e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, index: p }) }) : undefined}
               onClick={() => { const s = spreadOf(p); if (s >= 0) go(s, s > sIdx ? 'next' : 'prev') }}>
               {pages[p].label}
             </button>
           ))}
-          {groups > 1 && navOk && <button style={btn} title="Next group" onClick={() => go(spreadOf(Math.min(gStart + perGroup, total - 1)), 'next')} disabled={group >= groups - 1}>&raquo;</button>}
-          <button style={nav} title="Next" onClick={() => go(sIdx + 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&#8250;</button>
-          <button style={btn} title="Last" onClick={() => go(spreads.length - 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&rsaquo;|</button>
+          {groups > 1 && navOk && <button style={{ ...btn, flexShrink: 0 }} title="Next group" onClick={() => go(spreadOf(Math.min(gStart + perGroup, total - 1)), 'next')} disabled={group >= groups - 1}>&raquo;</button>}
+          <button style={{ ...nav, flexShrink: 0 }} title="Next (wraps)" onClick={() => go(sIdx + 1, 'next')} disabled={!navOk}>&#8250;</button>
+          <button style={{ ...btn, flexShrink: 0 }} title="Last" onClick={() => go(spreads.length - 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&rsaquo;|</button>
           {admin && navOk && (
             <span style={{ marginLeft: 'auto', display: 'flex', gap: '.25rem' }}>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
@@ -602,33 +679,20 @@ export function ComicReader(
         </div>
       </div>
 
-      {ctx && admin && (() => {
-        const items: [string, () => void, boolean?][] = [
-          ['Replace current image', () => startUpload('replace', ctx.index)],
-          ['Insert before', () => startUpload('before', ctx.index)],
-          ['Insert after', () => startUpload('after', ctx.index)],
-          ['Rename', () => rename(ctx.index)],
-        ]
-        if (notWebp(pages[ctx.index]?.file)) items.push(['Convert to WEBP', () => convertExisting(ctx.index)])
-        items.push(['Delete', () => del([ctx.index]), true])
-        // Clamp so the whole menu fits on screen — flip to above/left if it would overflow.
-        const menuW = 240
-        const menuH = items.length * 34 + 12
-        const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
-        const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-        const left = Math.max(8, Math.min(ctx.x, vw - menuW - 8))
-        const top = Math.max(8, Math.min(ctx.y, vh - menuH - 8))
-        return (
-          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left, top, zIndex: 10001, background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 8, padding: '4px 0', minWidth: 170, maxWidth: menuW, boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
-            {items.map(([t, fn, danger]) => (
-              <button key={t} onClick={() => { setCtx(null); fn() }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.5rem 1rem', background: 'none', border: 'none', color: danger ? '#ff6b6b' : '#fff', fontSize: '.8rem', cursor: 'pointer' }}>
-                {pages[ctx.index]?.label}: {t}
-              </button>
-            ))}
-          </div>
-        )
-      })()}
+      {ctx && admin && (
+        <PageContextMenu
+          ctx={ctx}
+          pageLabel={pages[ctx.index]?.label ?? ''}
+          hasNonWebp={notWebp(pages[ctx.index]?.file)}
+          onClose={() => setCtx(null)}
+          onReplace={() => startUpload('replace', ctx.index)}
+          onInsertBefore={() => startUpload('before', ctx.index)}
+          onInsertAfter={() => startUpload('after', ctx.index)}
+          onRename={() => rename(ctx.index)}
+          onConvert={() => convertExisting(ctx.index)}
+          onDelete={() => del([ctx.index])}
+        />
+      )}
 
       {/* In-app modal — replaces window.prompt / confirm / alert */}
       {modal && (
