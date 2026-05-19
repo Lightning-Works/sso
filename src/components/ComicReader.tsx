@@ -73,12 +73,29 @@ function buildSpreads(pages: Pg[], narrow: boolean): number[][] {
 
 const notWebp = (f?: string) => !!f && !/\.webp$/i.test(f)
 
+// Vercel serverless functions cap multipart bodies at ~4.5 MB. We aim well
+// under that with a 2048px long-side cap + quality 0.85 (still very good
+// for comic pages). Large source files get downscaled, not rejected.
+const MAX_DIM = 2048
+const WEBP_QUALITY = 0.85
+
+function drawScaled(bmp: ImageBitmap | HTMLImageElement, w: number, h: number): HTMLCanvasElement {
+  let outW = w, outH = h
+  if (Math.max(w, h) > MAX_DIM) {
+    const r = MAX_DIM / Math.max(w, h)
+    outW = Math.round(w * r); outH = Math.round(h * r)
+  }
+  const c = document.createElement('canvas'); c.width = outW; c.height = outH
+  c.getContext('2d')!.drawImage(bmp, 0, 0, outW, outH)
+  return c
+}
+
 async function fileToWebp(file: File): Promise<File> {
-  if (file.type === 'image/webp') return file
+  // Already small + already webp = nothing to do.
+  if (file.type === 'image/webp' && file.size < 3 * 1024 * 1024) return file
   const bmp = await createImageBitmap(file)
-  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height
-  c.getContext('2d')!.drawImage(bmp, 0, 0)
-  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', 0.92))
+  const c = drawScaled(bmp, bmp.width, bmp.height)
+  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', WEBP_QUALITY))
   return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
 }
 
@@ -87,14 +104,25 @@ async function urlToWebp(url: string, baseName: string): Promise<File> {
     const im = new Image(); im.crossOrigin = 'anonymous'
     im.onload = () => res(im); im.onerror = () => rej(new Error('image load failed (CORS?)')); im.src = url
   })
-  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
-  c.getContext('2d')!.drawImage(img, 0, 0)
-  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', 0.92))
+  const c = drawScaled(img, img.naturalWidth, img.naturalHeight)
+  const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', WEBP_QUALITY))
   return new File([blob], baseName.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
 }
 
+interface ModalState {
+  kind: 'prompt' | 'confirm' | 'alert'
+  title?: string
+  message: string
+  initial?: string
+  okText?: string
+  cancelText?: string
+  danger?: boolean
+  resolve: (v: string | boolean | null) => void
+}
+
 export function ComicReader(
-  { name, url, onClose, isAdmin = false }: { name: string; url: string; onClose: () => void; isAdmin?: boolean },
+  { name, url, onClose, isAdmin = false, coverUrl = null }:
+  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null },
 ) {
   const { cid, entry } = parseCid(url, name)
 
@@ -113,10 +141,29 @@ export function ComicReader(
   const [ctx, setCtx] = useState<{ x: number; y: number; index: number } | null>(null)
   const [gridOpen, setGridOpen] = useState(false)
   const [gsel, setGsel] = useState<Set<number>>(new Set())
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [modalInput, setModalInput] = useState('')
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ mode: string; index: number } | null>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
+  // After an upload completes, jump to the spread containing this page index.
+  const navTarget = useRef<number | null>(null)
+
+  const ask = useMemo(() => ({
+    prompt: (message: string, initial = '', title?: string) =>
+      new Promise<string | null>(resolve => { setModalInput(initial); setModal({ kind: 'prompt', message, initial, title, resolve: v => resolve(v as string | null) }) }),
+    confirm: (message: string, opts: { okText?: string; danger?: boolean; title?: string } = {}) =>
+      new Promise<boolean>(resolve => { setModal({ kind: 'confirm', message, ...opts, resolve: v => resolve(Boolean(v)) }) }),
+    alert: (message: string, title?: string) =>
+      new Promise<void>(resolve => { setModal({ kind: 'alert', message, title, resolve: () => resolve() }) }),
+  }), [])
+
+  const flashToast = useCallback((kind: 'ok' | 'err', text: string) => {
+    setToast({ kind, text })
+    window.setTimeout(() => setToast(null), kind === 'ok' ? 2200 : 5000)
+  }, [])
 
   const spreads = useMemo(() => buildSpreads(pages, narrow), [pages, narrow])
 
@@ -159,9 +206,17 @@ export function ComicReader(
     setDisplay(spreads[s]?.map(pi => ({ label: pages[pi].label, img: pages[pi].img || '', ar: pages[pi].ar || '' })) || [])
   }, [spreads, pages])
 
-  // First render / after data or layout changes
+  // First render / after data or layout changes. If an upload just queued a
+  // target page index, jump the reader there so the just-uploaded page is
+  // visible without the user hunting for it.
   useEffect(() => {
     if (phase === 'ready' && mode === 'image' && spreads.length) {
+      if (navTarget.current != null) {
+        const target = navTarget.current
+        navTarget.current = null
+        const s = spreads.findIndex(sp => sp.includes(target))
+        if (s >= 0) { setSIdx(s); showSpread(s); return }
+      }
       const clamped = Math.min(sIdx, spreads.length - 1)
       if (clamped !== sIdx) setSIdx(clamped)
       showSpread(clamped)
@@ -188,13 +243,18 @@ export function ComicReader(
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { ctx ? setCtx(null) : onClose() }
+      if (e.key === 'Escape') {
+        if (modal) { const m = modal; setModal(null); m.resolve(m.kind === 'prompt' ? null : false); return }
+        if (ctx) { setCtx(null); return }
+        onClose()
+      }
+      else if (modal) return  // arrow keys shouldn't flip pages while typing in the modal
       else if (e.key === 'ArrowRight') go(sIdx + 1, 'next')
       else if (e.key === 'ArrowLeft') go(sIdx - 1, 'prev')
     }
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
-  }, [onClose, go, sIdx, ctx])
+  }, [onClose, go, sIdx, ctx, modal])
 
   useEffect(() => {
     if (!ctx) return
@@ -213,9 +273,19 @@ export function ComicReader(
   }, [pages.length])
 
   // ── Admin actions ──
+  // Read a non-OK response and turn it into a useful error message even when
+  // the body isn't JSON (Vercel timeouts and body-limit errors return HTML).
+  const errFromResponse = async (r: Response): Promise<string> => {
+    const txt = await r.text().catch(() => '')
+    try { const j = JSON.parse(txt); if (j?.error) return String(j.error) } catch { /* not json */ }
+    if (txt && txt.length < 500) return txt
+    if (r.status === 413) return 'File too large for upload (the request exceeds the 4.5 MB server limit). Try a smaller image.'
+    return `HTTP ${r.status}`
+  }
+
   const rename = async (i: number) => {
     const cur = pages[i]
-    const next = window.prompt(`Rename page (currently "${cur.label}")`, cur.label)
+    const next = await ask.prompt(`Rename page "${cur.label}":`, cur.label, 'Rename page')
     if (next == null || next === cur.label) return
     const updated = pages.map((p, k) => k === i ? { ...p, label: next } : p)
     setPages(updated)
@@ -224,8 +294,25 @@ export function ComicReader(
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cid, pages: updated.map(p => ({ label: p.label, file: p.file || '' })) }),
       })
-      if (!r.ok) throw new Error()
-    } catch { setPages(pages); window.alert('Rename failed.') }
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      flashToast('ok', `Renamed to "${next}"`)
+    } catch (e) { setPages(pages); flashToast('err', 'Rename failed: ' + (e instanceof Error ? e.message : String(e))) }
+  }
+  // Best-effort: pull the NFT cover image straight into the COVER slot so the
+  // template isn't empty at the start. Silent if the host blocks cross-origin
+  // canvas reads — user can still upload manually.
+  const tryAutoCover = async (): Promise<void> => {
+    if (!coverUrl) return
+    try {
+      const wf = await urlToWebp(coverUrl, 'cover.webp')
+      const fd = new FormData()
+      fd.append('cid', cid); fd.append('mode', 'replace'); fd.append('index', '0')
+      fd.append('label', 'COVER'); fd.append('file', wf)
+      const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
+      if (!r.ok) throw new Error(await errFromResponse(r))
+    } catch (e) {
+      flashToast('err', 'Auto-cover skipped (host may block cross-origin). You can upload it manually. ' + (e instanceof Error ? e.message : ''))
+    }
   }
   const makeFallback = async () => {
     const tpl = FALLBACK_TEMPLATE.map(l => ({ label: l, file: '' }))
@@ -234,9 +321,11 @@ export function ComicReader(
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cid, name, pages: tpl }),
       })
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'failed')
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      await tryAutoCover()
       await resolve()
-    } catch (e) { window.alert(`Could not create fallback (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e))) }
+      flashToast('ok', 'Fallback template created' + (coverUrl ? ' (with cover)' : ''))
+    } catch (e) { await ask.alert(`Could not create fallback (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e)), 'Make fallback failed') }
   }
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
     pending.current = { mode: m, index }
@@ -246,16 +335,24 @@ export function ComicReader(
     const list = Array.from(e.target.files || []); const job = pending.current
     e.target.value = ''
     if (!list.length || !job) return
+    // Always convert to a sensibly-sized WEBP. (Server only accepts <4.5 MB
+    // multipart bodies on Vercel; the converter caps at 2048px / q0.85.)
     let files = list
     const nonWebp = list.filter(f => f.type !== 'image/webp')
-    if (nonWebp.length && window.confirm(`${nonWebp.length} of ${list.length} file(s) are not WEBP. Convert to WEBP before upload?`)) {
-      files = await Promise.all(list.map(f => f.type === 'image/webp' ? Promise.resolve(f) : fileToWebp(f).catch(() => f)))
+    const tooBig = list.some(f => f.size > 3 * 1024 * 1024)
+    if (nonWebp.length || tooBig) {
+      const ok = await ask.confirm(
+        `${nonWebp.length || list.length} file(s) will be ${nonWebp.length ? 'converted to WEBP and ' : ''}resized to fit (max 2048px). Continue?`,
+        { okText: 'Convert & upload', title: 'Prepare images' },
+      )
+      if (!ok) return
+      files = await Promise.all(list.map(f => fileToWebp(f).catch(() => f)))
     }
     const fd = new FormData()
     fd.append('cid', cid); fd.append('mode', job.mode); fd.append('index', String(job.index))
     if (files.length === 1) {
       const dft = job.mode === 'replace' ? (pages[job.index]?.label || 'PAGE') : 'PAGE'
-      const label = window.prompt('Page label (e.g. COVER, L1, 1, AD1, BC)', dft)
+      const label = await ask.prompt('Page label (e.g. COVER, L1, 1, AD1, BC):', dft, 'Page label')
       if (label == null) return
       fd.append('label', label)
     } else {
@@ -264,14 +361,25 @@ export function ComicReader(
     files.forEach(f => fd.append('file', f))
     try {
       const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'upload failed')
-      setGsel(new Set()); await resolve()
-    } catch (err) { window.alert('Upload failed: ' + (err instanceof Error ? err.message : String(err))) }
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      // Compute where the new pages will sit after the server reorders, then
+      // queue a jump so the just-uploaded page is what the reader shows next.
+      const insertAt = job.mode === 'replace' ? job.index
+        : job.mode === 'before' ? job.index
+        : job.mode === 'after' ? job.index + 1
+        : pages.length
+      navTarget.current = insertAt
+      setGsel(new Set())
+      await resolve()
+      flashToast('ok', files.length === 1 ? 'Page uploaded' : `${files.length} pages uploaded`)
+    } catch (err) { await ask.alert('Upload failed: ' + (err instanceof Error ? err.message : String(err)), 'Upload failed') }
   }
 
   const del = async (idxs: number[]) => {
     const listed = [...new Set(idxs)].sort((a, b) => a - b)
-    if (!listed.length || !window.confirm(`Delete ${listed.length} page(s)? This cannot be undone.`)) return
+    if (!listed.length) return
+    const ok = await ask.confirm(`Delete ${listed.length} page(s)? This cannot be undone.`, { okText: 'Delete', danger: true, title: 'Confirm delete' })
+    if (!ok) return
     const set = new Set(listed)
     const deleteFiles = listed.map(i => pages[i]?.file).filter(Boolean)
     const next = pages.filter((_, k) => !set.has(k)).map(p => ({ label: p.label, file: p.file || '' }))
@@ -280,36 +388,40 @@ export function ComicReader(
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cid, pages: next, deleteFiles }),
       })
-      if (!r.ok) throw new Error()
+      if (!r.ok) throw new Error(await errFromResponse(r))
       setGsel(new Set()); await resolve()
-    } catch { window.alert('Delete failed.') }
+      flashToast('ok', `${listed.length} page(s) deleted`)
+    } catch (e) { await ask.alert('Delete failed: ' + (e instanceof Error ? e.message : String(e)), 'Delete failed') }
   }
 
   const backfillArweave = async () => {
-    if (!window.confirm('Permanently mirror this comic’s fallback pages to Arweave? Requires ARWEAVE_JWK to be configured.')) return
+    const ok = await ask.confirm('Permanently mirror this comic’s fallback pages to Arweave? Requires TURBO_ETH_KEY or ARWEAVE_JWK to be configured.', { okText: 'Mirror to Arweave', title: 'Arweave backup' })
+    if (!ok) return
     try {
       const r = await fetch('/api/comics/arweave', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cid, variant: 'full' }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(j.error || 'failed')
-      window.alert(`Arweave: ${j.uploaded} uploaded, ${j.skipped} skipped` + (j.errors?.length ? `, ${j.errors.length} error(s)` : ''))
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      await ask.alert(`Arweave: ${j.uploaded} uploaded, ${j.skipped} skipped` + (j.errors?.length ? `, ${j.errors.length} error(s)` : ''), 'Arweave backup complete')
       await resolve()
-    } catch (e) { window.alert('Arweave backup: ' + (e instanceof Error ? e.message : String(e))) }
+    } catch (e) { await ask.alert('Arweave backup: ' + (e instanceof Error ? e.message : String(e)), 'Arweave backup failed') }
   }
   const convertExisting = async (i: number) => {
     const p = pages[i]
-    if (!p.img || !p.file) { window.alert('No image to convert.'); return }
+    if (!p.img || !p.file) { await ask.alert('No image to convert.', 'Convert'); return }
     try {
       const wf = await urlToWebp(p.img, p.file)
       const fd = new FormData()
       fd.append('cid', cid); fd.append('mode', 'replace'); fd.append('index', String(i))
       fd.append('label', p.label); fd.append('file', wf)
       const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'failed')
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      navTarget.current = i
       await resolve()
-    } catch (err) { window.alert('Convert failed (image CORS?): ' + (err instanceof Error ? err.message : String(err))) }
+      flashToast('ok', `Converted "${p.label}" to WEBP`)
+    } catch (err) { await ask.alert('Convert failed (image CORS?): ' + (err instanceof Error ? err.message : String(err)), 'Convert failed') }
   }
 
   const total = pages.length
@@ -492,6 +604,45 @@ export function ComicReader(
               </button>
             ))
           })()}
+        </div>
+      )}
+
+      {/* In-app modal — replaces window.prompt / confirm / alert */}
+      {modal && (
+        <div onClick={e => e.stopPropagation()}
+          style={{ position: 'fixed', inset: 0, zIndex: 10002, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <form
+            onSubmit={e => { e.preventDefault(); const m = modal; setModal(null); m.resolve(m.kind === 'prompt' ? modalInput : true) }}
+            style={{ background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 12, padding: '1.25rem', minWidth: 'min(440px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,.6)' }}>
+            {modal.title && <h3 style={{ color: '#fff', margin: '0 0 .6rem', fontSize: '1rem', fontWeight: 700 }}>{modal.title}</h3>}
+            <p style={{ color: '#e4dad1', margin: '0 0 1rem', fontSize: '.9rem', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{modal.message}</p>
+            {modal.kind === 'prompt' && (
+              <input autoFocus value={modalInput} onChange={e => setModalInput(e.target.value)}
+                style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '1rem', boxSizing: 'border-box' }} />
+            )}
+            <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
+              {modal.kind !== 'alert' && (
+                <button type="button" onClick={() => { const m = modal; setModal(null); m.resolve(m.kind === 'prompt' ? null : false) }}
+                  style={{ ...btn, padding: '.5rem 1rem', fontSize: '.85rem', background: 'rgba(255,255,255,.08)' }}>
+                  {modal.cancelText || 'Cancel'}
+                </button>
+              )}
+              <button type="submit" autoFocus={modal.kind !== 'prompt'}
+                style={{ ...sel, padding: '.5rem 1rem', fontSize: '.85rem', background: modal.danger ? '#b3324a' : 'var(--lw-purple, #6a24fa)' }}>
+                {modal.okText || (modal.kind === 'alert' ? 'OK' : modal.kind === 'confirm' ? 'OK' : 'Save')}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* In-portal toast (success / error) */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)', zIndex: 10003,
+          background: toast.kind === 'ok' ? 'rgba(46,160,67,.95)' : 'rgba(179,50,74,.95)',
+          color: '#fff', padding: '.6rem 1rem', borderRadius: 8, fontSize: '.85rem', maxWidth: '90vw',
+          boxShadow: '0 6px 18px rgba(0,0,0,.45)' }}>
+          {toast.text}
         </div>
       )}
     </div>,
