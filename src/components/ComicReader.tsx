@@ -29,7 +29,7 @@ const GATEWAYS = [
 const NARROW_MAX = 860
 const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'AD1', 'BC']
 
-interface Pg { label: string; file?: string; img?: string | null }
+interface Pg { label: string; file?: string; img?: string | null; ar?: string | null }
 
 function parseCid(url: string): { cid: string; entry: string } {
   let r = url
@@ -91,7 +91,7 @@ export function ComicReader(
   const [admin, setAdmin] = useState(isAdmin)
   const [narrow, setNarrow] = useState(false)
   const [sIdx, setSIdx] = useState(0)
-  const [display, setDisplay] = useState<{ label: string; img: string }[]>([])
+  const [display, setDisplay] = useState<{ label: string; img: string; ar: string }[]>([])
   const [anim, setAnim] = useState<'none' | 'next' | 'prev'>('none')
   const [failed, setFailed] = useState(false)
   const [perGroup, setPerGroup] = useState(10)
@@ -123,13 +123,13 @@ export function ComicReader(
     for (const g of GATEWAYS) {
       try { const r = await fetch(`${g}${cid}/${entry}`); if (r.ok) { gw = `${g}${cid}/`; break } } catch { /* next */ }
     }
-    let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null }[]; isAdmin?: boolean } | null = null
+    let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null }[]; isAdmin?: boolean } | null = null
     let st = 0
     try { const r = await fetch(`/api/comic-pages?cid=${encodeURIComponent(cid)}`); st = r.status; if (r.ok) fb = await r.json() } catch { /* */ }
     if (fb?.isAdmin) setAdmin(true)
     setIpfsEntry(gw ? gw + entry : null)
     if (fb?.pages?.length) {
-      setPages(fb.pages.map(p => ({ label: p.label, file: p.file, img: p.url ?? null })))
+      setPages(fb.pages.map(p => ({ label: p.label, file: p.file, img: p.url ?? null, ar: p.ar ?? null })))
       setMode('image'); setSIdx(0); setPhase('ready'); return
     }
     if (gw) { setPages([{ label: name }]); setMode('interactive'); setSIdx(0); setPhase('ready'); return }
@@ -141,7 +141,7 @@ export function ComicReader(
   useEffect(() => { resolve() }, [resolve])
 
   const showSpread = useCallback((s: number) => {
-    setDisplay(spreads[s]?.map(pi => ({ label: pages[pi].label, img: pages[pi].img || '' })) || [])
+    setDisplay(spreads[s]?.map(pi => ({ label: pages[pi].label, img: pages[pi].img || '', ar: pages[pi].ar || '' })) || [])
   }, [spreads, pages])
 
   // First render / after data or layout changes
@@ -270,6 +270,19 @@ export function ComicReader(
     } catch { window.alert('Delete failed.') }
   }
 
+  const backfillArweave = async () => {
+    if (!window.confirm('Permanently mirror this comic’s fallback pages to Arweave? Requires ARWEAVE_JWK to be configured.')) return
+    try {
+      const r = await fetch('/api/comics/arweave', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, variant: 'full' }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'failed')
+      window.alert(`Arweave: ${j.uploaded} uploaded, ${j.skipped} skipped` + (j.errors?.length ? `, ${j.errors.length} error(s)` : ''))
+      await resolve()
+    } catch (e) { window.alert('Arweave backup: ' + (e instanceof Error ? e.message : String(e))) }
+  }
   const convertExisting = async (i: number) => {
     const p = pages[i]
     if (!p.img || !p.file) { window.alert('No image to convert.'); return }
@@ -359,7 +372,8 @@ export function ComicReader(
               <div className={anim === 'next' ? 'cr-stage--next' : anim === 'prev' ? 'cr-stage--prev' : undefined}
                 style={{ position: 'absolute', inset: 0, display: 'flex', gap: display.length > 1 ? '4px' : 0, background: '#111111' }}>
                 {display.map((d, i) => d.img ? (
-                  <img key={i} src={d.img} alt={`${name} — ${d.label}`} onError={() => setFailed(true)}
+                  <img key={i} src={d.img} alt={`${name} — ${d.label}`}
+                    onError={e => { const im = e.currentTarget; if (d.ar && im.getAttribute('data-ar') !== '1') { im.setAttribute('data-ar', '1'); im.src = d.ar } else setFailed(true) }}
                     style={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain', background: '#111111' }} />
                 ) : (
                   <div key={i} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '.4rem', background: '#161616', color: '#7a7572', fontSize: '.85rem', textAlign: 'center', padding: '1rem' }}>
@@ -434,6 +448,8 @@ export function ComicReader(
                 title="Toggle admin page grid" onClick={() => { setGridOpen(g => !g); setGsel(new Set()) }}>{gridOpen ? 'Reader' : 'Grid'}</button>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
                 title="Add page(s) at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
+              <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
+                title="Mirror all pages to Arweave (permanent double-fallback)" onClick={backfillArweave}>Arweave</button>
             </span>
           )}
           {admin && phase === 'ready' && mode === 'interactive' && (

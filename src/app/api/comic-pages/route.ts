@@ -12,6 +12,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
+import { arweaveUrl } from '@/lib/arweave'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
   const bucket = db.storage.from('comic_pages')
   const pages = await Promise.all(
-    (comic.pages as { label?: string; file?: string }[]).map(async (p, i) => {
+    (comic.pages as { label?: string; file?: string; ar?: Record<string, string> }[]).map(async (p, i) => {
       const file = String(p.file || '').replace(/[^A-Za-z0-9._-]/g, '')
       const label = String(p.label || (i + 1))
       let url: string | null = null
@@ -62,7 +63,11 @@ export async function GET(request: Request) {
         const { data } = await bucket.createSignedUrl(`${cid}/${file}`, 3600)
         url = data?.signedUrl ?? null
       }
-      return { label, file, url }
+      // Permanent Arweave copy (double fallback): prefer 'full', else any.
+      const arMap = p.ar || {}
+      const arId = arMap.full || arMap.highres || Object.values(arMap)[0] || null
+      const ar = arId ? arweaveUrl(arId) : null
+      return { label, file, url, ar }
     }),
   )
 

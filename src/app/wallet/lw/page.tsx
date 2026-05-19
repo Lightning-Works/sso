@@ -103,6 +103,18 @@ function LwWalletContent() {
   const [forgeMessage, setForgeMessage] = useState('')
   const [forging, setForging] = useState(false)
   const [showForgeConfirm, setShowForgeConfirm] = useState(false)
+  const [isSuperadmin, setIsSuperadmin] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      if (profile?.role === 'superadmin') setIsSuperadmin(true)
+    })()
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -377,6 +389,7 @@ function LwWalletContent() {
                   columns={5}
                   mobileColumns={3}
                   storageKey={`nft-tags-lw-${selectedContractData.contract_address}`}
+                  isSuperadmin={isSuperadmin}
                 />
               </div>
             )}
