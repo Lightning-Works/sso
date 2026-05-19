@@ -31,13 +31,28 @@ const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '
 
 interface Pg { label: string; file?: string; img?: string | null; ar?: string | null }
 
-function parseCid(url: string): { cid: string; entry: string } {
-  let r = url
+function parseCid(url: string, fallbackName?: string): { cid: string; entry: string } {
+  let r = url || ''
   if (r.startsWith('ipfs://')) r = r.slice(7)
   else { const m = r.match(/\/ipfs\/(.+)$/); if (m) r = m[1] }
   r = r.replace(/^\/+/, '')
+  // Try the normal "first path segment = CID" shape.
   const s = r.indexOf('/')
-  return s === -1 ? { cid: r, entry: 'index.html' } : { cid: r.slice(0, s), entry: r.slice(s + 1) || 'index.html' }
+  let cid = s === -1 ? r : r.slice(0, s)
+  let entry = s === -1 ? 'index.html' : (r.slice(s + 1) || 'index.html')
+  // If that doesn't look like a real IPFS CID, hunt for one anywhere in the URL.
+  if (!/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{50,})$/.test(cid)) {
+    const m = (url || '').match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{50,})/)
+    if (m) { cid = m[1]; entry = 'index.html' }
+  }
+  // Still nothing usable? Synthesize a stable alphanumeric key from the name
+  // so MAKE FALLBACK / uploads still work for comics with no real CID.
+  if (!/^[A-Za-z0-9]+$/.test(cid)) {
+    const seed = (fallbackName || url || 'comic').toLowerCase()
+    cid = 'lw' + seed.replace(/[^a-z0-9]+/g, '').slice(0, 46) || 'lwcomic'
+    entry = 'index.html'
+  }
+  return { cid, entry }
 }
 
 const isSolo = (label: string) => {
@@ -81,7 +96,7 @@ async function urlToWebp(url: string, baseName: string): Promise<File> {
 export function ComicReader(
   { name, url, onClose, isAdmin = false }: { name: string; url: string; onClose: () => void; isAdmin?: boolean },
 ) {
-  const { cid, entry } = parseCid(url)
+  const { cid, entry } = parseCid(url, name)
 
   const [phase, setPhase] = useState<'resolving' | 'ready' | 'unavailable'>('resolving')
   const [reason, setReason] = useState('')
@@ -221,7 +236,7 @@ export function ComicReader(
       })
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'failed')
       await resolve()
-    } catch (e) { window.alert('Could not create fallback: ' + (e instanceof Error ? e.message : String(e))) }
+    } catch (e) { window.alert(`Could not create fallback (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e))) }
   }
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
     pending.current = { mode: m, index }
