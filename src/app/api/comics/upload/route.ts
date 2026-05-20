@@ -25,7 +25,7 @@ function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-interface Page { label: string; file: string }
+interface Page { label: string; file: string; tier?: string; ar?: Record<string, string> }
 
 export async function POST(request: Request) {
   const admin = await verifyAdmin(request)
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
   const index = parseInt(String(form.get('index') ?? '-1'), 10)
   const files = form.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
   const labels = form.getAll('label').map(String)
+  // Optional tier per uploaded file. Empty / 'base' / missing = base page.
+  const tiers = form.getAll('tier').map(s => String(s || '').trim().toLowerCase())
 
   if (!/^[A-Za-z0-9]+$/.test(cid)) return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
   if (files.length === 0) return NextResponse.json({ error: 'No file' }, { status: 400 })
@@ -65,7 +67,10 @@ export async function POST(request: Request) {
       contentType: f.type || 'image/webp', upsert: true,
     })
     if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 })
-    entries.push({ label, file: filename })
+    const tier = (tiers[i] || '').replace(/[^a-z]+/g, '').slice(0, 24)
+    const entry: Page = { label, file: filename }
+    if (tier && tier !== 'base') entry.tier = tier
+    entries.push(entry)
   }
 
   const { data: comic } = await db.from('comics').select('name, pages').eq('cid', cid).maybeSingle()

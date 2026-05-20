@@ -33,7 +33,23 @@ const GATEWAYS = [
 const NARROW_MAX = 860
 const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'AD1', 'BC']
 
-interface Pg { label: string; file?: string; img?: string | null; ar?: string | null }
+interface Pg { label: string; file?: string; img?: string | null; ar?: string | null; tier?: string | null }
+
+// Canonical tier rank used to decide which "extras" pages a viewer sees.
+// Pages with no tier (or tier === 'base') are shown to everyone; pages
+// tagged with a specific tier are shown only to viewers whose NFT is that
+// tier or higher. Hierarchy mirrors NftGrid.getRarityStyle.
+const TIER_RANK: Record<string, number> = {
+  base: 0, common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4,
+  divine: 5, mystic: 6, rainbow: 7, apocalyptic: 8,
+}
+const TIER_LABELS = ['Base', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Divine', 'Mystic', 'Rainbow', 'Apocalyptic']
+
+function rankOf(tier?: string | null): number {
+  if (!tier) return 0
+  const r = TIER_RANK[tier.toLowerCase()]
+  return r ?? 0
+}
 
 function parseCid(url: string, fallbackName?: string, contractAddress?: string): { cid: string; entry: string } {
   let r = url || ''
@@ -129,12 +145,14 @@ async function urlToWebp(url: string, baseName: string): Promise<File> {
 function PageContextMenu(props: {
   ctx: { x: number; y: number; index: number }
   pageLabel: string
+  pageTier?: string | null
   hasNonWebp: boolean
   onClose: () => void
   onReplace: () => void
   onInsertBefore: () => void
   onInsertAfter: () => void
   onRename: () => void
+  onSetTier: () => void
   onConvert: () => void
   onDelete: () => void
 }) {
@@ -153,11 +171,13 @@ function PageContextMenu(props: {
     })
   }, [props.ctx.x, props.ctx.y, props.ctx.index])
 
+  const tierSuffix = props.pageTier ? ` (${props.pageTier})` : ''
   const items: { label: string; fn: () => void; danger?: boolean }[] = [
     { label: 'Replace current image', fn: props.onReplace },
     { label: 'Insert before',         fn: props.onInsertBefore },
     { label: 'Insert after',          fn: props.onInsertAfter },
     { label: 'Rename page',           fn: props.onRename },
+    { label: `Set tier…${tierSuffix}`, fn: props.onSetTier },
   ]
   if (props.hasNonWebp) items.push({ label: 'Convert to WEBP', fn: props.onConvert })
   items.push({ label: 'Delete page', fn: props.onDelete, danger: true })
@@ -198,6 +218,9 @@ interface ModalState {
   title?: string
   message: string
   initial?: string
+  // When set, the prompt's text input is replaced by a <select> with these
+  // options. value is what resolves; label is what the user sees.
+  options?: { value: string; label: string }[]
   okText?: string
   cancelText?: string
   danger?: boolean
@@ -205,10 +228,11 @@ interface ModalState {
 }
 
 export function ComicReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null }:
-  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null; contractAddress?: string | null },
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, viewerTier = null }:
+  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null; contractAddress?: string | null; viewerTier?: string | null },
 ) {
   const { cid, entry } = parseCid(url, name, contractAddress || undefined)
+  const viewerRank = rankOf(viewerTier)
 
   const [phase, setPhase] = useState<'resolving' | 'ready' | 'unavailable'>('resolving')
   const [reason, setReason] = useState('')
@@ -247,6 +271,8 @@ export function ComicReader(
   const ask = useMemo(() => ({
     prompt: (message: string, initial = '', title?: string) =>
       new Promise<string | null>(resolve => { setModalInput(initial); setModal({ kind: 'prompt', message, initial, title, resolve: v => resolve(v as string | null) }) }),
+    select: (message: string, options: { value: string; label: string }[], initial?: string, title?: string) =>
+      new Promise<string | null>(resolve => { setModalInput(initial ?? options[0]?.value ?? ''); setModal({ kind: 'prompt', message, initial: initial ?? options[0]?.value, options, title, resolve: v => resolve(v as string | null) }) }),
     confirm: (message: string, opts: { okText?: string; danger?: boolean; title?: string } = {}) =>
       new Promise<boolean>(resolve => { setModal({ kind: 'confirm', message, ...opts, resolve: v => resolve(Boolean(v)) }) }),
     alert: (message: string, title?: string) =>
@@ -283,11 +309,12 @@ export function ComicReader(
     for (const g of GATEWAYS) {
       try { const r = await fetch(`${g}${cid}/${entry}`); if (r.ok) { gw = `${g}${cid}/`; break } } catch { /* next */ }
     }
-    let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null }[]; isAdmin?: boolean } | null = null
+    let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null; tier?: string | null }[]; isAdmin?: boolean } | null = null
     let st = 0
     // Pass `name` so the server can locate any older name-derived data and
     // migrate it forward to the contract-address cid (one-time per comic).
     try { const r = await fetch(`/api/comic-pages?cid=${encodeURIComponent(cid)}&name=${encodeURIComponent(name)}`); st = r.status; if (r.ok) fb = await r.json() } catch { /* */ }
+    const isAdminNow = !!(fb?.isAdmin) || isAdmin
     if (fb?.isAdmin) setAdmin(true)
     setIpfsEntry(gw ? gw + entry : null)
     if (fb?.pages?.length) {
@@ -296,11 +323,17 @@ export function ComicReader(
       // works on every comic, no CORS-on-upload to deal with.
       const isCoverSlot = (label: string, i: number) =>
         i === 0 || /^cover$|^front\s*cover$/i.test(label || '')
-      setPages(fb.pages.map((p, i) => ({
+      // Filter out tier extras above the viewer's rank. Admins see everything
+      // so they can edit higher-tier extras from any mint.
+      const visible = isAdminNow
+        ? fb.pages
+        : fb.pages.filter(p => !p.tier || rankOf(p.tier) <= viewerRank)
+      setPages(visible.map((p, i) => ({
         label: p.label,
         file: p.file,
         img: p.url ?? (coverUrl && isCoverSlot(p.label, i) ? coverUrl : null),
         ar: p.ar ?? null,
+        tier: p.tier ?? null,
       })))
       setMode('image'); setSIdx(0); setPhase('ready'); return
     }
@@ -308,7 +341,7 @@ export function ComicReader(
     setReason(st === 401 ? 'Sign in to read this comic.' : st === 403 ? 'You must own this NFT to read it.'
       : 'This comic isn’t available — no fallback configured and the IPFS copy is missing/unpinned.')
     setPhase('unavailable')
-  }, [cid, entry, name, coverUrl])
+  }, [cid, entry, name, coverUrl, isAdmin, viewerRank])
 
   useEffect(() => { resolve() }, [resolve])
 
@@ -547,11 +580,35 @@ export function ComicReader(
     try {
       const r = await fetch('/api/comics', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cid, nameHint: name, pages: updated.map(p => ({ label: p.label, file: p.file || '' })) }),
+        body: JSON.stringify({ cid, nameHint: name, pages: updated.map(p => ({ label: p.label, file: p.file || '', tier: p.tier || null })) }),
       })
       if (!r.ok) throw new Error(await errFromResponse(r))
       flashToast('ok', `Renamed to "${next}"`)
     } catch (e) { setPages(pages); flashToast('err', 'Rename failed: ' + (e instanceof Error ? e.message : String(e))) }
+  }
+
+  const setTier = async (i: number) => {
+    const cur = pages[i]
+    const opts = TIER_LABELS.map(t => ({ value: t.toLowerCase(), label: t === 'Base' ? 'Base (shown to all tiers)' : `${t} and above` }))
+    const choice = await ask.select(
+      `Which tier should "${cur.label}" be visible to?`,
+      opts,
+      (cur.tier || 'base').toLowerCase(),
+      'Set page tier',
+    )
+    if (choice == null) return
+    const tier = choice === 'base' ? null : choice
+    if ((cur.tier || null) === tier) return
+    const updated = pages.map((p, k) => k === i ? { ...p, tier } : p)
+    setPages(updated)
+    try {
+      const r = await fetch('/api/comics', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, nameHint: name, pages: updated.map(p => ({ label: p.label, file: p.file || '', tier: p.tier || null })) }),
+      })
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      flashToast('ok', tier ? `Tier set to ${tier}` : 'Set to base (visible to all)')
+    } catch (e) { setPages(pages); flashToast('err', 'Set tier failed: ' + (e instanceof Error ? e.message : String(e))) }
   }
   const makeFallback = async () => {
     const tpl = FALLBACK_TEMPLATE.map(l => ({ label: l, file: '' }))
@@ -822,10 +879,13 @@ export function ComicReader(
                   <div key={i}
                     onClick={e => { if (e.metaKey || e.ctrlKey || e.shiftKey) setGsel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n }); else setCtx({ x: e.clientX, y: e.clientY, index: i }) }}
                     onContextMenu={e => { e.preventDefault(); setPreview(i) }}
-                    style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: '#1a1a1c', outline: gsel.has(i) ? '2px solid var(--lw-purple,#6a24fa)' : '2px solid transparent' }}>
+                    style={{ position: 'relative', cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: '#1a1a1c', outline: gsel.has(i) ? '2px solid var(--lw-purple,#6a24fa)' : '2px solid transparent' }}>
                     <div style={{ aspectRatio: '5 / 7', background: '#0d0d0d', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                       {p.img ? <img src={p.img} alt={p.label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ color: '#555', fontSize: '.7rem' }}>no image</span>}
                     </div>
+                    {p.tier && (
+                      <div style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(106,36,250,.92)', color: '#fff', fontSize: '.6rem', fontWeight: 700, padding: '.15rem .4rem', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '.04em', pointerEvents: 'none' }}>{p.tier}</div>
+                    )}
                     <div style={{ padding: '.35rem .4rem' }}>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: '.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.label}</div>
                       <div style={{ color: '#7a7572', fontSize: '.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>- {p.file || '(none)'}</div>
@@ -876,12 +936,14 @@ export function ComicReader(
         <PageContextMenu
           ctx={ctx}
           pageLabel={pages[ctx.index]?.label ?? ''}
+          pageTier={pages[ctx.index]?.tier ?? null}
           hasNonWebp={notWebp(pages[ctx.index]?.file)}
           onClose={() => setCtx(null)}
           onReplace={() => startUpload('replace', ctx.index)}
           onInsertBefore={() => startUpload('before', ctx.index)}
           onInsertAfter={() => startUpload('after', ctx.index)}
           onRename={() => rename(ctx.index)}
+          onSetTier={() => setTier(ctx.index)}
           onConvert={() => convertExisting(ctx.index)}
           onDelete={() => del([ctx.index])}
         />
@@ -927,9 +989,13 @@ export function ComicReader(
             style={{ background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 12, padding: '1.25rem', minWidth: 'min(440px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,.6)' }}>
             {modal.title && <h3 style={{ color: '#fff', margin: '0 0 .6rem', fontSize: '1rem', fontWeight: 700 }}>{modal.title}</h3>}
             <p style={{ color: '#e4dad1', margin: '0 0 1rem', fontSize: '.9rem', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{modal.message}</p>
-            {modal.kind === 'prompt' && (
-              <input autoFocus value={modalInput} onChange={e => setModalInput(e.target.value)}
-                style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '1rem', boxSizing: 'border-box' }} />
+            {modal.kind === 'prompt' && (modal.options
+              ? <select autoFocus value={modalInput} onChange={e => setModalInput(e.target.value)}
+                  style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                  {modal.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              : <input autoFocus value={modalInput} onChange={e => setModalInput(e.target.value)}
+                  style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '1rem', boxSizing: 'border-box' }} />
             )}
             <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
               {modal.kind !== 'alert' && (

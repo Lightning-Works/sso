@@ -1091,6 +1091,7 @@ export function NftGrid({
           url={readerNft.animationUrl}
           coverUrl={readerNft.imageUrl}
           contractAddress={readerNft.contractAddress}
+          viewerTier={readerNft.rarity}
           isAdmin={isSuperadmin}
           onClose={() => setReaderNft(null)}
         />

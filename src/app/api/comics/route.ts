@@ -24,19 +24,36 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
   }
 
-  const row: Record<string, unknown> = { cid, updated_at: new Date().toISOString() }
-  if (typeof body.name === 'string') row.name = body.name
-  if (Array.isArray(body.pages)) {
-    row.pages = body.pages.map((p: { label?: unknown; file?: unknown }) => ({
-      label: String(p?.label ?? ''),
-      file: String(p?.file ?? '').replace(/[^A-Za-z0-9._-]/g, ''),
-    }))
-  }
-
   const db = svc()
   // Consolidate any legacy (name-derived or per-mint) row first so the
   // rename/patch lands on the unified contract-address row, not a stub.
   await migrateLegacyComic(db, cid, nameHint)
+
+  const row: Record<string, unknown> = { cid, updated_at: new Date().toISOString() }
+  if (typeof body.name === 'string') row.name = body.name
+  if (Array.isArray(body.pages)) {
+    // Look up existing pages so we can preserve fields (tier, ar) that the
+    // client doesn't echo back on a rename or delete patch.
+    const { data: existing } = await db.from('comics').select('pages').eq('cid', cid).maybeSingle()
+    const existingByFile = new Map<string, { tier?: string; ar?: Record<string, string> }>()
+    for (const p of (existing?.pages || []) as { file?: string; tier?: string; ar?: Record<string, string> }[]) {
+      if (p?.file) existingByFile.set(String(p.file), { tier: p.tier, ar: p.ar })
+    }
+    row.pages = body.pages.map((p: { label?: unknown; file?: unknown; tier?: unknown; ar?: unknown }) => {
+      const file = String(p?.file ?? '').replace(/[^A-Za-z0-9._-]/g, '')
+      const prior = existingByFile.get(file)
+      const tierRaw = p?.tier !== undefined ? p.tier : prior?.tier
+      const tier = tierRaw ? String(tierRaw).trim().toLowerCase().slice(0, 24) : null
+      const ar = (p?.ar && typeof p.ar === 'object') ? p.ar : prior?.ar
+      const out: Record<string, unknown> = {
+        label: String(p?.label ?? ''),
+        file,
+      }
+      if (tier && tier !== 'base') out.tier = tier
+      if (ar && typeof ar === 'object' && Object.keys(ar).length) out.ar = ar
+      return out
+    })
+  }
   const { data, error } = await db
     .from('comics')
     .upsert(row, { onConflict: 'cid' })
