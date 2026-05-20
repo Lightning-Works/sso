@@ -49,10 +49,12 @@ function parseCid(url: string, fallbackName?: string): { cid: string; entry: str
     const m = (url || '').match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{50,})/)
     if (m) { cid = m[1]; entry = 'index.html' }
   }
-  // Still nothing usable? Synthesize a stable alphanumeric key from the name
-  // so MAKE FALLBACK / uploads still work for comics with no real CID.
+  // Still nothing usable? Synthesize a stable alphanumeric key from the URL
+  // so all NFTs of the same comic type share pages (URL is the same across
+  // mints — the NFT name differs per mint, so name is only a last-resort
+  // fallback for the unlikely case where url is empty too).
   if (!/^[A-Za-z0-9]+$/.test(cid)) {
-    const seed = (fallbackName || url || 'comic').toLowerCase()
+    const seed = (url || fallbackName || 'comic').toLowerCase()
     cid = 'lw' + seed.replace(/[^a-z0-9]+/g, '').slice(0, 46) || 'lwcomic'
     entry = 'index.html'
   }
@@ -217,6 +219,8 @@ export function ComicReader(
   const [ctx, setCtx] = useState<{ x: number; y: number; index: number } | null>(null)
   const [gridOpen, setGridOpen] = useState(false)
   const [gsel, setGsel] = useState<Set<number>>(new Set())
+  // Grid right-click preview: full-size image overlay with ‹ › cycling.
+  const [preview, setPreview] = useState<number | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [modalInput, setModalInput] = useState('')
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -481,16 +485,23 @@ export function ComicReader(
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (modal) { const m = modal; setModal(null); m.resolve(m.kind === 'prompt' ? null : false); return }
+        if (preview !== null) { setPreview(null); return }
         if (ctx) { setCtx(null); return }
         onClose()
       }
       else if (modal) return  // arrow keys shouldn't flip pages while typing in the modal
+      else if (preview !== null) {
+        // Cycle the grid preview with wrap-around — same gesture as the
+        // reader's prev/next.
+        if (e.key === 'ArrowRight') setPreview((preview + 1) % pages.length)
+        else if (e.key === 'ArrowLeft') setPreview((preview - 1 + pages.length) % pages.length)
+      }
       else if (e.key === 'ArrowRight') go(sIdx + 1, 'next')
       else if (e.key === 'ArrowLeft') go(sIdx - 1, 'prev')
     }
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
-  }, [onClose, go, sIdx, ctx, modal])
+  }, [onClose, go, sIdx, ctx, modal, preview, pages.length])
 
   useEffect(() => {
     if (!ctx) return
@@ -802,7 +813,7 @@ export function ComicReader(
                 {pages.map((p, i) => (
                   <div key={i}
                     onClick={e => { if (e.metaKey || e.ctrlKey || e.shiftKey) setGsel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n }); else setCtx({ x: e.clientX, y: e.clientY, index: i }) }}
-                    onContextMenu={e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, index: i }) }}
+                    onContextMenu={e => { e.preventDefault(); setPreview(i) }}
                     style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: '#1a1a1c', outline: gsel.has(i) ? '2px solid var(--lw-purple,#6a24fa)' : '2px solid transparent' }}>
                     <div style={{ aspectRatio: '5 / 7', background: '#0d0d0d', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                       {p.img ? <img src={p.img} alt={p.label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ color: '#555', fontSize: '.7rem' }}>no image</span>}
@@ -866,6 +877,37 @@ export function ComicReader(
           onConvert={() => convertExisting(ctx.index)}
           onDelete={() => del([ctx.index])}
         />
+      )}
+
+      {/* Grid right-click preview: full-size image, purple glow, click anywhere
+          to close, ‹ › or arrow keys cycle through pages with wrap-around. */}
+      {preview !== null && pages[preview] && (
+        <div onClick={() => setPreview(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10001,
+            background: 'rgba(0,0,0,.92)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+          {pages[preview].img ? (
+            <img src={pages[preview].img} alt={pages[preview].label} draggable={false}
+              style={{
+                maxWidth: '92%', maxHeight: '92%', objectFit: 'contain', borderRadius: 4,
+                boxShadow: '0 0 15px 5px rgba(80,40,200,.5),0 0 40px 15px rgba(60,30,160,.35),0 0 80px 30px rgba(40,20,120,.25),0 0 160px 60px rgba(20,10,60,.15)',
+                userSelect: 'none', pointerEvents: 'none',
+              }} />
+          ) : (
+            <div style={{ color: '#7a7572', fontSize: '1rem', padding: '2rem', textAlign: 'center' }}>
+              &ldquo;{pages[preview].label}&rdquo; — no image yet
+            </div>
+          )}
+          <button title="Previous (wraps)"
+            onClick={e => { e.stopPropagation(); setPreview((preview - 1 + pages.length) % pages.length) }}
+            style={floatBtn('left')}>&#8249;</button>
+          <button title="Next (wraps)"
+            onClick={e => { e.stopPropagation(); setPreview((preview + 1) % pages.length) }}
+            style={floatBtn('right')}>&#8250;</button>
+          <div style={{ position: 'absolute', bottom: '1rem', left: '50%', transform: 'translateX(-50%)', color: '#bab1a8', fontSize: '.8rem', background: 'rgba(0,0,0,.5)', padding: '.3rem .8rem', borderRadius: 6, pointerEvents: 'none' }}>
+            {pages[preview].label} · {preview + 1}/{pages.length}
+          </div>
+        </div>
       )}
 
       {/* In-app modal — replaces window.prompt / confirm / alert */}
