@@ -21,7 +21,11 @@ function svc() {
 }
 
 export async function GET(request: Request) {
-  const cid = (new URL(request.url).searchParams.get('cid') || '').trim()
+  const params = new URL(request.url).searchParams
+  const cid = (params.get('cid') || '').trim()
+  // Name hint lets the server find data under older name-derived cids and
+  // migrate it forward (see migrateLegacyComic).
+  const nameHint = (params.get('name') || '').trim() || null
   if (!/^[A-Za-z0-9]+$/.test(cid)) {
     return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
   }
@@ -34,8 +38,9 @@ export async function GET(request: Request) {
   const db = svc()
 
   // The comic + its curated page list/labels. If no row exists under the
-  // (type-level) cid, see if a legacy per-mint row needs to be migrated up.
-  const comic = await migrateLegacyComic(db, cid)
+  // (contract-address) cid, look up older name-derived rows and migrate
+  // them forward to this cid.
+  const comic = await migrateLegacyComic(db, cid, nameHint)
   if (!comic || !Array.isArray(comic.pages) || comic.pages.length === 0) {
     return NextResponse.json({ error: 'No fallback configured for this comic' }, { status: 404 })
   }

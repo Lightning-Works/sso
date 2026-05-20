@@ -35,7 +35,7 @@ const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '
 
 interface Pg { label: string; file?: string; img?: string | null; ar?: string | null }
 
-function parseCid(url: string, fallbackName?: string): { cid: string; entry: string } {
+function parseCid(url: string, fallbackName?: string, contractAddress?: string): { cid: string; entry: string } {
   let r = url || ''
   if (r.startsWith('ipfs://')) r = r.slice(7)
   else { const m = r.match(/\/ipfs\/(.+)$/); if (m) r = m[1] }
@@ -49,14 +49,18 @@ function parseCid(url: string, fallbackName?: string): { cid: string; entry: str
     const m = (url || '').match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{50,})/)
     if (m) { cid = m[1]; entry = 'index.html' }
   }
-  // Still nothing usable? Synthesize a stable alphanumeric key from the NFT
-  // name with the trailing mint number stripped — so every mint of the same
-  // comic type (e.g. "AW0 Starblind #267", "#268") collapses to the SAME key
-  // ("lwaw0starblind") and shares fallback pages. The server auto-migrates
-  // data that was previously stored under the per-mint key.
+  // Still nothing usable? Synthesize a stable alphanumeric key. Prefer the
+  // on-chain contract address (immutable, same across every mint of the
+  // series); fall back to the stripped NFT name; URL last. The server
+  // auto-migrates any older name-derived keys to this one on first touch.
   if (!/^[A-Za-z0-9]+$/.test(cid)) {
-    const stripped = (fallbackName || '').replace(/\s*#?\s*\d+\s*$/, '').trim()
-    const seed = (stripped || url || 'comic').toLowerCase()
+    let seed = ''
+    if (contractAddress && /^0x[0-9a-fA-F]{4,}$/.test(contractAddress.trim())) {
+      seed = contractAddress.trim().toLowerCase().replace(/^0x/, '')
+    } else {
+      const stripped = (fallbackName || '').replace(/\s*#?\s*\d+\s*$/, '').trim()
+      seed = (stripped || url || 'comic').toLowerCase()
+    }
     cid = 'lw' + seed.replace(/[^a-z0-9]+/g, '').slice(0, 46) || 'lwcomic'
     entry = 'index.html'
   }
@@ -201,10 +205,10 @@ interface ModalState {
 }
 
 export function ComicReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null }:
-  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null },
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null }:
+  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null; contractAddress?: string | null },
 ) {
-  const { cid, entry } = parseCid(url, name)
+  const { cid, entry } = parseCid(url, name, contractAddress || undefined)
 
   const [phase, setPhase] = useState<'resolving' | 'ready' | 'unavailable'>('resolving')
   const [reason, setReason] = useState('')
@@ -281,7 +285,9 @@ export function ComicReader(
     }
     let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null }[]; isAdmin?: boolean } | null = null
     let st = 0
-    try { const r = await fetch(`/api/comic-pages?cid=${encodeURIComponent(cid)}`); st = r.status; if (r.ok) fb = await r.json() } catch { /* */ }
+    // Pass `name` so the server can locate any older name-derived data and
+    // migrate it forward to the contract-address cid (one-time per comic).
+    try { const r = await fetch(`/api/comic-pages?cid=${encodeURIComponent(cid)}&name=${encodeURIComponent(name)}`); st = r.status; if (r.ok) fb = await r.json() } catch { /* */ }
     if (fb?.isAdmin) setAdmin(true)
     setIpfsEntry(gw ? gw + entry : null)
     if (fb?.pages?.length) {
@@ -541,7 +547,7 @@ export function ComicReader(
     try {
       const r = await fetch('/api/comics', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cid, pages: updated.map(p => ({ label: p.label, file: p.file || '' })) }),
+        body: JSON.stringify({ cid, nameHint: name, pages: updated.map(p => ({ label: p.label, file: p.file || '' })) }),
       })
       if (!r.ok) throw new Error(await errFromResponse(r))
       flashToast('ok', `Renamed to "${next}"`)
@@ -590,7 +596,7 @@ export function ComicReader(
       ? (job.mode === 'after' ? job.index + 1 : job.mode === 'before' ? job.index : pages.length)
       : job.index
     const fd = new FormData()
-    fd.append('cid', cid); fd.append('mode', serverMode); fd.append('index', String(serverIndex))
+    fd.append('cid', cid); fd.append('name', name); fd.append('mode', serverMode); fd.append('index', String(serverIndex))
     if (files.length === 1) {
       const dft = job.mode === 'replace' ? (pages[job.index]?.label || 'PAGE') : 'PAGE'
       const label = await ask.prompt('Page label (e.g. COVER, L1, 1, AD1, BC):', dft, 'Page label')
@@ -644,7 +650,7 @@ export function ComicReader(
     try {
       const r = await fetch('/api/comics', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cid, pages: next, deleteFiles }),
+        body: JSON.stringify({ cid, nameHint: name, pages: next, deleteFiles }),
       })
       if (!r.ok) throw new Error(await errFromResponse(r))
       setGsel(new Set()); await resolve()
@@ -658,7 +664,7 @@ export function ComicReader(
     try {
       const r = await fetch('/api/comics/arweave', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cid, variant: 'full' }),
+        body: JSON.stringify({ cid, nameHint: name, variant: 'full' }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
@@ -672,7 +678,7 @@ export function ComicReader(
     try {
       const wf = await urlToWebp(p.img, p.file)
       const fd = new FormData()
-      fd.append('cid', cid); fd.append('mode', 'replace'); fd.append('index', String(i))
+      fd.append('cid', cid); fd.append('name', name); fd.append('mode', 'replace'); fd.append('index', String(i))
       fd.append('label', p.label); fd.append('file', wf)
       const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
       if (!r.ok) throw new Error(await errFromResponse(r))

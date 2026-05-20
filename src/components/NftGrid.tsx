@@ -60,6 +60,9 @@ export interface NftItem {
   externalUrl?: string | null
   animationUrl?: string | null
   attributes?: { key: string; value: string }[]
+  // Immutable on-chain identifier — used to key shared comic fallback pages
+  // so every mint of a series resolves to the same storage row.
+  contractAddress?: string
 }
 
 type NftTag = 'spam' | 'favorite' | 'hidden'
@@ -1087,6 +1090,7 @@ export function NftGrid({
           name={readerNft.name}
           url={readerNft.animationUrl}
           coverUrl={readerNft.imageUrl}
+          contractAddress={readerNft.contractAddress}
           isAdmin={isSuperadmin}
           onClose={() => setReaderNft(null)}
         />

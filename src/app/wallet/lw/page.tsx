@@ -71,6 +71,7 @@ function lwToNftItems(nfts: LwNft[], contract: LwContract): NftItem[] {
       chain: contract.chain,
       rarity: tier || undefined,
       tokenType: contract.token_type,
+      contractAddress: contract.contract_address,
       attributes: nft.attributes
         .filter(a => a.trait_type)
         .map(a => ({ key: a.trait_type!, value: String(a.value || '') })),

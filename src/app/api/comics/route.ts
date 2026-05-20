@@ -19,6 +19,7 @@ export async function PATCH(request: Request) {
 
   const body = await request.json().catch(() => ({}))
   const cid = String(body.cid || '').trim()
+  const nameHint = String(body.nameHint || body.name || '').trim() || null
   if (!/^[A-Za-z0-9]+$/.test(cid)) {
     return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
   }
@@ -33,9 +34,9 @@ export async function PATCH(request: Request) {
   }
 
   const db = svc()
-  // Consolidate any legacy per-mint row first so the rename/patch lands
-  // on the unified type-level row, not a stale per-mint stub.
-  await migrateLegacyComic(db, cid)
+  // Consolidate any legacy (name-derived or per-mint) row first so the
+  // rename/patch lands on the unified contract-address row, not a stub.
+  await migrateLegacyComic(db, cid, nameHint)
   const { data, error } = await db
     .from('comics')
     .upsert(row, { onConflict: 'cid' })

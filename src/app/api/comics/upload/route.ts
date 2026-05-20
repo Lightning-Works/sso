@@ -35,6 +35,7 @@ export async function POST(request: Request) {
   try { form = await request.formData() } catch { return NextResponse.json({ error: 'Bad form' }, { status: 400 }) }
 
   const cid = String(form.get('cid') || '').trim()
+  const nameHint = String(form.get('name') || '').trim() || null
   const mode = String(form.get('mode') || 'append')
   const index = parseInt(String(form.get('index') ?? '-1'), 10)
   const files = form.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
@@ -48,10 +49,11 @@ export async function POST(request: Request) {
   }
 
   const db = svc()
-  // Consolidate any legacy per-mint row to the type-level cid before we
-  // touch storage / pages JSON — otherwise the upload lands at the new
-  // cid and the legacy pages stay orphaned at the old one.
-  await migrateLegacyComic(db, cid)
+  // Consolidate any legacy (name-derived or per-mint) row to the current
+  // contract-address cid before we touch storage / pages JSON — otherwise
+  // this upload lands at the new cid and the legacy pages stay orphaned
+  // at the old one.
+  await migrateLegacyComic(db, cid, nameHint)
   const entries: Page[] = []
   for (let i = 0; i < files.length; i++) {
     const f = files[i]

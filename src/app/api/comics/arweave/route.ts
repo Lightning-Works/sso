@@ -35,11 +35,12 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}))
   const cid = String(body.cid || '').trim()
+  const nameHint = String(body.nameHint || '').trim() || null
   const variant = String(body.variant || 'full').replace(/[^A-Za-z0-9_-]/g, '') || 'full'
   if (!/^[A-Za-z0-9]+$/.test(cid)) return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
 
   const db = svc()
-  await migrateLegacyComic(db, cid)
+  await migrateLegacyComic(db, cid, nameHint)
   const { data: comic } = await db.from('comics').select('name, pages').eq('cid', cid).maybeSingle()
   const pages: Page[] = Array.isArray(comic?.pages) ? comic!.pages as Page[] : []
   if (!pages.length) return NextResponse.json({ error: 'No pages for this comic' }, { status: 404 })
