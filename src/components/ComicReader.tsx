@@ -374,11 +374,11 @@ export function ComicReader(
       apply(nz, cx - wx * nz, cy - wy * nz)
     }
 
-    // ── Wheel (mouse/trackpad): 2% per tick, anchored at cursor.
+    // ── Wheel (mouse/trackpad): 4% per tick, anchored at cursor.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const r = el.getBoundingClientRect()
-      zoomAround(e.clientX - r.left, e.clientY - r.top, zoomRef.current + (e.deltaY < 0 ? 0.02 : -0.02))
+      zoomAround(e.clientX - r.left, e.clientY - r.top, zoomRef.current + (e.deltaY < 0 ? 0.04 : -0.04))
     }
 
     // ── Mouse drag-to-pan (only when already zoomed).
