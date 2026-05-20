@@ -140,16 +140,16 @@ function BookFlipEffect(p: PageTurnProps) {
         .bf-page>div.bf-ph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;background:#161616;color:#7a7572;font-size:.85rem;text-align:center;padding:1rem}
         .bf-page::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,0);transition:background ${FLIP_MS / 2}ms;z-index:2;pointer-events:none}
         .bf-recto{right:0;border-radius:0 4px 4px 0;transform:rotateY(0deg);pointer-events:auto}
-        .bf-recto:hover{transform:rotateY(-10deg)}
-        .bf-recto:hover::before{background:rgba(0,0,0,.03)}
         .bf-verso{left:0;transform-origin:100% 0;border-radius:4px 0 0 4px;transform:rotateY(180deg);pointer-events:none}
         .bf-verso::before{background:rgba(0,0,0,.2)}
         .bf-flipped.bf-recto{transform:rotateY(-180deg);pointer-events:none}
         .bf-flipped.bf-recto::before{background:rgba(0,0,0,.2)}
         .bf-flipped.bf-verso{transform:rotateY(0deg);pointer-events:auto}
-        .bf-flipped.bf-verso:hover{transform:rotateY(10deg)}
-        .bf-flipped.bf-verso:hover::before{background:rgba(0,0,0,.03)}
         .bf-flipped.bf-verso::before{background:rgba(0,0,0,0)}
+        /* No :hover transforms — they create a feedback loop at page edges:
+           tilt moves the page out from under the cursor → hover removed →
+           page returns → cursor over it again → re-tilts, flicker at ~20Hz.
+           cursor:pointer is enough affordance that the page is clickable. */
       `}</style>
       <div className="bf-perspective">
         <div className="bf-pages">

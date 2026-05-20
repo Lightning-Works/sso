@@ -472,7 +472,10 @@ export function ComicReader(
       el.removeEventListener('touchcancel', onTouchEnd)
       el.removeEventListener('click', onClick, true)
     }
-  }, [mode])
+    // phase / gridOpen must be deps too — they decide whether the zoom box
+    // is actually in the DOM, and without them the effect runs once with a
+    // null ref (phase='resolving' at mount) and listeners never attach.
+  }, [mode, phase, gridOpen])
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -730,18 +733,18 @@ export function ComicReader(
           {phase === 'ready' && mode === 'image' && !gridOpen && (
             <>
               {/* Zoom layer. Wheel/pinch/drag/click handled by the useEffect
-                  on zoomBoxRef. At 1× we show the full book-flip (with its
-                  3D perspective + stacked leaves). Above 1× we render a flat
-                  2-up view of the current spread — nesting `scale()` inside
-                  book-flip's `perspective` collapses the 3D stack into
-                  overlapping fragments, so the flat view is what scales
-                  cleanly. Raising z-index lets the scaled image overlap the
-                  page bar + close button. */}
+                  on zoomBoxRef. Book-flip is ALWAYS mounted but display:none'd
+                  when zoomed — unmounting it mid-paint leaves its GPU
+                  compositor leaves visible for a frame, which is the angled
+                  chopping artifact you saw. The flat scaled view renders on
+                  top while zoomed; nesting scale() inside book-flip's 3D
+                  perspective would collapse the stack into overlapping
+                  fragments, so the flat view is what scales. */}
               <div ref={zoomBoxRef}
                 style={{ position: 'absolute', inset: 0, zIndex: zoom > 1 ? 100 : 1,
                   cursor: zoom > 1 ? 'grab' : 'default',
                   touchAction: zoom > 1 ? 'none' : 'auto' }}>
-                {zoom === 1 ? (
+                <div style={{ position: 'absolute', inset: 0, display: zoom > 1 ? 'none' : 'block' }}>
                   <ComicPageTurn
                     display={display}
                     name={name}
@@ -755,7 +758,8 @@ export function ComicReader(
                     narrow={narrow}
                     onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
                   />
-                ) : (
+                </div>
+                {zoom > 1 && (
                   <div style={{
                     position: 'absolute', inset: 0, background: '#111111',
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
