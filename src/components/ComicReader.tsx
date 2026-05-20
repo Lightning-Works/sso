@@ -544,10 +544,14 @@ export function ComicReader(
   const sel: React.CSSProperties = { ...btn, background: 'var(--lw-purple, #6a24fa)', color: '#fff' }
   const nav: React.CSSProperties = { ...btn, background: 'var(--lw-purple, #6a24fa)', color: '#fff', fontWeight: 700, minWidth: '28px' }
   const floatBtn = (side: 'left' | 'right'): React.CSSProperties => ({
+    // Square, 20% narrower than the old 46px (→ 37px). The ‹ › glyphs sit a
+    // few pixels below the typographic center, so an extra paddingBottom
+    // shifts the flex-centered content up to land in the visual middle.
     position: 'absolute', top: '50%', transform: 'translateY(-50%)', [side]: '10px', zIndex: 6,
-    background: 'var(--lw-purple, #6a24fa)', color: '#fff', border: 'none', width: 46, height: 66,
+    background: 'var(--lw-purple, #6a24fa)', color: '#fff', border: 'none', width: 37, height: 37,
     borderRadius: 8, cursor: 'pointer', fontSize: '1.6rem', fontWeight: 700, lineHeight: 1,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.5)', opacity: 0.9,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBottom: 4,
+    boxShadow: '0 2px 10px rgba(0,0,0,0.5)', opacity: 0.9,
   })
   const msg: React.CSSProperties = { position: 'absolute', inset: 0, background: '#111111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textAlign: 'center', padding: '2rem' }
 
