@@ -18,6 +18,7 @@
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
+import { migrateLegacyComic } from '@/lib/comics/migrate'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -47,6 +48,10 @@ export async function POST(request: Request) {
   }
 
   const db = svc()
+  // Consolidate any legacy per-mint row to the type-level cid before we
+  // touch storage / pages JSON — otherwise the upload lands at the new
+  // cid and the legacy pages stay orphaned at the old one.
+  await migrateLegacyComic(db, cid)
   const entries: Page[] = []
   for (let i = 0; i < files.length; i++) {
     const f = files[i]

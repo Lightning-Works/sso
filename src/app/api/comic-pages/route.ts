@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 import { arweaveUrl } from '@/lib/arweave'
+import { migrateLegacyComic } from '@/lib/comics/migrate'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -32,8 +33,9 @@ export async function GET(request: Request) {
 
   const db = svc()
 
-  // The comic + its curated page list/labels
-  const { data: comic } = await db.from('comics').select('name, pages').eq('cid', cid).maybeSingle()
+  // The comic + its curated page list/labels. If no row exists under the
+  // (type-level) cid, see if a legacy per-mint row needs to be migrated up.
+  const comic = await migrateLegacyComic(db, cid)
   if (!comic || !Array.isArray(comic.pages) || comic.pages.length === 0) {
     return NextResponse.json({ error: 'No fallback configured for this comic' }, { status: 404 })
   }

@@ -6,6 +6,7 @@
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
+import { migrateLegacyComic } from '@/lib/comics/migrate'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -32,6 +33,9 @@ export async function PATCH(request: Request) {
   }
 
   const db = svc()
+  // Consolidate any legacy per-mint row first so the rename/patch lands
+  // on the unified type-level row, not a stale per-mint stub.
+  await migrateLegacyComic(db, cid)
   const { data, error } = await db
     .from('comics')
     .upsert(row, { onConflict: 'cid' })

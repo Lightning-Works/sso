@@ -49,12 +49,14 @@ function parseCid(url: string, fallbackName?: string): { cid: string; entry: str
     const m = (url || '').match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{50,})/)
     if (m) { cid = m[1]; entry = 'index.html' }
   }
-  // Still nothing usable? Synthesize a stable alphanumeric key from the URL
-  // so all NFTs of the same comic type share pages (URL is the same across
-  // mints — the NFT name differs per mint, so name is only a last-resort
-  // fallback for the unlikely case where url is empty too).
+  // Still nothing usable? Synthesize a stable alphanumeric key from the NFT
+  // name with the trailing mint number stripped — so every mint of the same
+  // comic type (e.g. "AW0 Starblind #267", "#268") collapses to the SAME key
+  // ("lwaw0starblind") and shares fallback pages. The server auto-migrates
+  // data that was previously stored under the per-mint key.
   if (!/^[A-Za-z0-9]+$/.test(cid)) {
-    const seed = (url || fallbackName || 'comic').toLowerCase()
+    const stripped = (fallbackName || '').replace(/\s*#?\s*\d+\s*$/, '').trim()
+    const seed = (stripped || url || 'comic').toLowerCase()
     cid = 'lw' + seed.replace(/[^a-z0-9]+/g, '').slice(0, 46) || 'lwcomic'
     entry = 'index.html'
   }

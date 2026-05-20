@@ -15,6 +15,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 import { arweaveConfigured, arweavePut, ArweaveNotConfigured } from '@/lib/arweave'
 import { turboConfigured, turboUpload, TurboNotConfigured } from '@/lib/arweave/turbo'
+import { migrateLegacyComic } from '@/lib/comics/migrate'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
   if (!/^[A-Za-z0-9]+$/.test(cid)) return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
 
   const db = svc()
+  await migrateLegacyComic(db, cid)
   const { data: comic } = await db.from('comics').select('name, pages').eq('cid', cid).maybeSingle()
   const pages: Page[] = Array.isArray(comic?.pages) ? comic!.pages as Page[] : []
   if (!pages.length) return NextResponse.json({ error: 'No pages for this comic' }, { status: 404 })
