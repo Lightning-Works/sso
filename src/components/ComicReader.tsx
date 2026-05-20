@@ -35,19 +35,21 @@ const FALLBACK_TEMPLATE = ['COVER', 'CR1', 'L1', '1', '2', '3', '4', '5', '6', '
 
 interface Pg { label: string; file?: string; img?: string | null; ar?: string | null; tier?: string | null }
 
-// Canonical tier rank used to decide which "extras" pages a viewer sees.
-// Pages with no tier (or tier === 'base') are shown to everyone; pages
-// tagged with a specific tier are shown only to viewers whose NFT is that
-// tier or higher. Hierarchy mirrors NftGrid.getRarityStyle.
-const TIER_RANK: Record<string, number> = {
+// Tier ranking decides which "extras" pages a viewer sees. The actual list
+// (and its order) is discovered per-contract by /api/comics/tiers, which
+// scans cached on-chain attributes and orders by supply count — most
+// common = lowest rank, rarest = highest. The CANONICAL_RANK below is a
+// fallback used (a) before the fetch returns and (b) if the contract
+// isn't a registered LW contract / scan returns nothing.
+const CANONICAL_RANK: Record<string, number> = {
   base: 0, common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4,
   divine: 5, mystic: 6, rainbow: 7, apocalyptic: 8,
 }
-const TIER_LABELS = ['Base', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Divine', 'Mystic', 'Rainbow', 'Apocalyptic']
+const CANONICAL_LABELS = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Divine', 'Mystic', 'Rainbow', 'Apocalyptic']
 
-function rankOf(tier?: string | null): number {
+function rankIn(tier: string | null | undefined, rankMap: Record<string, number>): number {
   if (!tier) return 0
-  const r = TIER_RANK[tier.toLowerCase()]
+  const r = rankMap[tier.toLowerCase()]
   return r ?? 0
 }
 
@@ -232,7 +234,24 @@ export function ComicReader(
   { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null; contractAddress?: string | null; viewerTier?: string | null },
 ) {
   const { cid, entry } = parseCid(url, name, contractAddress || undefined)
-  const viewerRank = rankOf(viewerTier)
+
+  // Tier inventory: discovered per-contract from on-chain attributes
+  // (see /api/comics/tiers). Falls back to the canonical hardcoded list
+  // until the fetch returns OR if the contract isn't a registered LW
+  // contract. tierRank is the lookup used by filtering + the picker.
+  const [tierNames, setTierNames] = useState<string[]>(CANONICAL_LABELS)
+  const tierRank = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = { base: 0 }
+    tierNames.forEach((n, i) => { m[n.toLowerCase()] = i })
+    // Always retain the canonical names too — tier-tagged pages must
+    // still resolve even if a contract's inventory is a strict subset
+    // (e.g. the comic only has Common + Rare but a page is tagged Epic).
+    for (const [k, v] of Object.entries(CANONICAL_RANK)) {
+      if (m[k] === undefined) m[k] = v + tierNames.length
+    }
+    return m
+  }, [tierNames])
+  const viewerRank = rankIn(viewerTier, tierRank)
 
   const [phase, setPhase] = useState<'resolving' | 'ready' | 'unavailable'>('resolving')
   const [reason, setReason] = useState('')
@@ -296,6 +315,26 @@ export function ComicReader(
     if (audio.current) audio.current.volume = 0.5
   }, [])
 
+  // Discover tier inventory from the contract's cached on-chain attributes.
+  // Server returns tiers ordered by supply count DESC (= rank ascending).
+  // If no contract is set, or the fetch fails / returns nothing, we keep
+  // the canonical fallback names so the picker still works.
+  useEffect(() => {
+    if (!contractAddress) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/comics/tiers?contract=${encodeURIComponent(contractAddress)}`)
+        if (!r.ok) return
+        const j = await r.json() as { tiers?: { name: string; count: number }[] }
+        if (cancelled) return
+        const names = (j.tiers || []).map(t => t.name).filter(Boolean)
+        if (names.length) setTierNames(names)
+      } catch { /* fall back to canonical */ }
+    })()
+    return () => { cancelled = true }
+  }, [contractAddress])
+
   useEffect(() => {
     const mq = window.matchMedia(`(max-width:${NARROW_MAX}px)`)
     const u = () => setNarrow(mq.matches)
@@ -327,7 +366,7 @@ export function ComicReader(
       // so they can edit higher-tier extras from any mint.
       const visible = isAdminNow
         ? fb.pages
-        : fb.pages.filter(p => !p.tier || rankOf(p.tier) <= viewerRank)
+        : fb.pages.filter(p => !p.tier || rankIn(p.tier, tierRank) <= viewerRank)
       setPages(visible.map((p, i) => ({
         label: p.label,
         file: p.file,
@@ -341,7 +380,7 @@ export function ComicReader(
     setReason(st === 401 ? 'Sign in to read this comic.' : st === 403 ? 'You must own this NFT to read it.'
       : 'This comic isn’t available — no fallback configured and the IPFS copy is missing/unpinned.')
     setPhase('unavailable')
-  }, [cid, entry, name, coverUrl, isAdmin, viewerRank])
+  }, [cid, entry, name, coverUrl, isAdmin, viewerRank, tierRank])
 
   useEffect(() => { resolve() }, [resolve])
 
@@ -589,7 +628,10 @@ export function ComicReader(
 
   const setTier = async (i: number) => {
     const cur = pages[i]
-    const opts = TIER_LABELS.map(t => ({ value: t.toLowerCase(), label: t === 'Base' ? 'Base (shown to all tiers)' : `${t} and above` }))
+    const opts = [
+      { value: 'base', label: 'Base (shown to all tiers)' },
+      ...tierNames.map(t => ({ value: t.toLowerCase(), label: `${t} and above` })),
+    ]
     const choice = await ask.select(
       `Which tier should "${cur.label}" be visible to?`,
       opts,

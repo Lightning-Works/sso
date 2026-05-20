@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { extractTier } from '@/lib/comics/tier'
 
 interface LwContract {
   id: number
@@ -41,11 +42,7 @@ function isVideoUrl(url: string | null): boolean {
 }
 
 function getTier(attrs: { trait_type?: string; value?: unknown }[]): string | null {
-  const a = attrs.find(a => {
-    const k = (a.trait_type || '').toLowerCase()
-    return k === 'tier' || k === 'rarity'
-  })
-  return a ? String(a.value || '') : null
+  return extractTier(attrs)
 }
 
 function isUltraRare(attrs: { trait_type?: string; value?: unknown }[]): boolean {
