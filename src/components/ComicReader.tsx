@@ -220,6 +220,13 @@ export function ComicReader(
   const [modal, setModal] = useState<ModalState | null>(null)
   const [modalInput, setModalInput] = useState('')
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  // Zoom: 1 = normal. Pan (x, y) is the translate applied before the scale,
+  // with transform-origin = top-left. Wheel = 2% per tick, anchored at cursor;
+  // touch = standard pinch-to-zoom anchored at the finger midpoint.
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const zoomBoxRef = useRef<HTMLDivElement>(null)
+  const pinch = useRef<{ d0: number; z0: number; px0: number; py0: number; mx: number; my: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ mode: string; index: number } | null>(null)
@@ -338,6 +345,78 @@ export function ComicReader(
   }, [mode, spreads, sIdx, pages, showSpread])
 
   const spreadOf = (pageIndex: number) => spreads.findIndex(sp => sp.includes(pageIndex))
+
+  // ── Zoom (wheel + pinch) ──
+  // Reset zoom on close / mode change / spread change so each view starts at 1x.
+  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [sIdx, mode])
+
+  const zoomAt = useCallback((cx: number, cy: number, targetZoom: number) => {
+    const nz = Math.max(1, Math.min(5, targetZoom))
+    if (nz === zoom) return
+    // Keep the point (cx, cy) under the cursor at the same world coordinate.
+    const wx = (cx - pan.x) / zoom
+    const wy = (cy - pan.y) / zoom
+    let nx = cx - wx * nz
+    let ny = cy - wy * nz
+    if (nz === 1) { nx = 0; ny = 0 }
+    setZoom(nz); setPan({ x: nx, y: ny })
+  }, [zoom, pan])
+
+  useEffect(() => {
+    const el = zoomBoxRef.current
+    if (!el || mode !== 'image') return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      zoomAt(cx, cy, zoom + (e.deltaY < 0 ? 0.02 : -0.02))
+    }
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return
+      const t1 = e.touches[0], t2 = e.touches[1]
+      const rect = el.getBoundingClientRect()
+      pinch.current = {
+        d0: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+        z0: zoom, px0: pan.x, py0: pan.y,
+        mx: (t1.clientX + t2.clientX) / 2 - rect.left,
+        my: (t1.clientY + t2.clientY) / 2 - rect.top,
+      }
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      const s = pinch.current
+      if (e.touches.length !== 2 || !s) return
+      e.preventDefault()
+      const t1 = e.touches[0], t2 = e.touches[1]
+      const d = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+      const nz = Math.max(1, Math.min(5, s.z0 * (d / s.d0)))
+      const wx = (s.mx - s.px0) / s.z0
+      const wy = (s.my - s.py0) / s.z0
+      let nx = s.mx - wx * nz
+      let ny = s.my - wy * nz
+      if (nz === 1) { nx = 0; ny = 0 }
+      setZoom(nz); setPan({ x: nx, y: ny })
+    }
+    const onTouchEnd = () => { pinch.current = null }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [mode, zoom, pan, zoomAt])
+
+  // Click-to-reset while zoomed. Capture phase fires before the book-flip's
+  // page click handler, so navigation is suppressed until back at 1x.
+  const onClickResetCapture = (e: React.MouseEvent) => {
+    if (zoom > 1) { e.stopPropagation(); setZoom(1); setPan({ x: 0, y: 0 }) }
+  }
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -594,21 +673,37 @@ export function ComicReader(
           )}
           {phase === 'ready' && mode === 'image' && !gridOpen && (
             <>
-              <ComicPageTurn
-                display={display}
-                name={name}
-                spreadKey={sIdx}
-                direction={anim}
-                onImageFailed={() => setFailed(true)}
-                admin={admin}
-                effect={PAGE_TURN_EFFECT}
-                allPages={pages.map(pg => ({ label: pg.label, img: pg.img || '', ar: pg.ar || '' }))}
-                currentLeaf={sIdx}
-                narrow={narrow}
-                onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
-              />
-              {sIdx > 0 && <button style={floatBtn('left')} title="Previous" onClick={() => go(sIdx - 1, 'prev')}>&#8249;</button>}
-              {sIdx < spreads.length - 1 && <button style={floatBtn('right')} title="Next" onClick={() => go(sIdx + 1, 'next')}>&#8250;</button>}
+              {/* Zoom layer — wheel & pinch handled by the useEffect on zoomBoxRef.
+                  When zoomed, raise z-index so the scaled image overlaps the
+                  page bar / close button instead of being clipped. */}
+              <div ref={zoomBoxRef} onClickCapture={onClickResetCapture}
+                style={{ position: 'absolute', inset: 0, zIndex: zoom > 1 ? 100 : 1,
+                  cursor: zoom > 1 ? 'zoom-out' : 'default',
+                  touchAction: zoom > 1 ? 'none' : 'auto' }}>
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: '0 0',
+                  transition: pinch.current ? 'none' : 'transform 80ms linear',
+                  willChange: 'transform',
+                }}>
+                  <ComicPageTurn
+                    display={display}
+                    name={name}
+                    spreadKey={sIdx}
+                    direction={anim}
+                    onImageFailed={() => setFailed(true)}
+                    admin={admin}
+                    effect={PAGE_TURN_EFFECT}
+                    allPages={pages.map(pg => ({ label: pg.label, img: pg.img || '', ar: pg.ar || '' }))}
+                    currentLeaf={sIdx}
+                    narrow={narrow}
+                    onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
+                  />
+                </div>
+              </div>
+              {zoom === 1 && sIdx > 0 && <button style={floatBtn('left')} title="Previous" onClick={() => go(sIdx - 1, 'prev')}>&#8249;</button>}
+              {zoom === 1 && sIdx < spreads.length - 1 && <button style={floatBtn('right')} title="Next" onClick={() => go(sIdx + 1, 'next')}>&#8250;</button>}
               {failed && (
                 <div style={{ ...msg, zIndex: 5 }}>
                   <p style={{ color: '#e4dad1', fontSize: '.95rem', margin: 0 }}>This page didn&apos;t load.</p>
