@@ -346,77 +346,133 @@ export function ComicReader(
 
   const spreadOf = (pageIndex: number) => spreads.findIndex(sp => sp.includes(pageIndex))
 
-  // ── Zoom (wheel + pinch) ──
-  // Reset zoom on close / mode change / spread change so each view starts at 1x.
+  // ── Zoom (wheel + pinch + drag-pan), click to reset ──
+  // Reset zoom on mode/spread change so each view starts at 1×.
   useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [sIdx, mode])
 
-  const zoomAt = useCallback((cx: number, cy: number, targetZoom: number) => {
-    const nz = Math.max(1, Math.min(5, targetZoom))
-    if (nz === zoom) return
-    // Keep the point (cx, cy) under the cursor at the same world coordinate.
-    const wx = (cx - pan.x) / zoom
-    const wy = (cy - pan.y) / zoom
-    let nx = cx - wx * nz
-    let ny = cy - wy * nz
-    if (nz === 1) { nx = 0; ny = 0 }
-    setZoom(nz); setPan({ x: nx, y: ny })
-  }, [zoom, pan])
+  // Refs mirror zoom/pan so the (stable) native event listeners always read
+  // the latest values without the effect having to re-bind on every change.
+  const zoomRef = useRef(1)
+  const panRef = useRef({ x: 0, y: 0 })
+  useEffect(() => { zoomRef.current = zoom; panRef.current = pan }, [zoom, pan])
 
   useEffect(() => {
     const el = zoomBoxRef.current
     if (!el || mode !== 'image') return
+
+    const clamp = (n: number) => Math.max(1, Math.min(5, n))
+    const apply = (nz: number, nx: number, ny: number) => {
+      if (nz === 1) { nx = 0; ny = 0 }
+      zoomRef.current = nz
+      panRef.current = { x: nx, y: ny }
+      setZoom(nz); setPan({ x: nx, y: ny })
+    }
+    const zoomAround = (cx: number, cy: number, nz: number) => {
+      nz = clamp(nz); if (nz === zoomRef.current) return
+      const z = zoomRef.current, p = panRef.current
+      const wx = (cx - p.x) / z, wy = (cy - p.y) / z
+      apply(nz, cx - wx * nz, cy - wy * nz)
+    }
+
+    // ── Wheel (mouse/trackpad): 2% per tick, anchored at cursor.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const rect = el.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      zoomAt(cx, cy, zoom + (e.deltaY < 0 ? 0.02 : -0.02))
+      const r = el.getBoundingClientRect()
+      zoomAround(e.clientX - r.left, e.clientY - r.top, zoomRef.current + (e.deltaY < 0 ? 0.02 : -0.02))
     }
+
+    // ── Mouse drag-to-pan (only when already zoomed).
+    let mDrag: { sx: number; sy: number; px0: number; py0: number; moved: boolean } | null = null
+    let suppressClickUntil = 0
+    const onMouseDown = (e: MouseEvent) => {
+      if (zoomRef.current <= 1 || e.button !== 0) return
+      e.preventDefault()
+      mDrag = { sx: e.clientX, sy: e.clientY, px0: panRef.current.x, py0: panRef.current.y, moved: false }
+    }
+    const onMouseMove = (e: MouseEvent) => {
+      if (!mDrag) return
+      const dx = e.clientX - mDrag.sx, dy = e.clientY - mDrag.sy
+      if (!mDrag.moved && Math.hypot(dx, dy) > 3) mDrag.moved = true
+      if (mDrag.moved) {
+        panRef.current = { x: mDrag.px0 + dx, y: mDrag.py0 + dy }
+        setPan(panRef.current)
+      }
+    }
+    const onMouseUp = () => {
+      if (mDrag?.moved) suppressClickUntil = Date.now() + 200  // ignore the click that follows a drag
+      mDrag = null
+    }
+
+    // ── Touch: 1-finger pan when zoomed, 2-finger pinch always.
+    let tPan: { sx: number; sy: number; px0: number; py0: number; moved: boolean } | null = null
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return
-      const t1 = e.touches[0], t2 = e.touches[1]
-      const rect = el.getBoundingClientRect()
-      pinch.current = {
-        d0: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
-        z0: zoom, px0: pan.x, py0: pan.y,
-        mx: (t1.clientX + t2.clientX) / 2 - rect.left,
-        my: (t1.clientY + t2.clientY) / 2 - rect.top,
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0], t2 = e.touches[1]
+        const r = el.getBoundingClientRect()
+        pinch.current = {
+          d0: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+          z0: zoomRef.current, px0: panRef.current.x, py0: panRef.current.y,
+          mx: (t1.clientX + t2.clientX) / 2 - r.left,
+          my: (t1.clientY + t2.clientY) / 2 - r.top,
+        }
+        tPan = null
+      } else if (e.touches.length === 1 && zoomRef.current > 1) {
+        const t = e.touches[0]
+        tPan = { sx: t.clientX, sy: t.clientY, px0: panRef.current.x, py0: panRef.current.y, moved: false }
       }
     }
     const onTouchMove = (e: TouchEvent) => {
       const s = pinch.current
-      if (e.touches.length !== 2 || !s) return
-      e.preventDefault()
-      const t1 = e.touches[0], t2 = e.touches[1]
-      const d = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
-      const nz = Math.max(1, Math.min(5, s.z0 * (d / s.d0)))
-      const wx = (s.mx - s.px0) / s.z0
-      const wy = (s.my - s.py0) / s.z0
-      let nx = s.mx - wx * nz
-      let ny = s.my - wy * nz
-      if (nz === 1) { nx = 0; ny = 0 }
-      setZoom(nz); setPan({ x: nx, y: ny })
+      if (e.touches.length === 2 && s) {
+        e.preventDefault()
+        const t1 = e.touches[0], t2 = e.touches[1]
+        const d = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+        const nz = clamp(s.z0 * (d / s.d0))
+        const wx = (s.mx - s.px0) / s.z0, wy = (s.my - s.py0) / s.z0
+        apply(nz, s.mx - wx * nz, s.my - wy * nz)
+      } else if (e.touches.length === 1 && tPan) {
+        e.preventDefault()
+        const t = e.touches[0]
+        const dx = t.clientX - tPan.sx, dy = t.clientY - tPan.sy
+        if (!tPan.moved && Math.hypot(dx, dy) > 5) tPan.moved = true
+        if (tPan.moved) {
+          panRef.current = { x: tPan.px0 + dx, y: tPan.py0 + dy }
+          setPan(panRef.current)
+        }
+      }
     }
-    const onTouchEnd = () => { pinch.current = null }
+    const onTouchEnd = () => {
+      if (tPan?.moved) suppressClickUntil = Date.now() + 200
+      pinch.current = null; tPan = null
+    }
+
+    // ── Click resets to 1× (unless a drag/pinch just happened, or zoom=1).
+    const onClick = (e: MouseEvent) => {
+      if (Date.now() < suppressClickUntil) { e.stopPropagation(); return }
+      if (zoomRef.current > 1) { e.stopPropagation(); apply(1, 0, 0) }
+    }
+
     el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
     el.addEventListener('touchstart', onTouchStart, { passive: false })
     el.addEventListener('touchmove', onTouchMove, { passive: false })
     el.addEventListener('touchend', onTouchEnd)
     el.addEventListener('touchcancel', onTouchEnd)
+    el.addEventListener('click', onClick, true)  // capture-phase: beat the book-flip click
     return () => {
       el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
+      el.removeEventListener('click', onClick, true)
     }
-  }, [mode, zoom, pan, zoomAt])
-
-  // Click-to-reset while zoomed. Capture phase fires before the book-flip's
-  // page click handler, so navigation is suppressed until back at 1x.
-  const onClickResetCapture = (e: React.MouseEvent) => {
-    if (zoom > 1) { e.stopPropagation(); setZoom(1); setPan({ x: 0, y: 0 }) }
-  }
+  }, [mode])
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -673,20 +729,19 @@ export function ComicReader(
           )}
           {phase === 'ready' && mode === 'image' && !gridOpen && (
             <>
-              {/* Zoom layer — wheel & pinch handled by the useEffect on zoomBoxRef.
-                  When zoomed, raise z-index so the scaled image overlaps the
-                  page bar / close button instead of being clipped. */}
-              <div ref={zoomBoxRef} onClickCapture={onClickResetCapture}
+              {/* Zoom layer. Wheel/pinch/drag/click handled by the useEffect
+                  on zoomBoxRef. At 1× we show the full book-flip (with its
+                  3D perspective + stacked leaves). Above 1× we render a flat
+                  2-up view of the current spread — nesting `scale()` inside
+                  book-flip's `perspective` collapses the 3D stack into
+                  overlapping fragments, so the flat view is what scales
+                  cleanly. Raising z-index lets the scaled image overlap the
+                  page bar + close button. */}
+              <div ref={zoomBoxRef}
                 style={{ position: 'absolute', inset: 0, zIndex: zoom > 1 ? 100 : 1,
-                  cursor: zoom > 1 ? 'zoom-out' : 'default',
+                  cursor: zoom > 1 ? 'grab' : 'default',
                   touchAction: zoom > 1 ? 'none' : 'auto' }}>
-                <div style={{
-                  position: 'absolute', inset: 0,
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transformOrigin: '0 0',
-                  transition: pinch.current ? 'none' : 'transform 80ms linear',
-                  willChange: 'transform',
-                }}>
+                {zoom === 1 ? (
                   <ComicPageTurn
                     display={display}
                     name={name}
@@ -700,7 +755,23 @@ export function ComicReader(
                     narrow={narrow}
                     onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
                   />
-                </div>
+                ) : (
+                  <div style={{
+                    position: 'absolute', inset: 0, background: '#111111',
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: '0 0',
+                    transition: pinch.current ? 'none' : 'transform 80ms linear',
+                    willChange: 'transform',
+                    display: 'flex', gap: display.length > 1 ? '4px' : 0,
+                  }}>
+                    {display.map((d, i) => d.img ? (
+                      <img key={i} src={d.img} alt={`${name} — ${d.label}`} draggable={false}
+                        style={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain', background: '#111111', userSelect: 'none', pointerEvents: 'none' }} />
+                    ) : (
+                      <div key={i} style={{ flex: 1, minWidth: 0, height: '100%', background: '#161616' }} />
+                    ))}
+                  </div>
+                )}
               </div>
               {zoom === 1 && sIdx > 0 && <button style={floatBtn('left')} title="Previous" onClick={() => go(sIdx - 1, 'prev')}>&#8249;</button>}
               {zoom === 1 && sIdx < spreads.length - 1 && <button style={floatBtn('right')} title="Next" onClick={() => go(sIdx + 1, 'next')}>&#8250;</button>}
