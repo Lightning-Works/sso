@@ -21,8 +21,8 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-interface Page { label: string; file?: string; ar?: Record<string, string> }
-interface ComicRow { cid: string; name: string | null; pages: Page[] | null; updated_at?: string | null }
+interface Page { label: string; file?: string; ar?: Record<string, string>; tier?: string; section?: string }
+interface ComicRow { cid: string; name: string | null; pages: Page[] | null; updated_at?: string | null; format?: string | null }
 
 const COMIC_PAGES_BUCKET = 'comic_pages'
 
@@ -41,7 +41,7 @@ async function findLegacyMatches(
   // Exact match (v2: type-level name key) + prefix+digit-suffix matches
   // (v1: per-mint name key). One DB round-trip via LIKE, then filter.
   const { data } = await db.from('comics')
-    .select('cid, name, pages, updated_at')
+    .select('*')
     .like('cid', `${prefix}%`)
   if (!data?.length) return []
   const exact = new RegExp(`^${prefix}$`)
@@ -81,7 +81,7 @@ export async function migrateLegacyComic(
 ): Promise<ComicRow | null> {
   // 1. Target (v3) row already there → done.
   const { data: existing } = await db.from('comics')
-    .select('cid, name, pages, updated_at').eq('cid', cid).maybeSingle()
+    .select('*').eq('cid', cid).maybeSingle()
   if (existing) return existing as ComicRow
 
   // 2. Only synthetic "lw…" cids are migratable; real IPFS CIDs are

@@ -25,7 +25,7 @@ function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-interface Page { label: string; file: string; tier?: string; ar?: Record<string, string> }
+interface Page { label: string; file: string; tier?: string; section?: string; ar?: Record<string, string> }
 
 export async function POST(request: Request) {
   const admin = await verifyAdmin(request)
@@ -42,6 +42,8 @@ export async function POST(request: Request) {
   const labels = form.getAll('label').map(String)
   // Optional tier per uploaded file. Empty / 'base' / missing = base page.
   const tiers = form.getAll('tier').map(s => String(s || '').trim().toLowerCase())
+  // Optional section (episode / chapter grouping) per uploaded file.
+  const sections = form.getAll('section').map(s => String(s || '').trim())
 
   if (!/^[A-Za-z0-9]+$/.test(cid)) return NextResponse.json({ error: 'Bad cid' }, { status: 400 })
   if (files.length === 0) return NextResponse.json({ error: 'No file' }, { status: 400 })
@@ -68,8 +70,10 @@ export async function POST(request: Request) {
     })
     if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 })
     const tier = (tiers[i] || '').replace(/[^a-z]+/g, '').slice(0, 24)
+    const section = (sections[i] || '').slice(0, 48)
     const entry: Page = { label, file: filename }
     if (tier && tier !== 'base') entry.tier = tier
+    if (section) entry.section = section
     entries.push(entry)
   }
 

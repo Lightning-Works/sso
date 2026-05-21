@@ -53,7 +53,7 @@ function rankIn(tier: string | null | undefined, rankMap: Record<string, number>
   return r ?? 0
 }
 
-function parseCid(url: string, fallbackName?: string, contractAddress?: string): { cid: string; entry: string } {
+export function parseCid(url: string, fallbackName?: string, contractAddress?: string): { cid: string; entry: string } {
   let r = url || ''
   if (r.startsWith('ipfs://')) r = r.slice(7)
   else { const m = r.match(/\/ipfs\/(.+)$/); if (m) r = m[1] }
@@ -230,8 +230,12 @@ interface ModalState {
 }
 
 export function ComicReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, viewerTier = null }:
-  { name: string; url: string; onClose: () => void; isAdmin?: boolean; coverUrl?: string | null; contractAddress?: string | null; viewerTier?: string | null },
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, viewerTier = null, onSwitchFormat }:
+  {
+    name: string; url: string; onClose: () => void; isAdmin?: boolean
+    coverUrl?: string | null; contractAddress?: string | null; viewerTier?: string | null
+    onSwitchFormat?: (f: 'pages' | 'webtoon') => void
+  },
 ) {
   const { cid, entry } = parseCid(url, name, contractAddress || undefined)
 
@@ -348,11 +352,14 @@ export function ComicReader(
     for (const g of GATEWAYS) {
       try { const r = await fetch(`${g}${cid}/${entry}`); if (r.ok) { gw = `${g}${cid}/`; break } } catch { /* next */ }
     }
-    let fb: { name?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null; tier?: string | null }[]; isAdmin?: boolean } | null = null
+    let fb: { name?: string; format?: string; pages?: { label: string; file?: string; url?: string | null; ar?: string | null; tier?: string | null }[]; isAdmin?: boolean } | null = null
     let st = 0
     // Pass `name` so the server can locate any older name-derived data and
     // migrate it forward to the contract-address cid (one-time per comic).
     try { const r = await fetch(`/api/comic-pages?cid=${encodeURIComponent(cid)}&name=${encodeURIComponent(name)}`); st = r.status; if (r.ok) fb = await r.json() } catch { /* */ }
+    // This comic is a webtoon — hand off to the vertical-scroll reader and
+    // stay in 'resolving' (no content flash) until this component unmounts.
+    if (fb?.format === 'webtoon') { onSwitchFormat?.('webtoon'); return }
     const isAdminNow = !!(fb?.isAdmin) || isAdmin
     if (fb?.isAdmin) setAdmin(true)
     setIpfsEntry(gw ? gw + entry : null)
@@ -380,7 +387,7 @@ export function ComicReader(
     setReason(st === 401 ? 'Sign in to read this comic.' : st === 403 ? 'You must own this NFT to read it.'
       : 'This comic isn’t available — no fallback configured and the IPFS copy is missing/unpinned.')
     setPhase('unavailable')
-  }, [cid, entry, name, coverUrl, isAdmin, viewerRank, tierRank])
+  }, [cid, entry, name, coverUrl, isAdmin, viewerRank, tierRank, onSwitchFormat])
 
   useEffect(() => { resolve() }, [resolve])
 
@@ -664,6 +671,32 @@ export function ComicReader(
       flashToast('ok', 'Fallback template created')
     } catch (e) { await ask.alert(`Could not create fallback (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e)), 'Make fallback failed') }
   }
+  // Create a webtoon (vertical-scroll) comic: set format + a starter Cover/E1
+  // template, then hand off to WebtoonReader via the dispatcher.
+  const makeWebtoon = async () => {
+    try {
+      const r = await fetch('/api/comics', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, name, format: 'webtoon', pages: [{ label: 'Cover', file: '', section: 'Cover' }, { label: 'E1', file: '', section: 'E1' }] }),
+      })
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      onSwitchFormat?.('webtoon')
+    } catch (e) { await ask.alert(`Could not create webtoon (cid="${cid}"): ` + (e instanceof Error ? e.message : String(e)), 'Make webtoon failed') }
+  }
+  // Convert an existing paged comic to webtoon — pages become strips,
+  // nothing is lost; only the reading layout changes.
+  const switchToWebtoon = async () => {
+    const ok = await ask.confirm('Switch this comic to the vertical-scroll webtoon reader? Pages stay stored; only the reading layout changes.', { okText: 'Switch to webtoon', title: 'Change format' })
+    if (!ok) return
+    try {
+      const r = await fetch('/api/comics', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, nameHint: name, format: 'webtoon' }),
+      })
+      if (!r.ok) throw new Error(await errFromResponse(r))
+      onSwitchFormat?.('webtoon')
+    } catch (e) { await ask.alert('Could not switch format: ' + (e instanceof Error ? e.message : String(e)), 'Failed') }
+  }
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
     pending.current = { mode: m, index }
     fileRef.current?.click()
@@ -831,10 +864,13 @@ export function ComicReader(
             <div style={msg}>
               <p style={{ color: '#e4dad1', fontSize: '1rem', margin: 0 }}>{reason}</p>
               <p style={{ color: '#7a7572', fontSize: '.78rem', margin: 0, wordBreak: 'break-all' }}>CID {cid}</p>
-              <div style={{ display: 'flex', gap: '.5rem', marginTop: '.5rem' }}>
+              <div style={{ display: 'flex', gap: '.5rem', marginTop: '.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <button style={sel} onClick={resolve}>Retry</button>
                 {admin && (
                   <button style={{ ...sel, fontWeight: 700 }} onClick={makeFallback}>MAKE FALLBACK</button>
+                )}
+                {admin && (
+                  <button style={{ ...sel, fontWeight: 700 }} onClick={makeWebtoon}>MAKE WEBTOON</button>
                 )}
               </div>
               {admin && (
@@ -965,6 +1001,8 @@ export function ComicReader(
                 title="Add page(s) at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
                 title="Mirror all pages to Arweave (permanent double-fallback)" onClick={backfillArweave}>Arweave</button>
+              <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
+                title="Switch this comic to the vertical-scroll webtoon reader" onClick={switchToWebtoon}>Webtoon mode</button>
             </span>
           )}
           {admin && phase === 'ready' && mode === 'interactive' && (

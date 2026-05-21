@@ -14,9 +14,14 @@
 create table if not exists comics (
   cid        text primary key,            -- IPFS bundle CID = the comic key
   name       text not null default '',
-  pages      jsonb not null default '[]', -- ORDERED: [{ "label": "...", "file": "..." }]
+  pages      jsonb not null default '[]', -- ORDERED: [{ "label","file","tier?","section?" }]
+  format     text not null default 'pages', -- 'pages' (book reader) | 'webtoon' (vertical scroll)
   updated_at timestamptz not null default now()
 );
+
+-- If the comics table already exists from an earlier deploy, add the
+-- webtoon-format column (safe to run repeatedly):
+alter table comics add column if not exists format text not null default 'pages';
 
 -- RLS on; NO public/anon policy. All access is via the server (service
 -- role) endpoints which enforce ownership / admin.

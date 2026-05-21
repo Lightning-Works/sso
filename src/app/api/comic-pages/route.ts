@@ -62,10 +62,11 @@ export async function GET(request: Request) {
 
   const bucket = db.storage.from('comic_pages')
   const pages = await Promise.all(
-    (comic.pages as { label?: string; file?: string; ar?: Record<string, string>; tier?: string }[]).map(async (p, i) => {
+    (comic.pages as { label?: string; file?: string; ar?: Record<string, string>; tier?: string; section?: string }[]).map(async (p, i) => {
       const file = String(p.file || '').replace(/[^A-Za-z0-9._-]/g, '')
       const label = String(p.label || (i + 1))
       const tier = (p.tier && String(p.tier).trim()) || null
+      const section = (p.section && String(p.section).trim()) || null
       let url: string | null = null
       if (file) {
         const { data } = await bucket.createSignedUrl(`${cid}/${file}`, 3600)
@@ -75,9 +76,13 @@ export async function GET(request: Request) {
       const arMap = p.ar || {}
       const arId = arMap.full || arMap.highres || Object.values(arMap)[0] || null
       const ar = arId ? arweaveUrl(arId) : null
-      return { label, file, url, ar, tier }
+      return { label, file, url, ar, tier, section }
     }),
   )
 
-  return NextResponse.json({ name: comic.name, pages, isAdmin: !!admin })
+  // format: 'pages' (book-style reader) or 'webtoon' (vertical scroll).
+  // comic.format is absent until the optional column is added — default
+  // to 'pages' so existing comics keep working with no migration.
+  const format = (comic as { format?: string }).format === 'webtoon' ? 'webtoon' : 'pages'
+  return NextResponse.json({ name: comic.name, pages, isAdmin: !!admin, format })
 }

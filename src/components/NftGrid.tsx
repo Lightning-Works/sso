@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { ComicReader } from './ComicReader'
+import { ComicReaderDispatch } from './ComicReaderDispatch'
 
 /** A readable comic = has a comic HTML bundle (animationUrl) + a comic marker. */
 function isComic(n: NftItem): boolean {
@@ -1084,9 +1084,9 @@ export function NftGrid({
         document.body
       )}
 
-      {/* Comic Reader (separate feature/file) */}
+      {/* Comic Reader — dispatches to paged or webtoon reader by format */}
       {readerNft?.animationUrl && (
-        <ComicReader
+        <ComicReaderDispatch
           name={readerNft.name}
           url={readerNft.animationUrl}
           coverUrl={readerNft.imageUrl}

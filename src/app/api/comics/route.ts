@@ -1,6 +1,6 @@
 /**
  * PATCH /api/comics   — admin upsert of a comic's name/pages JSON.
- * Body: { cid, name?, pages?: [{label, file}] }
+ * Body: { cid, name?, format?, pages?: [{label, file, tier?, section?}] }
  * Used by the Reader's right-click "rename page" (admin only).
  */
 
@@ -31,25 +31,31 @@ export async function PATCH(request: Request) {
 
   const row: Record<string, unknown> = { cid, updated_at: new Date().toISOString() }
   if (typeof body.name === 'string') row.name = body.name
+  // format: 'pages' | 'webtoon'. Only written when explicitly sent — needs
+  // the optional `format` column to exist (see docs/comics-fallback-migration.sql).
+  if (body.format === 'pages' || body.format === 'webtoon') row.format = body.format
   if (Array.isArray(body.pages)) {
-    // Look up existing pages so we can preserve fields (tier, ar) that the
-    // client doesn't echo back on a rename or delete patch.
+    // Look up existing pages so we can preserve fields (tier, section, ar)
+    // that the client doesn't echo back on a rename or delete patch.
     const { data: existing } = await db.from('comics').select('pages').eq('cid', cid).maybeSingle()
-    const existingByFile = new Map<string, { tier?: string; ar?: Record<string, string> }>()
-    for (const p of (existing?.pages || []) as { file?: string; tier?: string; ar?: Record<string, string> }[]) {
-      if (p?.file) existingByFile.set(String(p.file), { tier: p.tier, ar: p.ar })
+    const existingByFile = new Map<string, { tier?: string; section?: string; ar?: Record<string, string> }>()
+    for (const p of (existing?.pages || []) as { file?: string; tier?: string; section?: string; ar?: Record<string, string> }[]) {
+      if (p?.file) existingByFile.set(String(p.file), { tier: p.tier, section: p.section, ar: p.ar })
     }
-    row.pages = body.pages.map((p: { label?: unknown; file?: unknown; tier?: unknown; ar?: unknown }) => {
+    row.pages = body.pages.map((p: { label?: unknown; file?: unknown; tier?: unknown; section?: unknown; ar?: unknown }) => {
       const file = String(p?.file ?? '').replace(/[^A-Za-z0-9._-]/g, '')
       const prior = existingByFile.get(file)
       const tierRaw = p?.tier !== undefined ? p.tier : prior?.tier
       const tier = tierRaw ? String(tierRaw).trim().toLowerCase().slice(0, 24) : null
+      const sectionRaw = p?.section !== undefined ? p.section : prior?.section
+      const section = sectionRaw ? String(sectionRaw).trim().slice(0, 48) : null
       const ar = (p?.ar && typeof p.ar === 'object') ? p.ar : prior?.ar
       const out: Record<string, unknown> = {
         label: String(p?.label ?? ''),
         file,
       }
       if (tier && tier !== 'base') out.tier = tier
+      if (section) out.section = section
       if (ar && typeof ar === 'object' && Object.keys(ar).length) out.ar = ar
       return out
     })
