@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { ComicReaderDispatch } from './ComicReaderDispatch'
 
@@ -131,6 +131,10 @@ export function NftGrid({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [contextNft, setContextNft] = useState<NftItem | null>(null)
   const [readerNft, setReaderNft] = useState<NftItem | null>(null)
+  // When the reader was opened via "Read Webtoon", force the webtoon layout.
+  const [readerWebtoon, setReaderWebtoon] = useState(false)
+  // Per-contract webtoon availability (lowercased address → strip count).
+  const [webtoonContracts, setWebtoonContracts] = useState<Record<string, { exists: boolean; strips: number }>>({})
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [globalBlacklist, setGlobalBlacklist] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
@@ -146,6 +150,29 @@ export function NftGrid({
   useEffect(() => {
     setTags(loadTags(storageKey))
   }, [storageKey])
+
+  // Distinct smart contracts present in the grid — keyed as a stable
+  // string so the webtoon-status fetch doesn't re-run on every render.
+  const contractsKey = useMemo(
+    () => [...new Set(nfts.map(n => n.contractAddress?.toLowerCase()).filter(Boolean))].sort().join(','),
+    [nfts],
+  )
+
+  // Prefetch which contracts have a webtoon (with ≥1 strip) so the
+  // context menu can offer "Read Webtoon".
+  useEffect(() => {
+    if (!contractsKey) { setWebtoonContracts({}); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/comics/webtoon-status?contracts=${encodeURIComponent(contractsKey)}`)
+        if (!r.ok || cancelled) return
+        const j = await r.json() as Record<string, { exists: boolean; strips: number }>
+        if (!cancelled) setWebtoonContracts(j || {})
+      } catch { /* no webtoons surfaced — harmless */ }
+    })()
+    return () => { cancelled = true }
+  }, [contractsKey])
 
   // Fetch global blacklist
   useEffect(() => {
@@ -816,11 +843,29 @@ export function NftGrid({
             <button
               className="nft-context-item"
               style={{ fontWeight: 600 }}
-              onClick={() => { setReaderNft(contextNft); setContextMenu(null); setConfirmDelete(false) }}
+              onClick={() => { setReaderNft(contextNft); setReaderWebtoon(false); setContextMenu(null); setConfirmDelete(false) }}
             >
               &#128214; Read Comic
             </button>
           )}
+          {(() => {
+            // "Read Webtoon": shown when the NFT's contract has a webtoon
+            // with at least one strip. Admins see it as soon as the
+            // webtoon row exists, so they can keep editing an empty one.
+            const w = contextNft?.contractAddress
+              ? webtoonContracts[contextNft.contractAddress.toLowerCase()]
+              : undefined
+            if (!w || (!w.strips && !isSuperadmin)) return null
+            return (
+              <button
+                className="nft-context-item"
+                style={{ fontWeight: 600 }}
+                onClick={() => { setReaderNft(contextNft); setReaderWebtoon(true); setContextMenu(null); setConfirmDelete(false) }}
+              >
+                &#128214; Read Webtoon
+              </button>
+            )
+          })()}
           {viewMode === 'spam' ? (
             <button className="nft-context-item" onClick={() => unspamSelected()}>
               &#x2716; Remove from Spam
@@ -1084,16 +1129,19 @@ export function NftGrid({
         document.body
       )}
 
-      {/* Comic Reader — dispatches to paged or webtoon reader by format */}
-      {readerNft?.animationUrl && (
+      {/* Comic Reader — dispatches to paged or webtoon reader by format.
+          A webtoon opens even with no animationUrl (it's keyed to the
+          contract, not an IPFS bundle). */}
+      {readerNft && (readerNft.animationUrl || readerWebtoon) && (
         <ComicReaderDispatch
           name={readerNft.name}
-          url={readerNft.animationUrl}
+          url={readerNft.animationUrl || ''}
           coverUrl={readerNft.imageUrl}
           contractAddress={readerNft.contractAddress}
           viewerTier={readerNft.rarity}
           isAdmin={isSuperadmin}
-          onClose={() => setReaderNft(null)}
+          forceFormat={readerWebtoon ? 'webtoon' : undefined}
+          onClose={() => { setReaderNft(null); setReaderWebtoon(false) }}
         />
       )}
     </>

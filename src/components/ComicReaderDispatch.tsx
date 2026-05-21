@@ -4,10 +4,11 @@
  * ComicReaderDispatch — picks the right reader for a comic.
  *
  * A comic is either paged (book-style spreads → ComicReader) or a
- * webtoon (vertical scroll → WebtoonReader). The format lives on the
- * comic row, so this does one fast /api/comic-pages probe up front to
- * read it, then mounts the correct reader directly — avoiding mounting
- * ComicReader (and running its IPFS gateway probes) for a webtoon.
+ * webtoon (vertical scroll → WebtoonReader). When `forceFormat` is
+ * given (e.g. the wallet's "Read Webtoon" action), we mount that reader
+ * straight away. Otherwise we do one fast /api/comic-pages probe to
+ * read the comic's stored format, then mount the right reader —
+ * avoiding ComicReader's IPFS gateway probes for a webtoon.
  *
  * onSwitchFormat lets a reader hand off at runtime — e.g. when an admin
  * toggles the format, or as a safety net if the probe disagreed.
@@ -26,13 +27,17 @@ interface Props {
   coverUrl?: string | null
   contractAddress?: string | null
   viewerTier?: string | null
+  /** Skip the format probe and mount this reader directly. */
+  forceFormat?: 'pages' | 'webtoon'
 }
 
 export function ComicReaderDispatch(props: Props) {
-  const [format, setFormat] = useState<'pages' | 'webtoon' | null>(null)
+  const { forceFormat, ...readerProps } = props
   const { name, url, contractAddress, onClose } = props
+  const [format, setFormat] = useState<'pages' | 'webtoon' | null>(forceFormat ?? null)
 
   useEffect(() => {
+    if (forceFormat) return  // caller already knows the format
     const { cid } = parseCid(url, name, contractAddress || undefined)
     let cancelled = false
     ;(async () => {
@@ -48,7 +53,7 @@ export function ComicReaderDispatch(props: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [url, name, contractAddress])
+  }, [url, name, contractAddress, forceFormat])
 
   if (format === null) {
     return createPortal(
@@ -63,6 +68,6 @@ export function ComicReaderDispatch(props: Props) {
   }
 
   return format === 'webtoon'
-    ? <WebtoonReader {...props} onSwitchFormat={setFormat} />
-    : <ComicReader {...props} onSwitchFormat={setFormat} />
+    ? <WebtoonReader {...readerProps} onSwitchFormat={setFormat} />
+    : <ComicReader {...readerProps} onSwitchFormat={setFormat} />
 }
