@@ -19,6 +19,7 @@
     "@tanstack/react-query": "^5.91.2",
     "@waxio/waxjs": "^1.7.1",
     "next": "16.2.0",
+    "page-flip": "^2.0.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "viem": "^2.47.5",

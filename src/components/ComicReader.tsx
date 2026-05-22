@@ -24,7 +24,12 @@ import { createPortal } from 'react-dom'
 import { ComicPageTurn, buildLeafSpreads, type TurnEffect } from './ComicPageTurn'
 
 // One place to switch the page-turn effect — see ComicPageTurn.tsx.
-const PAGE_TURN_EFFECT: TurnEffect = 'bookflip'
+// 'stpageflip' (realistic page-curl, page-flip library) is the default;
+// 'bookflip' is the CSS book as a second option.
+const PAGE_TURN_EFFECT = 'stpageflip' as TurnEffect
+// Effects that consume leaf spreads (cover alone, then 2-up leaves) and
+// drive their own navigation from `allPages` + `currentLeaf`.
+const USES_LEAF_SPREADS = PAGE_TURN_EFFECT === 'bookflip' || PAGE_TURN_EFFECT === 'stpageflip'
 
 const GATEWAYS = [
   'https://dweb.link/ipfs/', 'https://w3s.link/ipfs/',
@@ -307,10 +312,11 @@ export function ComicReader(
     window.setTimeout(() => setToast(null), kind === 'ok' ? 2200 : 5000)
   }, [])
 
-  // Book-flip uses sequential pair leaves (cover alone, then 2-up pairs,
-  // optional trailing solo). Other effects use the user's solo-aware layout.
+  // Book-flip / StPageFlip use sequential pair leaves (cover alone, then
+  // 2-up pairs, optional trailing solo). Other effects use the user's
+  // solo-aware layout.
   const spreads = useMemo(
-    () => PAGE_TURN_EFFECT === 'bookflip' ? buildLeafSpreads(pages.length, narrow) : buildSpreads(pages, narrow),
+    () => USES_LEAF_SPREADS ? buildLeafSpreads(pages.length, narrow) : buildSpreads(pages, narrow),
     [pages, narrow],
   )
 
@@ -422,6 +428,9 @@ export function ComicReader(
     else if (wrapped >= spreads.length) wrapped = 0
     if (wrapped === sIdx) return
     setFailed(false)
+    // StPageFlip runs its own flip animation + sound when currentLeaf
+    // changes — just move the index; don't preload, animate, or play.
+    if (PAGE_TURN_EFFECT === 'stpageflip') { setSIdx(wrapped); showSpread(wrapped); return }
     const commit = () => {
       setSIdx(wrapped); showSpread(wrapped); setAnim(dir); playFlip()
       // No reset timeout — ComicPageTurn keys on sIdx and runs its own
@@ -911,6 +920,7 @@ export function ComicReader(
                     currentLeaf={sIdx}
                     narrow={narrow}
                     onPageAdvance={dir => go(dir === 'next' ? sIdx + 1 : sIdx - 1, dir)}
+                    onLeafChange={leaf => { setSIdx(leaf); showSpread(leaf) }}
                   />
                 </div>
                 {zoom > 1 && (

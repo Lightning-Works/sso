@@ -1,0 +1,185 @@
+'use client'
+
+/**
+ * StPageFlipEffect — realistic page-curl turn, powered by the MIT-licensed
+ * `page-flip` library (StPageFlip). Registered as the 'stpageflip' effect
+ * in ComicPageTurn and used as the reader's default.
+ *
+ * page-flip owns its own pages, drag, click-to-flip, animation and
+ * shadows, so this builds the page DOM imperatively — React never
+ * reconciles against the DOM page-flip mutates — and two-way binds the
+ * current leaf with the reader: currentLeaf prop → pageFlip.flip();
+ * a user flip → onLeafChange().
+ *
+ * Density: page-flip models a page as either fully soft (curls) or fully
+ * rigid ("hard", like a hardback cover) — there is no in-between. Comic
+ * covers use heavier stock than inner pages but still bend, and page-flip
+ * can't represent that middle ground, so every page including the covers
+ * is left soft.
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { PageFlip } from 'page-flip'
+import type { PageTurnProps } from './ComicPageTurn'
+
+const FLIP_MS = 700
+
+// Leaf ↔ page-index mapping. Leaves (from buildLeafSpreads): leaf 0 is the
+// cover alone, leaf L is pages [2L-1, 2L]. In portrait, page-flip shows one
+// page per leaf, so the mapping is identity.
+const leafToPage = (leaf: number, portrait: boolean) =>
+  portrait ? Math.max(0, leaf) : (leaf <= 0 ? 0 : leaf * 2 - 1)
+const pageToLeaf = (page: number, portrait: boolean) =>
+  portrait ? Math.max(0, page) : (page <= 0 ? 0 : Math.floor((page + 1) / 2))
+
+// page-flip ships no CSS in its dist build — these structural rules are
+// required for it to lay out and are inlined so there's no import to
+// resolve. Plus the comic page / placeholder styling.
+const STF_CSS = `
+.stf__parent{position:relative;display:block;box-sizing:border-box;transform:translateZ(0);touch-action:pan-y}
+.sft__wrapper{position:relative;width:100%;box-sizing:border-box}
+.stf__parent canvas{position:absolute;width:100%;height:100%;left:0;top:0}
+.stf__block{position:absolute;width:100%;height:100%;box-sizing:border-box;perspective:2000px}
+.stf__item{display:none;position:absolute;transform-style:preserve-3d}
+.stf__outerShadow,.stf__innerShadow,.stf__hardShadow,.stf__hardInnerShadow{position:absolute;left:0;top:0}
+.spf-page{background:#111;overflow:hidden}
+.spf-page>img{width:100%;height:100%;object-fit:contain;background:#111;pointer-events:none;display:block}
+.spf-ph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;background:#161616;color:#7a7572;font-size:.85rem;text-align:center;padding:1rem;box-sizing:border-box}
+`
+
+export function StPageFlipEffect(p: PageTurnProps) {
+  const pages = p.allPages || []
+  const containerRef = useRef<HTMLDivElement>(null)
+  const flipRef = useRef<PageFlip | null>(null)
+  const internalLeaf = useRef<number>(p.currentLeaf ?? 0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const propsRef = useRef(p)
+  propsRef.current = p
+  const [resizeTick, setResizeTick] = useState(0)
+
+  // Stable content signature — rebuild page-flip only when the page set
+  // actually changes, not on every parent re-render.
+  const sig = pages.map(pg => pg.img || ('∅' + pg.label)).join('|')
+
+  useEffect(() => {
+    audioRef.current = typeof Audio !== 'undefined' ? new Audio('/page-flip.mp3') : null
+    if (audioRef.current) audioRef.current.volume = 0.5
+  }, [])
+
+  // Debounced resize → rebuild (page-flip's size bounds are fixed at init).
+  useEffect(() => {
+    let t: number | undefined
+    const onResize = () => { window.clearTimeout(t); t = window.setTimeout(() => setResizeTick(n => n + 1), 220) }
+    window.addEventListener('resize', onResize)
+    return () => { window.clearTimeout(t); window.removeEventListener('resize', onResize) }
+  }, [])
+
+  // Build / rebuild page-flip.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !pages.length) return
+    const portrait = !!p.narrow
+
+    // Build the page elements imperatively so React never reconciles
+    // against the DOM page-flip mutates.
+    container.innerHTML = ''
+    for (const pg of pages) {
+      const el = document.createElement('div')
+      el.className = 'spf-page'
+      el.dataset.density = 'soft'   // see file header — covers stay soft
+      if (pg.img) {
+        const img = document.createElement('img')
+        img.src = pg.img
+        img.alt = pg.label
+        img.draggable = false
+        let triedAr = false
+        img.addEventListener('error', () => {
+          if (pg.ar && !triedAr) { triedAr = true; img.src = pg.ar }
+          else propsRef.current.onImageFailed()
+        })
+        el.appendChild(img)
+      } else {
+        const ph = document.createElement('div')
+        ph.className = 'spf-ph'
+        const a = document.createElement('span'); a.style.color = '#bab1a8'; a.textContent = `“${pg.label}”`
+        const b = document.createElement('span'); b.textContent = 'No image yet' + (propsRef.current.admin ? ' — use Grid to upload' : '')
+        ph.appendChild(a); ph.appendChild(b)
+        el.appendChild(ph)
+      }
+      container.appendChild(el)
+    }
+
+    const host = container.parentElement
+    const cw = Math.max(360, (host?.clientWidth || 900) - 32)
+    const ch = Math.max(360, (host?.clientHeight || 700) - 32)
+    const startLeaf = propsRef.current.currentLeaf ?? 0
+
+    let pf: PageFlip
+    try {
+      pf = new PageFlip(container, {
+        width: 480, height: 680,        // single-page aspect basis
+        size: 'stretch',
+        minWidth: 180, maxWidth: cw,
+        minHeight: 260, maxHeight: ch,
+        drawShadow: true,
+        flippingTime: FLIP_MS,
+        usePortrait: portrait,
+        showCover: true,
+        autoSize: true,
+        maxShadowOpacity: 0.5,
+        mobileScrollSupport: false,
+        startPage: leafToPage(startLeaf, portrait),
+        swipeDistance: 30,
+        showPageCorners: true,
+        disableFlipByClick: false,
+        useMouseEvents: true,
+        clickEventForward: true,
+      })
+      pf.loadFromHTML(container.querySelectorAll<HTMLElement>('.spf-page'))
+    } catch {
+      return
+    }
+    flipRef.current = pf
+    internalLeaf.current = startLeaf
+
+    pf.on('flip', e => {
+      const isPortrait = pf.getOrientation() === 'portrait'
+      const leaf = pageToLeaf(Number(e.data), isPortrait)
+      internalLeaf.current = leaf
+      propsRef.current.onLeafChange?.(leaf)
+    })
+    pf.on('changeState', e => {
+      // 'flipping' = the committed turn animation has started.
+      if (e.data === 'flipping') {
+        const a = audioRef.current
+        if (a) { try { a.currentTime = 0; a.play().catch(() => {}) } catch { /* */ } }
+      }
+    })
+
+    return () => {
+      try { pf.destroy() } catch { /* */ }
+      flipRef.current = null
+      container.innerHTML = ''
+    }
+  }, [sig, p.narrow, resizeTick])
+
+  // External navigation (nav buttons / page bar) → flip page-flip to match.
+  // The converge check (currentLeaf === internalLeaf) breaks the feedback
+  // loop: a user flip reports back via onLeafChange, which updates
+  // currentLeaf, which then matches and no-ops here.
+  useEffect(() => {
+    const pf = flipRef.current
+    if (!pf || p.currentLeaf == null) return
+    if (p.currentLeaf === internalLeaf.current) return
+    internalLeaf.current = p.currentLeaf
+    const isPortrait = pf.getOrientation() === 'portrait'
+    try { pf.flip(leafToPage(p.currentLeaf, isPortrait)) } catch { /* */ }
+  }, [p.currentLeaf])
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#111111', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <style>{STF_CSS}</style>
+      <div ref={containerRef} style={{ width: '100%' }} />
+    </div>
+  )
+}

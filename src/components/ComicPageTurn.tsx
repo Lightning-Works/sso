@@ -16,9 +16,11 @@
  * `spreadKey` so they don't need state-resetting from the parent.
  */
 
+import { StPageFlipEffect } from './ComicStPageFlip'
+
 export type PageDisplay = { label: string; img: string; ar: string }
 export type TurnDirection = 'next' | 'prev' | 'none'
-export type TurnEffect = 'slide' | 'crossfade' | 'bookflip' | 'none'
+export type TurnEffect = 'slide' | 'crossfade' | 'bookflip' | 'stpageflip' | 'none'
 
 export interface PageTurnProps {
   display: PageDisplay[]
@@ -28,11 +30,14 @@ export interface PageTurnProps {
   onImageFailed: () => void
   admin?: boolean
   effect?: TurnEffect
-  // BookFlipEffect-only (other effects ignore these):
+  // BookFlip / StPageFlip-only (other effects ignore these):
   allPages?: PageDisplay[]   // every page in order (not just current spread)
-  currentLeaf?: number       // = sIdx when book-flip leaf spreads are used
+  currentLeaf?: number       // = sIdx when leaf spreads are used
   narrow?: boolean
   onPageAdvance?: (dir: 'next' | 'prev') => void
+  // StPageFlip-only: reports the absolute new leaf after a user-driven
+  // flip, so the reader can sync sIdx without re-animating.
+  onLeafChange?: (leaf: number) => void
 }
 
 // One place to tune duration across all effects.
@@ -192,6 +197,7 @@ const EFFECTS: Record<TurnEffect, React.FC<PageTurnProps>> = {
   slide: SlideEffect,
   crossfade: CrossFadeEffect,
   bookflip: BookFlipEffect,
+  stpageflip: StPageFlipEffect,
   none: NoneEffect,
 }
 
