@@ -184,6 +184,9 @@ export function WebtoonReader(
   const stripEls = useRef<(HTMLDivElement | null)[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ mode: 'replace' | 'before' | 'after'; index: number } | null>(null)
+  // True while a mousedown/touchstart originated on the modal backdrop
+  // itself — prevents drag-releases from synthesizing a close.
+  const backdropDownRef = useRef(false)
   const [ctx, setCtx] = useState<{ x: number; y: number; index: number } | null>(null)
 
   // Tier inventory (discovered per-contract; see ComicReader for the scheme).
@@ -546,7 +549,14 @@ export function WebtoonReader(
   const navActive: React.CSSProperties = { ...navBtn, background: 'var(--lw-purple, #6a24fa)', color: '#fff' }
 
   return createPortal(
-    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    <div
+      onMouseDown={e => { backdropDownRef.current = e.target === e.currentTarget }}
+      onTouchStart={e => { backdropDownRef.current = e.target === e.currentTarget }}
+      onClick={e => {
+        const wasBackdropDown = backdropDownRef.current
+        backdropDownRef.current = false
+        if (e.target === e.currentTarget && wasBackdropDown) onClose()
+      }}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div style={{ background: '#111111', borderRadius: 12, width: 'min(1200px,96vw)', height: '95vh', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 0 15px 5px rgba(80,40,200,.5),0 0 40px 15px rgba(60,30,160,.35),0 0 80px 30px rgba(40,20,120,.25),0 0 160px 60px rgba(20,10,60,.15)' }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 8, right: 8, zIndex: 8, background: 'rgba(0,0,0,.5)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>&#x2715;</button>

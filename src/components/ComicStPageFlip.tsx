@@ -89,130 +89,169 @@ export function StPageFlipEffect(p: PageTurnProps) {
     return () => { window.clearTimeout(t); window.removeEventListener('resize', onResize) }
   }, [])
 
-  // Build / rebuild page-flip.
+  // Build / rebuild page-flip — gated on the first few page images
+  // actually loading, otherwise the cover flips to reveal not-yet-fetched
+  // pages and the user sees black-then-fade-in instead of the real spread.
   useEffect(() => {
     const host = hostRef.current
     if (!host || !pages.length) return
+    let cancelled = false
     const portrait = !!p.narrow
 
-    // Create the page-flip container imperatively as a child of the host.
-    // width/height 100% of the host (which is position:absolute; inset:0)
-    // gives page-flip real pixel dimensions to stretch into — without
-    // those it computes zero and renders nothing visible.
-    const container = document.createElement('div')
-    container.style.cssText = 'width:100%;height:100%;box-sizing:border-box'
-    host.appendChild(container)
-
-    // Eagerly fetch every page image so the pages behind the cover (and
-    // every subsequent flip) are cached before they need to be visible.
-    // page-flip uses display:none on inactive pages, which some browsers
-    // deprioritize loading for — without this prefetch, the next spread
-    // shows up blank-then-fades-in instead of being there already.
+    // Kick off network fetches for EVERY page image immediately. Holding
+    // refs keeps the browser from cancelling in-flight requests; the
+    // resulting cache means the actual <img> in page-flip's pages loads
+    // instantly once it becomes visible.
     preloadsRef.current = []
     for (const pg of pages) {
       if (!pg.img) continue
       try { const pre = new Image(); pre.src = pg.img; preloadsRef.current.push(pre) } catch { /* */ }
     }
 
-    // Landscape padding (see leafToPage comment): leading blank always,
-    // trailing blank only when needed to keep the total page count even
-    // so page-flip never builds a trailing-alone spread (which it forces
-    // to HARD density). In portrait, no padding — pages render one at a
-    // time and density doesn't matter.
-    const wantLeading = !portrait
-    const wantTrailing = !portrait && ((pages.length + 1) % 2 === 1)
-    const makeBlank = () => {
-      const el = document.createElement('div')
-      el.className = 'spf-page'
-      el.dataset.density = 'soft'
-      el.style.cssText = 'background:#0b0b0b'
-      return el
-    }
-    if (wantLeading) container.appendChild(makeBlank())
+    // Show a temporary "Loading…" while the cover + first spread reach
+    // the cache. Without this, the cover starts flipping before pages
+    // 1+2 have arrived and the reveal is just black.
+    host.innerHTML = ''
+    const loading = document.createElement('div')
+    loading.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bab1a8;font-size:.9rem;background:#111'
+    loading.textContent = 'Loading comic…'
+    host.appendChild(loading)
 
-    for (const pg of pages) {
-      const el = document.createElement('div')
-      el.className = 'spf-page'
-      el.dataset.density = 'soft'   // see file header — covers stay soft
-      if (pg.img) {
-        const img = document.createElement('img')
-        img.src = pg.img
-        img.alt = pg.label
-        img.draggable = false
-        let triedAr = false
-        img.addEventListener('error', () => {
-          if (pg.ar && !triedAr) { triedAr = true; img.src = pg.ar }
-          else propsRef.current.onImageFailed()
-        })
-        el.appendChild(img)
-      } else {
-        const ph = document.createElement('div')
-        ph.className = 'spf-ph'
-        const a = document.createElement('span'); a.style.color = '#bab1a8'; a.textContent = `“${pg.label}”`
-        const b = document.createElement('span'); b.textContent = 'No image yet' + (propsRef.current.admin ? ' — use Grid to upload' : '')
-        ph.appendChild(a); ph.appendChild(b)
-        el.appendChild(ph)
-      }
-      container.appendChild(el)
-    }
-    if (wantTrailing) container.appendChild(makeBlank())
-
-    const cw = Math.max(360, host.clientWidth - 16)
-    const ch = Math.max(360, host.clientHeight - 16)
-    const startLeaf = propsRef.current.currentLeaf ?? 0
-
-    let pf: PageFlip
-    try {
-      pf = new PageFlip(container, {
-        width: 480, height: 680,        // single-page aspect basis
-        size: 'stretch',
-        minWidth: 180, maxWidth: cw,
-        minHeight: 260, maxHeight: ch,
-        drawShadow: true,
-        flippingTime: FLIP_MS,
-        usePortrait: portrait,
-        // showCover:false on purpose — page-flip's showCover branch
-        // force-sets HARD density on the cover (and any trailing-alone
-        // page), ignoring our soft data-density. We pad with a blank
-        // page instead (see leafToPage) so the cover is just the right
-        // page of an ordinary 2-up spread that bends like any other.
-        showCover: false,
-        autoSize: true,
-        maxShadowOpacity: 0.5,
-        mobileScrollSupport: false,
-        startPage: leafToPage(startLeaf, portrait),
-        swipeDistance: 30,
-        showPageCorners: true,
-        disableFlipByClick: false,
-        useMouseEvents: true,
-        clickEventForward: true,
-      })
-      pf.loadFromHTML(container.querySelectorAll<HTMLElement>('.spf-page'))
-    } catch {
-      return
-    }
-    flipRef.current = pf
-    internalLeaf.current = startLeaf
-
-    pf.on('flip', e => {
-      const isPortrait = pf.getOrientation() === 'portrait'
-      const leaf = pageToLeaf(Number(e.data), isPortrait)
-      internalLeaf.current = leaf
-      propsRef.current.onLeafChange?.(leaf)
+    // Wait until the cover and the pages that will be revealed behind it
+    // are loaded. Cap the wait so a broken or slow image can't hang the
+    // reader — after 3s we mount anyway.
+    const priorityUrls = pages.slice(0, 3).map(pg => pg.img).filter((u): u is string => !!u)
+    const awaitImage = (u: string) => new Promise<void>(res => {
+      const i = new Image()
+      i.onload = i.onerror = () => res()
+      i.src = u
     })
-    pf.on('changeState', e => {
-      // 'flipping' = the committed turn animation has started.
-      if (e.data === 'flipping') {
-        const a = audioRef.current
-        if (a) { try { a.currentTime = 0; a.play().catch(() => {}) } catch { /* */ } }
+    const ready: Promise<unknown> = priorityUrls.length
+      ? Promise.race([
+          Promise.all(priorityUrls.map(awaitImage)),
+          new Promise(res => window.setTimeout(res, 3000)),
+        ])
+      : Promise.resolve()
+
+    let container: HTMLDivElement | null = null
+    let pf: PageFlip | null = null
+    let startLeaf = propsRef.current.currentLeaf ?? 0
+
+    ready.then(() => {
+      if (cancelled || !hostRef.current) return
+      const liveHost = hostRef.current
+      if (loading.parentNode === liveHost) liveHost.removeChild(loading)
+
+      // Create the page-flip container imperatively as a child of the host.
+      // width/height 100% of the host (which is position:absolute; inset:0)
+      // gives page-flip real pixel dimensions to stretch into.
+      container = document.createElement('div')
+      container.style.cssText = 'width:100%;height:100%;box-sizing:border-box'
+      liveHost.appendChild(container)
+
+      // Landscape padding (see leafToPage comment): leading blank always,
+      // trailing blank only when needed to keep the total page count even
+      // so page-flip never builds a trailing-alone spread (which it forces
+      // to HARD density). In portrait, no padding — pages render one at a
+      // time and density doesn't matter.
+      const wantLeading = !portrait
+      const wantTrailing = !portrait && ((pages.length + 1) % 2 === 1)
+      const makeBlank = () => {
+        const el = document.createElement('div')
+        el.className = 'spf-page'
+        el.dataset.density = 'soft'
+        el.style.cssText = 'background:#0b0b0b'
+        return el
       }
+      if (wantLeading) container.appendChild(makeBlank())
+
+      for (const pg of pages) {
+        const el = document.createElement('div')
+        el.className = 'spf-page'
+        el.dataset.density = 'soft'   // see file header — covers stay soft
+        if (pg.img) {
+          const img = document.createElement('img')
+          img.src = pg.img
+          img.alt = pg.label
+          img.draggable = false
+          let triedAr = false
+          img.addEventListener('error', () => {
+            if (pg.ar && !triedAr) { triedAr = true; img.src = pg.ar }
+            else propsRef.current.onImageFailed()
+          })
+          el.appendChild(img)
+        } else {
+          const ph = document.createElement('div')
+          ph.className = 'spf-ph'
+          const a = document.createElement('span'); a.style.color = '#bab1a8'; a.textContent = `“${pg.label}”`
+          const b = document.createElement('span'); b.textContent = 'No image yet' + (propsRef.current.admin ? ' — use Grid to upload' : '')
+          ph.appendChild(a); ph.appendChild(b)
+          el.appendChild(ph)
+        }
+        container.appendChild(el)
+      }
+      if (wantTrailing) container.appendChild(makeBlank())
+
+      const cw = Math.max(360, liveHost.clientWidth - 16)
+      const ch = Math.max(360, liveHost.clientHeight - 16)
+      startLeaf = propsRef.current.currentLeaf ?? 0
+
+      try {
+        pf = new PageFlip(container, {
+          width: 480, height: 680,        // single-page aspect basis
+          size: 'stretch',
+          minWidth: 180, maxWidth: cw,
+          minHeight: 260, maxHeight: ch,
+          drawShadow: true,
+          flippingTime: FLIP_MS,
+          usePortrait: portrait,
+          // showCover:false on purpose — page-flip's showCover branch
+          // force-sets HARD density on the cover (and any trailing-alone
+          // page), ignoring our soft data-density. We pad with a blank
+          // page instead (see leafToPage) so the cover is just the right
+          // page of an ordinary 2-up spread that bends like any other.
+          showCover: false,
+          autoSize: true,
+          maxShadowOpacity: 0.5,
+          mobileScrollSupport: false,
+          startPage: leafToPage(startLeaf, portrait),
+          swipeDistance: 30,
+          showPageCorners: true,
+          disableFlipByClick: false,
+          useMouseEvents: true,
+          clickEventForward: true,
+        })
+        pf.loadFromHTML(container.querySelectorAll<HTMLElement>('.spf-page'))
+      } catch {
+        return
+      }
+      if (!pf) return
+      flipRef.current = pf
+      internalLeaf.current = startLeaf
+
+      const localPf = pf
+      localPf.on('flip', e => {
+        const isPortrait = localPf.getOrientation() === 'portrait'
+        const leaf = pageToLeaf(Number(e.data), isPortrait)
+        internalLeaf.current = leaf
+        propsRef.current.onLeafChange?.(leaf)
+      })
+      localPf.on('changeState', e => {
+        // 'flipping' = the committed turn animation has started.
+        if (e.data === 'flipping') {
+          const a = audioRef.current
+          if (a) { try { a.currentTime = 0; a.play().catch(() => {}) } catch { /* */ } }
+        }
+      })
     })
 
     return () => {
-      try { pf.destroy() } catch { /* */ }
+      cancelled = true
+      try { pf?.destroy() } catch { /* */ }
       flipRef.current = null
       preloadsRef.current = []
-      if (container.parentNode === host) host.removeChild(container)
+      if (loading.parentNode === host) host.removeChild(loading)
+      if (container && container.parentNode === host) host.removeChild(container)
     }
   }, [sig, p.narrow, resizeTick])
 

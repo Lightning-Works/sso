@@ -287,6 +287,11 @@ export function ComicReader(
   // touch = standard pinch-to-zoom anchored at the finger midpoint.
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  // True while a mousedown/touchstart originated on the modal backdrop
+  // itself (not on a child). Without this, releasing a page-flip drag
+  // over the backdrop synthesizes a backdrop click that closes the
+  // reader unexpectedly.
+  const backdropDownRef = useRef(false)
   const zoomBoxRef = useRef<HTMLDivElement>(null)
   const pinch = useRef<{ d0: number; z0: number; px0: number; py0: number; mx: number; my: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -854,7 +859,16 @@ export function ComicReader(
   const msg: React.CSSProperties = { position: 'absolute', inset: 0, background: '#111111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textAlign: 'center', padding: '2rem' }
 
   return createPortal(
-    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    <div
+      onMouseDown={e => { backdropDownRef.current = e.target === e.currentTarget }}
+      onTouchStart={e => { backdropDownRef.current = e.target === e.currentTarget }}
+      onClick={e => {
+        // Only close if the gesture STARTED on the backdrop, not on a
+        // child element (e.g. a page-flip drag released over the backdrop).
+        const wasBackdropDown = backdropDownRef.current
+        backdropDownRef.current = false
+        if (e.target === e.currentTarget && wasBackdropDown) onClose()
+      }}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div style={{ background: '#111111', borderRadius: 12, width: 'min(1200px,96vw)', height: '95vh', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 0 15px 5px rgba(80,40,200,.5),0 0 40px 15px rgba(60,30,160,.35),0 0 80px 30px rgba(40,20,120,.25),0 0 160px 60px rgba(20,10,60,.15)' }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 8, right: 8, zIndex: 8, background: 'rgba(0,0,0,.5)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>&#x2715;</button>
