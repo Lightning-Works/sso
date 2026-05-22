@@ -24,13 +24,20 @@ import type { PageTurnProps } from './ComicPageTurn'
 
 const FLIP_MS = 700
 
-// Leaf ↔ page-index mapping. Leaves (from buildLeafSpreads): leaf 0 is the
-// cover alone, leaf L is pages [2L-1, 2L]. In portrait, page-flip shows one
-// page per leaf, so the mapping is identity.
+// Leaf ↔ page-index mapping. In LANDSCAPE we prepend a black blank
+// before the cover (and append one after the back cover when needed for
+// even parity) so every page-flip spread is a normal 2-up — that
+// avoids page-flip's PageCollection forcing density=HARD on the
+// lone-cover (showCover) and on any trailing single page. With the
+// padding, the user's cover ends up as the right page of spread 0
+// against a black left "page" — looks like a closed book — and bends
+// like any soft page when turned, revealing pages 1+2 behind it.
+// In PORTRAIT page-flip shows one page per spread so no padding is
+// needed and the mapping is identity.
 const leafToPage = (leaf: number, portrait: boolean) =>
-  portrait ? Math.max(0, leaf) : (leaf <= 0 ? 0 : leaf * 2 - 1)
+  portrait ? Math.max(0, leaf) : Math.max(0, leaf) * 2
 const pageToLeaf = (page: number, portrait: boolean) =>
-  portrait ? Math.max(0, page) : (page <= 0 ? 0 : Math.floor((page + 1) / 2))
+  portrait ? Math.max(0, page) : Math.max(0, Math.floor(page / 2))
 
 // page-flip ships no CSS in its dist build — these structural rules are
 // required for it to lay out and are inlined so there's no import to
@@ -57,6 +64,10 @@ export function StPageFlipEffect(p: PageTurnProps) {
   const flipRef = useRef<PageFlip | null>(null)
   const internalLeaf = useRef<number>(p.currentLeaf ?? 0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Holding refs to Image() preloaders keeps the browser from cancelling
+  // their fetches — by the time the cover flips, pages 1-2 are already
+  // in the HTTP cache and load instantly into the visible page elements.
+  const preloadsRef = useRef<HTMLImageElement[]>([])
   const propsRef = useRef(p)
   propsRef.current = p
   const [resizeTick, setResizeTick] = useState(0)
@@ -92,6 +103,33 @@ export function StPageFlipEffect(p: PageTurnProps) {
     container.style.cssText = 'width:100%;height:100%;box-sizing:border-box'
     host.appendChild(container)
 
+    // Eagerly fetch every page image so the pages behind the cover (and
+    // every subsequent flip) are cached before they need to be visible.
+    // page-flip uses display:none on inactive pages, which some browsers
+    // deprioritize loading for — without this prefetch, the next spread
+    // shows up blank-then-fades-in instead of being there already.
+    preloadsRef.current = []
+    for (const pg of pages) {
+      if (!pg.img) continue
+      try { const pre = new Image(); pre.src = pg.img; preloadsRef.current.push(pre) } catch { /* */ }
+    }
+
+    // Landscape padding (see leafToPage comment): leading blank always,
+    // trailing blank only when needed to keep the total page count even
+    // so page-flip never builds a trailing-alone spread (which it forces
+    // to HARD density). In portrait, no padding — pages render one at a
+    // time and density doesn't matter.
+    const wantLeading = !portrait
+    const wantTrailing = !portrait && ((pages.length + 1) % 2 === 1)
+    const makeBlank = () => {
+      const el = document.createElement('div')
+      el.className = 'spf-page'
+      el.dataset.density = 'soft'
+      el.style.cssText = 'background:#0b0b0b'
+      return el
+    }
+    if (wantLeading) container.appendChild(makeBlank())
+
     for (const pg of pages) {
       const el = document.createElement('div')
       el.className = 'spf-page'
@@ -117,6 +155,7 @@ export function StPageFlipEffect(p: PageTurnProps) {
       }
       container.appendChild(el)
     }
+    if (wantTrailing) container.appendChild(makeBlank())
 
     const cw = Math.max(360, host.clientWidth - 16)
     const ch = Math.max(360, host.clientHeight - 16)
@@ -132,7 +171,12 @@ export function StPageFlipEffect(p: PageTurnProps) {
         drawShadow: true,
         flippingTime: FLIP_MS,
         usePortrait: portrait,
-        showCover: true,
+        // showCover:false on purpose — page-flip's showCover branch
+        // force-sets HARD density on the cover (and any trailing-alone
+        // page), ignoring our soft data-density. We pad with a blank
+        // page instead (see leafToPage) so the cover is just the right
+        // page of an ordinary 2-up spread that bends like any other.
+        showCover: false,
         autoSize: true,
         maxShadowOpacity: 0.5,
         mobileScrollSupport: false,
@@ -167,6 +211,7 @@ export function StPageFlipEffect(p: PageTurnProps) {
     return () => {
       try { pf.destroy() } catch { /* */ }
       flipRef.current = null
+      preloadsRef.current = []
       if (container.parentNode === host) host.removeChild(container)
     }
   }, [sig, p.narrow, resizeTick])
