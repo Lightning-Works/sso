@@ -49,7 +49,11 @@ const STF_CSS = `
 
 export function StPageFlipEffect(p: PageTurnProps) {
   const pages = p.allPages || []
-  const containerRef = useRef<HTMLDivElement>(null)
+  // We render only a host div via React. page-flip's container is created
+  // imperatively inside it — that way React never reconciles against the
+  // DOM page-flip mutates, and we can give the container real pixel
+  // dimensions without React fighting with page-flip's runtime styles.
+  const hostRef = useRef<HTMLDivElement>(null)
   const flipRef = useRef<PageFlip | null>(null)
   const internalLeaf = useRef<number>(p.currentLeaf ?? 0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -76,13 +80,18 @@ export function StPageFlipEffect(p: PageTurnProps) {
 
   // Build / rebuild page-flip.
   useEffect(() => {
-    const container = containerRef.current
-    if (!container || !pages.length) return
+    const host = hostRef.current
+    if (!host || !pages.length) return
     const portrait = !!p.narrow
 
-    // Build the page elements imperatively so React never reconciles
-    // against the DOM page-flip mutates.
-    container.innerHTML = ''
+    // Create the page-flip container imperatively as a child of the host.
+    // width/height 100% of the host (which is position:absolute; inset:0)
+    // gives page-flip real pixel dimensions to stretch into — without
+    // those it computes zero and renders nothing visible.
+    const container = document.createElement('div')
+    container.style.cssText = 'width:100%;height:100%;box-sizing:border-box'
+    host.appendChild(container)
+
     for (const pg of pages) {
       const el = document.createElement('div')
       el.className = 'spf-page'
@@ -109,9 +118,8 @@ export function StPageFlipEffect(p: PageTurnProps) {
       container.appendChild(el)
     }
 
-    const host = container.parentElement
-    const cw = Math.max(360, (host?.clientWidth || 900) - 32)
-    const ch = Math.max(360, (host?.clientHeight || 700) - 32)
+    const cw = Math.max(360, host.clientWidth - 16)
+    const ch = Math.max(360, host.clientHeight - 16)
     const startLeaf = propsRef.current.currentLeaf ?? 0
 
     let pf: PageFlip
@@ -159,7 +167,7 @@ export function StPageFlipEffect(p: PageTurnProps) {
     return () => {
       try { pf.destroy() } catch { /* */ }
       flipRef.current = null
-      container.innerHTML = ''
+      if (container.parentNode === host) host.removeChild(container)
     }
   }, [sig, p.narrow, resizeTick])
 
@@ -177,9 +185,9 @@ export function StPageFlipEffect(p: PageTurnProps) {
   }, [p.currentLeaf])
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#111111', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+    <>
       <style>{STF_CSS}</style>
-      <div ref={containerRef} style={{ width: '100%' }} />
-    </div>
+      <div ref={hostRef} style={{ position: 'absolute', inset: 0, background: '#111111', padding: 8, boxSizing: 'border-box' }} />
+    </>
   )
 }
