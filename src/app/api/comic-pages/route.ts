@@ -14,6 +14,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { verifyAdmin } from '@/lib/auth/verifyAdmin'
 import { arweaveUrl } from '@/lib/arweave'
 import { migrateLegacyComic } from '@/lib/comics/migrate'
+import { isLoanActive, type LoanRow } from '@/lib/loans/types'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -45,17 +46,58 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No fallback configured for this comic' }, { status: 404 })
   }
 
-  // Ownership: any of the user's connected wallets is the on-chain owner
-  // of a token whose animation_url points at this bundle CID.
+  // Access check. Allowed if any of:
+  //   (a) admin,
+  //   (b) the signed-in user owns at least one NFT of a contract that
+  //       backs this comic (via connected_wallets ↔ lw_nft_data.owner),
+  //   (c) the signed-in user has an active borrowed loan for any NFT of
+  //       one of those contracts.
+  //
+  // We resolve the contracts behind the comic first, so synthetic `lw…`
+  // cids (derived from a contract address) and real IPFS cids (matched
+  // by animation_url substring) both work without separate code paths.
   let owns = !!admin
   if (!owns && user) {
-    const { data: wallets } = await db
-      .from('connected_wallets').select('wallet_address').eq('user_id', user.id)
-    const mine = new Set((wallets || []).map(w => String(w.wallet_address).toLowerCase()))
-    if (mine.size) {
-      const { data: toks } = await db
-        .from('lw_nft_data').select('owner').ilike('animation_url', `%${cid}%`).limit(5000)
-      owns = (toks || []).some(t => t.owner && mine.has(String(t.owner).toLowerCase()))
+    const contractIds: number[] = []
+    const contractAddresses: string[] = []
+    if (cid.startsWith('lw')) {
+      const addr = '0x' + cid.slice(2)
+      if (/^0x[0-9a-f]{4,}$/.test(addr)) {
+        const { data: ct } = await db.from('lw_nft_contracts')
+          .select('id, contract_address').ilike('contract_address', addr).limit(1).maybeSingle()
+        if (ct) { contractIds.push(ct.id); contractAddresses.push(String(ct.contract_address).toLowerCase()) }
+      }
+    } else {
+      // Real IPFS cid — every contract whose minted NFTs reference it.
+      const { data: toks } = await db.from('lw_nft_data')
+        .select('contract_id').ilike('animation_url', `%${cid}%`).limit(5000)
+      const ids = [...new Set((toks || []).map(t => t.contract_id))]
+      if (ids.length) {
+        const { data: cts } = await db.from('lw_nft_contracts')
+          .select('id, contract_address').in('id', ids)
+        for (const c of cts || []) {
+          contractIds.push(c.id); contractAddresses.push(String(c.contract_address).toLowerCase())
+        }
+      }
+    }
+
+    // (b) any owned mint of any of these contracts
+    if (contractIds.length) {
+      const { data: wallets } = await db.from('connected_wallets')
+        .select('wallet_address').eq('user_id', user.id)
+      const mine = new Set((wallets || []).map(w => String(w.wallet_address).toLowerCase()))
+      if (mine.size) {
+        const { data: mints } = await db.from('lw_nft_data')
+          .select('contract_id, owner').in('contract_id', contractIds).limit(20000)
+        owns = (mints || []).some(m => m.owner && mine.has(String(m.owner).toLowerCase()))
+      }
+    }
+
+    // (c) active borrowed loan for any of these contracts
+    if (!owns && contractAddresses.length) {
+      const { data: borrows } = await db.from('comic_loans')
+        .select('*').eq('borrower_user_id', user.id).in('contract_address', contractAddresses)
+      owns = (borrows || []).some(l => isLoanActive(l as LoanRow))
     }
   }
   if (!owns) return NextResponse.json({ error: 'You must own this NFT to read it' }, { status: 403 })

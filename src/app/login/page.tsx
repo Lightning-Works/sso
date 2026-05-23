@@ -230,6 +230,11 @@ function LoginContent() {
   }, [userAvatarUrl, userName, userBorderColor, userInnerColor])
 
   const rawRedirect = searchParams.get('redirect')
+  // Internal "next" path — used by /loan/<code> and any other in-app
+  // page that needs the user to log in first and resume the flow.
+  // Must be a relative path; rejects // or backslashes for safety.
+  const nextPathRaw = searchParams.get('next')
+  const nextPath = nextPathRaw && /^\/[^/\\]/.test(nextPathRaw) ? nextPathRaw : null
 
   // Validate external redirect: per-app origins (admin-managed) ∪ env fallback.
   // Prevents an open redirect leaking the user's tokens to an attacker URL.
@@ -271,7 +276,9 @@ function LoginContent() {
         description: `Logged in via email/password`,
       })
       // If logged in via an app/company context, show success modal instead of navigating
-      if (searchParams.get('app') || searchParams.get('company')) {
+      if (nextPath) {
+        router.push(nextPath)
+      } else if (searchParams.get('app') || searchParams.get('company')) {
         setLoading(false)
         setShowLoginSuccess(true)
       } else {
@@ -290,6 +297,8 @@ function LoginContent() {
     const companyParam = searchParams.get('company')
     if (appParam) params.set('app', appParam)
     if (companyParam) params.set('company', companyParam)
+    // Internal post-login destination — /auth/callback honors `next` already.
+    if (nextPath) params.set('next', nextPath)
     const callbackUrl = `${window.location.origin}/auth/callback?${params.toString()}`
 
     const { error } = await supabase.auth.signInWithOAuth({
