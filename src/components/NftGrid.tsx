@@ -63,7 +63,24 @@ export interface NftItem {
   // Immutable on-chain identifier — used to key shared comic fallback pages
   // so every mint of a series resolves to the same storage row.
   contractAddress?: string
+  /** On-chain token id (the specific mint within the contract). Needed
+   *  for loan operations and any per-mint action. */
+  tokenId?: string
+  /** Loan state for this specific mint. The wallet attaches this when
+   *  it fetches /api/loans/mine and merges it onto the NFT list. */
+  loanState?: NftLoanState | null
 }
+
+/** Per-card loan state, attached by the wallet after it fetches loan data. */
+export type NftLoanState =
+  // The viewer owns this mint and has lent it out. When status is 'active'
+  // the thumbnail is greyed with a "Loaned to X" overlay and reading is
+  // blocked. When status is 'pending' the loan link exists but the
+  // borrower hasn't claimed, so the owner can still read.
+  | { kind: 'lent'; loanId: string; status: 'pending' | 'active'; toLabel: string; expiresAt: string }
+  // The viewer is borrowing this mint from someone else. Always shown
+  // with the green LOAN badge and the right-click "Return to owner".
+  | { kind: 'borrowed'; loanId: string; fromLabel: string; expiresAt: string }
 
 type NftTag = 'spam' | 'favorite' | 'hidden'
 
@@ -108,6 +125,9 @@ interface NftGridProps {
   storageKey?: string
   /** If true, shows "Global Spam" option in context menu (superadmin) */
   isSuperadmin?: boolean
+  /** Called after the grid mutates loans (Return/Revoke) so the parent
+   *  can re-fetch /api/loans/mine and refresh the badges/overlays. */
+  onLoansChanged?: () => void
 }
 
 export function NftGrid({
@@ -122,7 +142,22 @@ export function NftGrid({
   mobileBreakpoint = 768,
   storageKey = 'nft-tags',
   isSuperadmin = false,
+  onLoansChanged,
 }: NftGridProps) {
+  // Loan action under user confirmation. null when no action pending.
+  const [loanConfirm, setLoanConfirm] = useState<{ kind: 'return' | 'revoke'; loanId: string; nftName: string; counterpartyLabel: string } | null>(null)
+  const [loanBusy, setLoanBusy] = useState(false)
+  const runLoanAction = async () => {
+    if (!loanConfirm) return
+    setLoanBusy(true)
+    try {
+      const path = loanConfirm.kind === 'return' ? 'return' : 'revoke'
+      const r = await fetch(`/api/loans/${loanConfirm.loanId}/${path}`, { method: 'POST' })
+      if (r.ok) onLoansChanged?.()
+    } catch { /* */ }
+    setLoanBusy(false)
+    setLoanConfirm(null)
+  }
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [refreshedThumbs, setRefreshedThumbs] = useState<Record<string, string>>({})
@@ -796,7 +831,7 @@ export function NftGrid({
               })()}
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
-              <div className="nft-card-thumb">
+              <div className="nft-card-thumb" style={{ position: 'relative' }}>
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
                   <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
@@ -805,6 +840,21 @@ export function NftGrid({
                   <img src={nft.imageUrl} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
+                )}
+                {/* Owner side: this mint is actively loaned out — grey it
+                    out + show "Loaned to X" in green over the centre. */}
+                {nft.loanState?.kind === 'lent' && nft.loanState.status === 'active' && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,20,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem', pointerEvents: 'none' }}>
+                    <span style={{ color: '#2ea043', fontWeight: 700, fontSize: '0.85rem', textAlign: 'center', textShadow: '0 1px 2px rgba(0,0,0,.7)', lineHeight: 1.25 }}>
+                      Loaned to<br />{nft.loanState.toLabel}
+                    </span>
+                  </div>
+                )}
+                {/* Borrower side: this mint is on loan to me. */}
+                {nft.loanState?.kind === 'borrowed' && (
+                  <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.7)', padding: '0.2rem 0.4rem', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <span style={{ color: '#2ea043', fontWeight: 800, fontSize: '0.78rem', letterSpacing: '0.06em', textShadow: '0 1px 2px rgba(0,0,0,.7)' }}>LOAN</span>
+                  </div>
                 )}
               </div>
               <div className="nft-card-info" style={isUltraRare(nft) ? { color: '#111' } : {}}>
@@ -866,6 +916,35 @@ export function NftGrid({
               </button>
             )
           })()}
+          {/* Loan actions for the focused NFT. Borrower's perspective:
+              Return to owner. Owner's perspective on a lent-out mint:
+              Revoke loan. Both open a confirmation modal. */}
+          {contextNft?.loanState?.kind === 'borrowed' && (
+            <button
+              className="nft-context-item"
+              style={{ fontWeight: 600, color: '#2ea043' }}
+              onClick={() => {
+                if (!contextNft?.loanState || contextNft.loanState.kind !== 'borrowed') return
+                setLoanConfirm({ kind: 'return', loanId: contextNft.loanState.loanId, nftName: contextNft.name, counterpartyLabel: contextNft.loanState.fromLabel })
+                setContextMenu(null)
+              }}
+            >
+              ↩ Return to Owner
+            </button>
+          )}
+          {contextNft?.loanState?.kind === 'lent' && (
+            <button
+              className="nft-context-item"
+              style={{ fontWeight: 600, color: '#ff8800' }}
+              onClick={() => {
+                if (!contextNft?.loanState || contextNft.loanState.kind !== 'lent') return
+                setLoanConfirm({ kind: 'revoke', loanId: contextNft.loanState.loanId, nftName: contextNft.name, counterpartyLabel: contextNft.loanState.toLabel })
+                setContextMenu(null)
+              }}
+            >
+              ✕ Revoke Loan
+            </button>
+          )}
           {viewMode === 'spam' ? (
             <button className="nft-context-item" onClick={() => unspamSelected()}>
               &#x2716; Remove from Spam
@@ -968,11 +1047,53 @@ export function NftGrid({
                   )
                 })()}
                 {selectedNft.mintNumber && (
-                  <div className="nft-detail-cell">
-                    <p className="nft-detail-label">Mint</p>
-                    <p className="nft-detail-value">
-                      #{selectedNft.mintNumber}{selectedNft.maxSupply && selectedNft.maxSupply !== '0' ? ` / ${selectedNft.maxSupply}` : ''}
-                    </p>
+                  <div className="nft-detail-cell" style={{ gridColumn: 'span 2' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.6rem', flexWrap: 'wrap' }}>
+                      <div>
+                        <p className="nft-detail-label">Mint</p>
+                        <p className="nft-detail-value">
+                          #{selectedNft.mintNumber}{selectedNft.maxSupply && selectedNft.maxSupply !== '0' ? ` / ${selectedNft.maxSupply}` : ''}
+                        </p>
+                      </div>
+                      {/* READ + LOAN (or RETURN) actions for comics. */}
+                      {selectedNft && isComic(selectedNft) && (
+                        <div style={{ display: 'flex', gap: '.4rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => { setReaderNft(selectedNft); setReaderWebtoon(false); setSelectedNft(null) }}
+                            style={{ padding: '.4rem .85rem', fontSize: '.8rem', fontWeight: 700, background: 'var(--lw-purple, #6a24fa)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+                          >READ</button>
+                          {selectedNft.loanState?.kind === 'borrowed' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedNft.loanState || selectedNft.loanState.kind !== 'borrowed') return
+                                setLoanConfirm({ kind: 'return', loanId: selectedNft.loanState.loanId, nftName: selectedNft.name, counterpartyLabel: selectedNft.loanState.fromLabel })
+                                setSelectedNft(null)
+                              }}
+                              style={{ padding: '.4rem .85rem', fontSize: '.8rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+                            >RETURN</button>
+                          ) : selectedNft.loanState?.kind === 'lent' && selectedNft.loanState.status === 'active' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedNft.loanState || selectedNft.loanState.kind !== 'lent') return
+                                setLoanConfirm({ kind: 'revoke', loanId: selectedNft.loanState.loanId, nftName: selectedNft.name, counterpartyLabel: selectedNft.loanState.toLabel })
+                                setSelectedNft(null)
+                              }}
+                              style={{ padding: '.4rem .85rem', fontSize: '.8rem', fontWeight: 700, background: '#b3324a', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+                            >REVOKE</button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setReaderNft(selectedNft); setReaderWebtoon(false); setSelectedNft(null) }}
+                              style={{ padding: '.4rem .85rem', fontSize: '.8rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+                              title="Open the comic, then click LOAN in the bottom bar"
+                            >LOAN</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 <div className="nft-detail-cell">
@@ -1138,11 +1259,43 @@ export function NftGrid({
           url={readerNft.animationUrl || ''}
           coverUrl={readerNft.imageUrl}
           contractAddress={readerNft.contractAddress}
+          tokenId={readerNft.tokenId}
           viewerTier={readerNft.rarity}
           isAdmin={isSuperadmin}
+          loanState={readerNft.loanState || null}
           forceFormat={readerWebtoon ? 'webtoon' : undefined}
           onClose={() => { setReaderNft(null); setReaderWebtoon(false) }}
+          onLoansChanged={onLoansChanged}
         />
+      )}
+
+      {/* Loan confirmation modal — Return to Owner / Revoke Loan. */}
+      {loanConfirm && typeof document !== 'undefined' && createPortal(
+        <div onClick={() => !loanBusy && setLoanConfirm(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10010, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#1a1a2e', border: '1px solid rgba(106,36,250,.4)', borderRadius: 12, padding: '1.25rem', minWidth: 'min(440px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,.6)' }}>
+            <h3 style={{ color: '#fff', margin: '0 0 .6rem', fontSize: '1rem', fontWeight: 700 }}>
+              {loanConfirm.kind === 'return' ? 'Return to owner' : 'Revoke loan'}
+            </h3>
+            <p style={{ color: '#e4dad1', margin: '0 0 1rem', fontSize: '.9rem', lineHeight: 1.45 }}>
+              {loanConfirm.kind === 'return'
+                ? <>Return <strong>{loanConfirm.nftName}</strong> to {loanConfirm.counterpartyLabel}? You will lose access immediately.</>
+                : <>Cancel the loan of <strong>{loanConfirm.nftName}</strong> to {loanConfirm.counterpartyLabel}? They will lose access immediately and you can read it again.</>}
+            </p>
+            <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
+              <button type="button" disabled={loanBusy} onClick={() => setLoanConfirm(null)}
+                style={{ padding: '.5rem 1rem', fontSize: '.85rem', background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: 4, color: '#bab1a8', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button type="button" disabled={loanBusy} onClick={runLoanAction}
+                style={{ padding: '.5rem 1rem', fontSize: '.85rem', fontWeight: 700, background: loanConfirm.kind === 'return' ? '#2ea043' : '#b3324a', border: 'none', borderRadius: 4, color: '#fff', cursor: loanBusy ? 'wait' : 'pointer' }}>
+                {loanBusy ? '…' : (loanConfirm.kind === 'return' ? 'Return' : 'Revoke')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   )

@@ -234,12 +234,22 @@ interface ModalState {
   resolve: (v: string | boolean | null) => void
 }
 
+/** Active-loan context for this specific mint, threaded down from the
+ *  wallet. Inlined here (rather than imported from NftGrid) to avoid a
+ *  type-import cycle through ComicReaderDispatch. */
+type ReaderLoanState =
+  | { kind: 'lent'; loanId: string; status: 'pending' | 'active'; toLabel: string; expiresAt: string }
+  | { kind: 'borrowed'; loanId: string; fromLabel: string; expiresAt: string }
+
 export function ComicReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, viewerTier = null, onSwitchFormat }:
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, tokenId = null, viewerTier = null, loanState = null, onSwitchFormat, onLoansChanged }:
   {
     name: string; url: string; onClose: () => void; isAdmin?: boolean
-    coverUrl?: string | null; contractAddress?: string | null; viewerTier?: string | null
+    coverUrl?: string | null; contractAddress?: string | null; tokenId?: string | null
+    viewerTier?: string | null
+    loanState?: ReaderLoanState | null
     onSwitchFormat?: (f: 'pages' | 'webtoon') => void
+    onLoansChanged?: () => void
   },
 ) {
   const { cid, entry } = parseCid(url, name, contractAddress || undefined)
@@ -282,6 +292,17 @@ export function ComicReader(
   const [modal, setModal] = useState<ModalState | null>(null)
   const [modalInput, setModalInput] = useState('')
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  // Loan flow state. `loanOpen` toggles the create-loan modal; once the
+  // server returns a loanCode we move into the "show shareable URL" view
+  // by stashing the result in `loanResult`.
+  const [loanOpen, setLoanOpen] = useState(false)
+  const [loanDays, setLoanDays] = useState(7)
+  const [loanInvitee, setLoanInvitee] = useState('')
+  const [loanBusy, setLoanBusy] = useState(false)
+  const [loanResult, setLoanResult] = useState<{ url: string; expiresAt: string } | null>(null)
+  const [loanError, setLoanError] = useState('')
+  const [returnOpen, setReturnOpen] = useState(false)
+  const [returnBusy, setReturnBusy] = useState(false)
   // Zoom: 1 = normal. Pan (x, y) is the translate applied before the scale,
   // with transform-origin = top-left. Wheel = 2% per tick, anchored at cursor;
   // touch = standard pinch-to-zoom anchored at the finger midpoint.
@@ -711,6 +732,47 @@ export function ComicReader(
       onSwitchFormat?.('webtoon')
     } catch (e) { await ask.alert('Could not switch format: ' + (e instanceof Error ? e.message : String(e)), 'Failed') }
   }
+
+  // ── Loan flow ────────────────────────────────────────────────────────────
+  const submitLoan = async () => {
+    if (!contractAddress || !tokenId) { setLoanError('Missing NFT identifier'); return }
+    setLoanBusy(true); setLoanError('')
+    try {
+      const r = await fetch('/api/loans', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress, tokenId, days: loanDays,
+          inviteeLabel: loanInvitee.trim() || null,
+        }),
+      })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        setLoanError(j?.error || `HTTP ${r.status}`)
+      } else {
+        const j = await r.json() as { url: string; expiresAt: string }
+        setLoanResult({ url: j.url, expiresAt: j.expiresAt })
+        onLoansChanged?.()
+      }
+    } catch (e) { setLoanError(e instanceof Error ? e.message : String(e)) }
+    setLoanBusy(false)
+  }
+  const submitReturn = async () => {
+    if (!loanState || loanState.kind !== 'borrowed') return
+    setReturnBusy(true)
+    try {
+      const r = await fetch(`/api/loans/${loanState.loanId}/return`, { method: 'POST' })
+      if (r.ok) {
+        onLoansChanged?.()
+        setReturnOpen(false)
+        onClose()
+      } else { setReturnBusy(false) }
+    } catch { setReturnBusy(false) }
+  }
+  const copyLoanUrl = async () => {
+    if (!loanResult) return
+    try { await navigator.clipboard.writeText(loanResult.url); flashToast('ok', 'Loan link copied') } catch { /* */ }
+  }
+
   const startUpload = (m: 'replace' | 'before' | 'after', index: number) => {
     pending.current = { mode: m, index }
     fileRef.current?.click()
@@ -1017,12 +1079,23 @@ export function ComicReader(
           {groups > 1 && navOk && <button style={{ ...btn, flexShrink: 0 }} title="Next group" onClick={() => go(spreadOf(Math.min(gStart + perGroup, total - 1)), 'next')} disabled={group >= groups - 1}>&raquo;</button>}
           <button style={{ ...nav, flexShrink: 0 }} title="Next (wraps)" onClick={() => go(sIdx + 1, 'next')} disabled={!navOk}>&#8250;</button>
           <button style={{ ...btn, flexShrink: 0 }} title="Last" onClick={() => go(spreads.length - 1, 'next')} disabled={!navOk || sIdx >= spreads.length - 1}>&rsaquo;|</button>
+          {/* Per-user actions — visible to everyone (not admin-gated):
+              LOAN (owner-side) or RETURN (borrower-side). Hidden when the
+              NFT is already actively loaned out (the owner can't loan
+              what's locked) — but they can revoke via the Grid card.  */}
+          {navOk && contractAddress && tokenId && (
+            loanState?.kind === 'borrowed' ? (
+              <button style={{ ...btn, marginLeft: 'auto', background: '#2ea043', color: '#fff', fontWeight: 700 }}
+                title={`Return to ${loanState.fromLabel}`} onClick={() => setReturnOpen(true)}>RETURN</button>
+            ) : loanState?.kind === 'lent' && loanState.status === 'active' ? null : (
+              <button style={{ ...btn, marginLeft: 'auto', background: '#2ea043', color: '#fff', fontWeight: 700 }}
+                title="Loan this comic to a friend" onClick={() => { setLoanOpen(true); setLoanResult(null); setLoanError(''); setLoanInvitee(''); setLoanDays(7) }}>LOAN</button>
+            )
+          )}
           {admin && navOk && (
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: '.25rem' }}>
+            <span style={{ marginLeft: !contractAddress || !tokenId ? 'auto' : 0, display: 'flex', gap: '.25rem' }}>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
                 title="Toggle admin page grid" onClick={() => { setGridOpen(g => !g); setGsel(new Set()) }}>{gridOpen ? 'Reader' : 'Grid'}</button>
-              <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
-                title="Add page(s) at the end" onClick={() => startUpload('after', total - 1)}>+ Page</button>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
                 title="Mirror all pages to Arweave (permanent double-fallback)" onClick={backfillArweave}>Arweave</button>
               <button style={{ ...btn, background: 'rgba(106,36,250,.25)', color: '#fff' }}
@@ -1114,6 +1187,90 @@ export function ComicReader(
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* LOAN creation modal — either the form or the resulting share link. */}
+      {loanOpen && (
+        <div onClick={() => !loanBusy && setLoanOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10005, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#1a1a2e', border: '1px solid rgba(46,160,67,.5)', borderRadius: 12, padding: '1.25rem', minWidth: 'min(440px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,.6)' }}>
+            <h3 style={{ color: '#fff', margin: '0 0 .6rem', fontSize: '1rem', fontWeight: 700 }}>
+              {loanResult ? 'Loan link ready' : 'Loan this comic'}
+            </h3>
+            {!loanResult ? (
+              <>
+                <p style={{ color: '#e4dad1', margin: '0 0 1rem', fontSize: '.9rem', lineHeight: 1.45 }}>
+                  Loaning <strong>{name}</strong>. The clock starts now; your friend can read it for the chosen period. Once they accept, you can&apos;t read this mint until they return it or the time runs out.
+                </p>
+                <label style={{ display: 'block', color: '#bab1a8', fontSize: '.75rem', marginBottom: '.3rem' }}>Days (1–90)</label>
+                <input type="number" min={1} max={90} value={loanDays} onChange={e => setLoanDays(Math.max(1, Math.min(90, parseInt(e.target.value || '7', 10))))}
+                  style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '.8rem', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', color: '#bab1a8', fontSize: '.75rem', marginBottom: '.3rem' }}>Send to (email/phone) — optional, shown as &ldquo;Loaned to&hellip;&rdquo; until they claim</label>
+                <input type="text" value={loanInvitee} onChange={e => setLoanInvitee(e.target.value)} placeholder="friend@example.com"
+                  style={{ width: '100%', background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.95rem', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                {loanError && <p style={{ color: '#ff6b6b', fontSize: '.8rem', margin: '0 0 .75rem' }}>{loanError}</p>}
+                <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
+                  <button type="button" disabled={loanBusy} onClick={() => setLoanOpen(false)}
+                    style={{ padding: '.5rem 1rem', fontSize: '.85rem', background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: 4, color: '#bab1a8', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button type="button" disabled={loanBusy} onClick={submitLoan}
+                    style={{ padding: '.5rem 1rem', fontSize: '.85rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: loanBusy ? 'wait' : 'pointer' }}>
+                    {loanBusy ? '…' : 'Create loan'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#e4dad1', margin: '0 0 .5rem', fontSize: '.9rem', lineHeight: 1.45 }}>
+                  Send this link to your friend. They&apos;ll sign in (or sign up) and the comic will appear in their wallet.
+                </p>
+                <p style={{ color: '#7a7572', margin: '0 0 .75rem', fontSize: '.75rem' }}>
+                  Expires {new Date(loanResult.expiresAt).toLocaleString()}
+                </p>
+                <div style={{ display: 'flex', gap: '.4rem', marginBottom: '1rem' }}>
+                  <input type="text" readOnly value={loanResult.url} onFocus={e => e.currentTarget.select()}
+                    style={{ flex: 1, background: '#0b0b0b', border: '1px solid rgba(255,255,255,.15)', color: '#fff', padding: '.55rem .7rem', borderRadius: 6, fontSize: '.85rem', boxSizing: 'border-box' }} />
+                  <button type="button" onClick={copyLoanUrl}
+                    style={{ padding: '.5rem .85rem', fontSize: '.85rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>
+                    Copy
+                  </button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setLoanOpen(false)}
+                    style={{ padding: '.5rem 1rem', fontSize: '.85rem', background: 'var(--lw-purple, #6a24fa)', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Borrower's RETURN confirmation. */}
+      {returnOpen && loanState?.kind === 'borrowed' && (
+        <div onClick={() => !returnBusy && setReturnOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10005, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#1a1a2e', border: '1px solid rgba(46,160,67,.5)', borderRadius: 12, padding: '1.25rem', minWidth: 'min(440px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,.6)' }}>
+            <h3 style={{ color: '#fff', margin: '0 0 .6rem', fontSize: '1rem', fontWeight: 700 }}>Return to owner</h3>
+            <p style={{ color: '#e4dad1', margin: '0 0 1rem', fontSize: '.9rem', lineHeight: 1.45 }}>
+              Return <strong>{name}</strong> to {loanState.fromLabel}? You will lose access immediately.
+            </p>
+            <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
+              <button type="button" disabled={returnBusy} onClick={() => setReturnOpen(false)}
+                style={{ padding: '.5rem 1rem', fontSize: '.85rem', background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: 4, color: '#bab1a8', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button type="button" disabled={returnBusy} onClick={submitReturn}
+                style={{ padding: '.5rem 1rem', fontSize: '.85rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: returnBusy ? 'wait' : 'pointer' }}>
+                {returnBusy ? '…' : 'Return'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

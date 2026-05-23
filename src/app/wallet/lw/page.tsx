@@ -69,12 +69,42 @@ function lwToNftItems(nfts: LwNft[], contract: LwContract): NftItem[] {
       rarity: tier || undefined,
       tokenType: contract.token_type,
       contractAddress: contract.contract_address,
+      tokenId: nft.token_id,
       attributes: nft.attributes
         .filter(a => a.trait_type)
         .map(a => ({ key: a.trait_type!, value: String(a.value || '') })),
     }
   })
 }
+
+interface OutgoingLoan { id: string; contractAddress: string; tokenId: string; status: 'pending' | 'active'; expiresAt: string; borrowerLabel: string }
+interface IncomingLoan {
+  id: string; contractAddress: string; tokenId: string; status: 'active'; expiresAt: string; ownerLabel: string
+  nftName: string; imageUrl: string | null; animationUrl: string | null
+  attributes: { key: string; value: string }[]
+  collection: string; chain: string; rarity: string | null
+}
+
+/** Build NftItem cards for the "Loaned to Me" pseudo-contract from
+ *  incoming loans returned by /api/loans/mine. */
+function incomingLoansToNftItems(incoming: IncomingLoan[]): NftItem[] {
+  return incoming.map(l => ({
+    id: `loan-${l.contractAddress}-${l.tokenId}`,
+    name: l.nftName,
+    imageUrl: l.imageUrl ? normalizeImageUrl(l.imageUrl) : null,
+    videoUrl: l.animationUrl && isVideoUrl(l.animationUrl) ? normalizeImageUrl(l.animationUrl) || undefined : undefined,
+    animationUrl: l.animationUrl || undefined,
+    collection: l.collection || 'Loaned to me',
+    chain: l.chain || undefined,
+    rarity: l.rarity || undefined,
+    contractAddress: l.contractAddress,
+    tokenId: l.tokenId,
+    attributes: l.attributes,
+    loanState: { kind: 'borrowed', loanId: l.id, fromLabel: l.ownerLabel, expiresAt: l.expiresAt },
+  }))
+}
+
+const LOANED_TO_ME_PSEUDO_ID = -1  // synthetic contract id for "Loaned to Me" entry
 
 const CHAIN_ICONS: Record<string, string> = {
   Polygon: 'https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/matic-network/small.png',
@@ -102,6 +132,19 @@ function LwWalletContent() {
   const [forging, setForging] = useState(false)
   const [showForgeConfirm, setShowForgeConfirm] = useState(false)
   const [isSuperadmin, setIsSuperadmin] = useState(false)
+  // Live loans for the signed-in user (outgoing greys lent-out cards;
+  // incoming populates the "Loaned to Me" pseudo-contract).
+  const [outgoingLoans, setOutgoingLoans] = useState<OutgoingLoan[]>([])
+  const [incomingLoans, setIncomingLoans] = useState<IncomingLoan[]>([])
+  const refreshLoans = useCallback(async () => {
+    try {
+      const r = await fetch('/api/loans/mine')
+      if (!r.ok) return
+      const j = await r.json() as { outgoing?: OutgoingLoan[]; incoming?: IncomingLoan[] }
+      setOutgoingLoans(j.outgoing || [])
+      setIncomingLoans(j.incoming || [])
+    } catch { /* silent */ }
+  }, [])
 
   useEffect(() => {
     (async () => {
@@ -169,7 +212,8 @@ function LwWalletContent() {
       setLoading(false)
     }
     load()
-  }, [])
+    refreshLoans()
+  }, [refreshLoans])
 
   // Escape cancels forge
   useEffect(() => {
@@ -272,6 +316,33 @@ function LwWalletContent() {
 
   const selectedContractData = contracts.find(c => c.id === selectedContract)
   const selectedNfts = selectedContract ? allNfts[selectedContract] || [] : []
+  const onLoanedToMe = selectedContract === LOANED_TO_ME_PSEUDO_ID
+
+  // Auto-select "Loaned to Me" for brand-new users (no real contracts of
+  // their own) once their incoming loans load.
+  useEffect(() => {
+    if (selectedContract == null && contracts.length === 0 && incomingLoans.length > 0) {
+      setSelectedContract(LOANED_TO_ME_PSEUDO_ID)
+    }
+  }, [selectedContract, contracts.length, incomingLoans.length])
+
+  // Build the NftItem list for the currently-selected view. For real
+  // contracts we attach loanState so lent-out mints show the grey
+  // "Loaned to X" overlay; for the pseudo-contract we render the
+  // borrowed comics directly from the incoming-loan payload.
+  const visibleNftItems: NftItem[] = onLoanedToMe
+    ? incomingLoansToNftItems(incomingLoans)
+    : (selectedContractData
+        ? lwToNftItems(selectedNfts, selectedContractData).map(item => {
+            const lent = outgoingLoans.find(l =>
+              l.contractAddress.toLowerCase() === (item.contractAddress || '').toLowerCase()
+              && l.tokenId === item.tokenId,
+            )
+            return lent
+              ? { ...item, loanState: { kind: 'lent', loanId: lent.id, status: lent.status, toLabel: lent.borrowerLabel, expiresAt: lent.expiresAt } as const }
+              : item
+          })
+        : [])
 
   return (
     <div className="lw-account-page">
@@ -322,14 +393,32 @@ function LwWalletContent() {
 
         {loading ? (
           <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '3rem 0' }}>Loading your NFTs...</p>
-        ) : contracts.length === 0 ? (
+        ) : contracts.length === 0 && incomingLoans.length === 0 ? (
           <p style={{ color: 'var(--lw-text-muted)', textAlign: 'center', padding: '3rem 0' }}>No LightningWorks NFTs found in your connected wallets.</p>
+        ) : contracts.length === 0 ? (
+          // Brand-new user — no own NFTs, only borrowed comics. Show
+          // them as a dedicated "Loaned Comics" section, no contract tabs.
+          <div className="lw-section">
+            <h2 className="lw-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              Loaned Comics
+              <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400 }}>({incomingLoans.length})</span>
+            </h2>
+            <NftGrid
+              nfts={incomingLoansToNftItems(incomingLoans)}
+              aspectRatio="5 / 7"
+              columns={5}
+              mobileColumns={3}
+              storageKey="nft-tags-lw-loans"
+              isSuperadmin={isSuperadmin}
+              onLoansChanged={refreshLoans}
+            />
+          </div>
         ) : (
           <>
             {/* Collection Tabs */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${Math.min(contracts.length, 4)}, 1fr)`,
+              gridTemplateColumns: `repeat(${Math.min(contracts.length + (incomingLoans.length ? 1 : 0), 4)}, 1fr)`,
               gap: '0.75rem',
               marginBottom: '1rem',
             }}>
@@ -369,25 +458,63 @@ function LwWalletContent() {
                   </button>
                 )
               })}
+              {/* Synthetic "Loaned to Me" tile — only present when the user
+                  has incoming loans. Sits alongside real contracts. */}
+              {incomingLoans.length > 0 && (() => {
+                const isSelected = selectedContract === LOANED_TO_ME_PSEUDO_ID
+                const firstImage = incomingLoans[0]?.imageUrl
+                  ? normalizeImageUrl(incomingLoans[0].imageUrl)
+                  : null
+                return (
+                  <button key="loaned-to-me"
+                    onClick={() => { setSelectedContract(LOANED_TO_ME_PSEUDO_ID); setForgeSelections([]); setShowForgeConfirm(false) }}
+                    style={{
+                      position: 'relative', height: '70px', borderRadius: '8px',
+                      border: isSelected ? '2px solid var(--lw-purple, #6a24fa)' : '2px solid rgba(46,160,67,.45)',
+                      backgroundColor: 'var(--lw-wallet-row-bg)',
+                      cursor: 'pointer', overflow: 'hidden',
+                      opacity: isSelected ? 1 : 0.75,
+                      transition: 'opacity 0.15s', padding: 0,
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.opacity = '0.9' }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.opacity = '0.75' }}
+                  >
+                    {firstImage && (
+                      <img src={firstImage} alt="" style={{ width: '60px', height: '100%', objectFit: 'cover', flexShrink: 0 }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    )}
+                    <div style={{ padding: '0 0.5rem', textAlign: 'left', overflow: 'hidden' }}>
+                      <p style={{ color: '#2ea043', fontSize: '0.8rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Loaned to Me
+                      </p>
+                      <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.65rem', margin: '0.15rem 0 0' }}>
+                        {incomingLoans.length} borrowed
+                      </p>
+                    </div>
+                  </button>
+                )
+              })()}
             </div>
 
             {/* NFT Grid */}
-            {selectedContractData && (
+            {(selectedContractData || onLoanedToMe) && (
               <div className="lw-section">
                 <h2 className="lw-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {selectedContractData.collection_name}
-                  <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400 }}>({selectedNfts.length})</span>
-                  {CHAIN_ICONS[selectedContractData.chain] && (
+                  {onLoanedToMe ? 'Loaned to Me' : selectedContractData!.collection_name}
+                  <span style={{ color: 'var(--lw-text-muted)', fontWeight: 400 }}>({visibleNftItems.length})</span>
+                  {!onLoanedToMe && selectedContractData && CHAIN_ICONS[selectedContractData.chain] && (
                     <img src={CHAIN_ICONS[selectedContractData.chain]} alt={selectedContractData.chain} style={{ width: '20px', height: '20px', borderRadius: '4px' }} />
                   )}
                 </h2>
                 <NftGrid
-                  nfts={lwToNftItems(selectedNfts, selectedContractData)}
+                  nfts={visibleNftItems}
                   aspectRatio="5 / 7"
                   columns={5}
                   mobileColumns={3}
-                  storageKey={`nft-tags-lw-${selectedContractData.contract_address}`}
+                  storageKey={onLoanedToMe ? 'nft-tags-lw-loans' : `nft-tags-lw-${selectedContractData!.contract_address}`}
                   isSuperadmin={isSuperadmin}
+                  onLoansChanged={refreshLoans}
                 />
               </div>
             )}

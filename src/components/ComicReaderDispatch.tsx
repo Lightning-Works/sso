@@ -18,6 +18,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ComicReader, parseCid } from './ComicReader'
 import { WebtoonReader } from './WebtoonReader'
+import type { NftLoanState } from './NftGrid'
 
 interface Props {
   name: string
@@ -26,13 +27,20 @@ interface Props {
   isAdmin?: boolean
   coverUrl?: string | null
   contractAddress?: string | null
+  /** On-chain token id — required for loan creation/return from the reader. */
+  tokenId?: string | null
   viewerTier?: string | null
+  /** Active loan context for this specific mint, threaded through from
+   *  the wallet so the reader knows whether to show LOAN or RETURN. */
+  loanState?: NftLoanState | null
   /** Skip the format probe and mount this reader directly. */
   forceFormat?: 'pages' | 'webtoon'
+  /** Called after the reader mutates a loan so the wallet can refresh. */
+  onLoansChanged?: () => void
 }
 
 export function ComicReaderDispatch(props: Props) {
-  const { forceFormat, ...readerProps } = props
+  const { forceFormat, loanState, ...readerProps } = props
   const { name, url, contractAddress, onClose } = props
   const [format, setFormat] = useState<'pages' | 'webtoon' | null>(forceFormat ?? null)
 
@@ -68,6 +76,6 @@ export function ComicReaderDispatch(props: Props) {
   }
 
   return format === 'webtoon'
-    ? <WebtoonReader {...readerProps} onSwitchFormat={setFormat} />
-    : <ComicReader {...readerProps} onSwitchFormat={setFormat} />
+    ? <WebtoonReader {...readerProps} loanState={loanState} onSwitchFormat={setFormat} />
+    : <ComicReader {...readerProps} loanState={loanState} onSwitchFormat={setFormat} />
 }
