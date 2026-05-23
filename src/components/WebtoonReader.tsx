@@ -164,12 +164,13 @@ type ReaderLoanState =
   | { kind: 'borrowed'; loanId: string; fromLabel: string; expiresAt: string }
 
 export function WebtoonReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, tokenId = null, viewerTier = null, loanState = null, onSwitchFormat, onLoansChanged }:
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, tokenId = null, viewerTier = null, loanState = null, initialAction = null, onSwitchFormat, onLoansChanged }:
   {
     name: string; url: string; onClose: () => void; isAdmin?: boolean
     coverUrl?: string | null; contractAddress?: string | null; tokenId?: string | null
     viewerTier?: string | null
     loanState?: ReaderLoanState | null
+    initialAction?: 'loan' | null
     onSwitchFormat?: (f: 'pages' | 'webtoon') => void
     onLoansChanged?: () => void
   },
@@ -177,7 +178,7 @@ export function WebtoonReader(
   // Loan flow params used by the bottom-bar LOAN/RETURN buttons. We
   // mark them void where unused so TS doesn't complain about unused
   // bindings until the webtoon-side loan UI is added in a follow-up.
-  void tokenId; void loanState; void onLoansChanged
+  void tokenId; void loanState; void initialAction; void onLoansChanged
   const { cid } = parseCid(url, name, contractAddress || undefined)
 
   const [phase, setPhase] = useState<'resolving' | 'ready' | 'unavailable'>('resolving')

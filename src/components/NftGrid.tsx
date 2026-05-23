@@ -168,6 +168,10 @@ export function NftGrid({
   const [readerNft, setReaderNft] = useState<NftItem | null>(null)
   // When the reader was opened via "Read Webtoon", force the webtoon layout.
   const [readerWebtoon, setReaderWebtoon] = useState(false)
+  // Optional auto-action when the reader opens — used by the detail
+  // modal's LOAN button so the user doesn't have to click LOAN again
+  // once the reader is up.
+  const [readerInitialAction, setReaderInitialAction] = useState<'loan' | null>(null)
   // Per-contract webtoon availability (lowercased address → strip count).
   const [webtoonContracts, setWebtoonContracts] = useState<Record<string, { exists: boolean; strips: number }>>({})
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -1086,9 +1090,8 @@ export function NftGrid({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => { setReaderNft(selectedNft); setReaderWebtoon(false); setSelectedNft(null) }}
+                              onClick={() => { setReaderNft(selectedNft); setReaderWebtoon(false); setReaderInitialAction('loan'); setSelectedNft(null) }}
                               style={{ padding: '.4rem .85rem', fontSize: '.8rem', fontWeight: 700, background: '#2ea043', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
-                              title="Open the comic, then click LOAN in the bottom bar"
                             >LOAN</button>
                           )}
                         </div>
@@ -1264,7 +1267,8 @@ export function NftGrid({
           isAdmin={isSuperadmin}
           loanState={readerNft.loanState || null}
           forceFormat={readerWebtoon ? 'webtoon' : undefined}
-          onClose={() => { setReaderNft(null); setReaderWebtoon(false) }}
+          initialAction={readerInitialAction}
+          onClose={() => { setReaderNft(null); setReaderWebtoon(false); setReaderInitialAction(null) }}
           onLoansChanged={onLoansChanged}
         />
       )}

@@ -35,6 +35,10 @@ interface Props {
   loanState?: NftLoanState | null
   /** Skip the format probe and mount this reader directly. */
   forceFormat?: 'pages' | 'webtoon'
+  /** Optional auto-action when the reader is ready — e.g. 'loan' opens
+   *  the create-loan modal immediately, so the wallet's LOAN button on
+   *  the NFT detail modal lands the user there directly. */
+  initialAction?: 'loan' | null
   /** Called after the reader mutates a loan so the wallet can refresh. */
   onLoansChanged?: () => void
 }

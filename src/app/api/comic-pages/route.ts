@@ -58,14 +58,15 @@ export async function GET(request: Request) {
   // by animation_url substring) both work without separate code paths.
   let owns = !!admin
   if (!owns && user) {
-    const contractIds: number[] = []
-    const contractAddresses: string[] = []
+    // Map of contract_id ↔ lowercased contract_address — both directions
+    // are needed: id for joining lw_nft_data, address for joining loans.
+    const idToAddr = new Map<number, string>()
     if (cid.startsWith('lw')) {
       const addr = '0x' + cid.slice(2)
       if (/^0x[0-9a-f]{4,}$/.test(addr)) {
         const { data: ct } = await db.from('lw_nft_contracts')
           .select('id, contract_address').ilike('contract_address', addr).limit(1).maybeSingle()
-        if (ct) { contractIds.push(ct.id); contractAddresses.push(String(ct.contract_address).toLowerCase()) }
+        if (ct) idToAddr.set(ct.id, String(ct.contract_address).toLowerCase())
       }
     } else {
       // Real IPFS cid — every contract whose minted NFTs reference it.
@@ -75,21 +76,35 @@ export async function GET(request: Request) {
       if (ids.length) {
         const { data: cts } = await db.from('lw_nft_contracts')
           .select('id, contract_address').in('id', ids)
-        for (const c of cts || []) {
-          contractIds.push(c.id); contractAddresses.push(String(c.contract_address).toLowerCase())
-        }
+        for (const c of cts || []) idToAddr.set(c.id, String(c.contract_address).toLowerCase())
       }
     }
+    const contractIds = [...idToAddr.keys()]
+    const contractAddresses = [...idToAddr.values()]
 
-    // (b) any owned mint of any of these contracts
+    // (b) Any OWNED mint of any of these contracts that ISN'T currently
+    //     lent out — locked-out mints don't grant access, per the spec.
     if (contractIds.length) {
       const { data: wallets } = await db.from('connected_wallets')
         .select('wallet_address').eq('user_id', user.id)
       const mine = new Set((wallets || []).map(w => String(w.wallet_address).toLowerCase()))
       if (mine.size) {
+        // Active outgoing loans this user has on any of these contracts
+        // — those mints are locked out for them while the loan is active.
+        const lockedOut = new Set<string>()
+        const { data: outLoans } = await db.from('comic_loans').select('*')
+          .eq('owner_user_id', user.id).in('contract_address', contractAddresses)
+        for (const l of (outLoans || []) as LoanRow[]) {
+          if (isLoanActive(l)) lockedOut.add(`${l.contract_address.toLowerCase()}:${l.token_id}`)
+        }
         const { data: mints } = await db.from('lw_nft_data')
-          .select('contract_id, owner').in('contract_id', contractIds).limit(20000)
-        owns = (mints || []).some(m => m.owner && mine.has(String(m.owner).toLowerCase()))
+          .select('contract_id, token_id, owner').in('contract_id', contractIds).limit(20000)
+        owns = (mints || []).some(m => {
+          if (!m.owner || !mine.has(String(m.owner).toLowerCase())) return false
+          const addr = idToAddr.get(m.contract_id)
+          if (!addr) return true
+          return !lockedOut.has(`${addr}:${m.token_id}`)
+        })
       }
     }
 

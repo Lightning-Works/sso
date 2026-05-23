@@ -242,12 +242,15 @@ type ReaderLoanState =
   | { kind: 'borrowed'; loanId: string; fromLabel: string; expiresAt: string }
 
 export function ComicReader(
-  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, tokenId = null, viewerTier = null, loanState = null, onSwitchFormat, onLoansChanged }:
+  { name, url, onClose, isAdmin = false, coverUrl = null, contractAddress = null, tokenId = null, viewerTier = null, loanState = null, initialAction = null, onSwitchFormat, onLoansChanged }:
   {
     name: string; url: string; onClose: () => void; isAdmin?: boolean
     coverUrl?: string | null; contractAddress?: string | null; tokenId?: string | null
     viewerTier?: string | null
     loanState?: ReaderLoanState | null
+    /** Auto-trigger an action once the reader is up — currently only
+     *  'loan' (auto-opens the create-loan modal). */
+    initialAction?: 'loan' | null
     onSwitchFormat?: (f: 'pages' | 'webtoon') => void
     onLoansChanged?: () => void
   },
@@ -296,6 +299,19 @@ export function ComicReader(
   // server returns a loanCode we move into the "show shareable URL" view
   // by stashing the result in `loanResult`.
   const [loanOpen, setLoanOpen] = useState(false)
+  // Fire the LOAN auto-open exactly once per reader mount.
+  const initialActionFired = useRef(false)
+  useEffect(() => {
+    if (initialActionFired.current) return
+    if (initialAction !== 'loan') return
+    // Only open the create-loan modal once we know enough to use it: the
+    // mint identifiers, not borrowing, and not currently lent-active.
+    if (!contractAddress || !tokenId) return
+    if (loanState?.kind === 'borrowed') return
+    if (loanState?.kind === 'lent' && loanState.status === 'active') return
+    initialActionFired.current = true
+    setLoanOpen(true)
+  }, [initialAction, contractAddress, tokenId, loanState])
   const [loanDays, setLoanDays] = useState(7)
   const [loanInvitee, setLoanInvitee] = useState('')
   const [loanBusy, setLoanBusy] = useState(false)
