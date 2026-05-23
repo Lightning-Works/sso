@@ -79,6 +79,22 @@ async function fileToWebpWebtoon(file: File): Promise<File> {
   return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
 }
 
+// If a single converted strip is still over the per-request cap, retry
+// the WebP encode at a lower quality so it fits — vs. failing the upload.
+async function reencodeWebtoonSmaller(file: File, targetMaxBytes: number): Promise<File> {
+  for (const q of [0.65, 0.5]) {
+    try {
+      const bmp = await createImageBitmap(file)
+      const c = drawScaledWebtoon(bmp, bmp.width, bmp.height)
+      const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', q))
+      if (blob.size <= targetMaxBytes) {
+        return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
+      }
+    } catch { /* try next */ }
+  }
+  return file
+}
+
 interface ModalState {
   kind: 'prompt' | 'confirm' | 'alert'
   title?: string
@@ -387,6 +403,8 @@ export function WebtoonReader(
     const job = pending.current
     e.target.value = ''
     if (!list.length || !job) return
+
+    // Step 1 — convert non-webp / oversize sources to WebP client-side.
     let files = list
     const nonWebp = list.filter(f => f.type !== 'image/webp')
     const tooBig = list.some(f => f.size > 3 * 1024 * 1024)
@@ -398,7 +416,8 @@ export function WebtoonReader(
       if (!ok) return
       files = await Promise.all(list.map(f => fileToWebpWebtoon(f).catch(() => f)))
     }
-    // Default the section to whatever strip we're inserting next to.
+
+    // Step 2 — section prompt.
     const nearSection = strips[job.index]?.section || sections[sections.length - 1]?.name || 'E1'
     const section = await ask.prompt(
       'Episode / section for these strip(s) — e.g. E1, E2, Cover, Interview:',
@@ -408,24 +427,93 @@ export function WebtoonReader(
     if (section == null) return
     const sec = section.trim() || 'E1'
 
-    const fd = new FormData()
-    fd.append('cid', cid); fd.append('name', name)
-    fd.append('mode', job.mode); fd.append('index', String(job.index))
-    files.forEach((f, i) => {
-      const lbl = job.mode === 'replace'
-        ? (strips[job.index + i]?.label || sec)
-        : (files.length > 1 ? `${sec} ${i + 1}` : sec)
-      fd.append('label', lbl)
-      fd.append('section', sec)
-      fd.append('file', f)
-    })
-    try {
-      const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
-      if (!r.ok) throw new Error(await errFromResponse(r))
-      setGsel(new Set())
-      await resolve()
-      flashToast('ok', files.length === 1 ? 'Strip uploaded' : `${files.length} strips uploaded`)
-    } catch (err) { await ask.alert('Upload failed: ' + (err instanceof Error ? err.message : String(err)), 'Upload failed') }
+    // Step 3 — re-encode any single file that's still over the per-request
+    // cap (Vercel limits serverless function bodies to ~4.5 MB; we use
+    // 3.8 MB as the safety threshold to leave room for FormData overhead).
+    const PER_BATCH_MAX = 3.8 * 1024 * 1024
+    files = await Promise.all(files.map(f => f.size > PER_BATCH_MAX ? reencodeWebtoonSmaller(f, PER_BATCH_MAX) : Promise.resolve(f)))
+    const stillTooBig = files.find(f => f.size > PER_BATCH_MAX)
+    if (stillTooBig) {
+      await ask.alert(
+        `"${stillTooBig.name}" is ${(stillTooBig.size / 1024 / 1024).toFixed(1)} MB after compression — Vercel caps each request at 4.5 MB. Split this strip into shorter sections (the reader joins them back end-to-end) and try again.`,
+        'Strip too tall',
+      )
+      return
+    }
+
+    // Step 4 — pack into batches that each stay under the cap. Then upload
+    // sequentially, shifting mode/index forward so each batch lands right
+    // after the previous one in the strip order.
+    const batches: File[][] = []
+    let cur: File[] = []
+    let curSize = 0
+    for (const f of files) {
+      if (cur.length > 0 && curSize + f.size > PER_BATCH_MAX) {
+        batches.push(cur); cur = []; curSize = 0
+      }
+      cur.push(f); curSize += f.size
+    }
+    if (cur.length) batches.push(cur)
+
+    let currentMode: 'replace' | 'before' | 'after' = job.mode
+    let currentIndex = job.index
+    let labelIdx = 0
+    let uploadedCount = 0
+    let failed = false
+
+    for (const batch of batches) {
+      const fd = new FormData()
+      fd.append('cid', cid); fd.append('name', name)
+      fd.append('mode', currentMode); fd.append('index', String(currentIndex))
+      batch.forEach((f, i) => {
+        const overall = labelIdx + i
+        const lbl = currentMode === 'replace'
+          ? (strips[currentIndex + overall]?.label || sec)
+          : (files.length > 1 ? `${sec} ${overall + 1}` : sec)
+        fd.append('label', lbl)
+        fd.append('section', sec)
+        fd.append('file', f)
+      })
+      try {
+        const r = await fetch('/api/comics/upload', { method: 'POST', body: fd })
+        if (!r.ok) throw new Error(await errFromResponse(r))
+      } catch (err) {
+        await ask.alert(
+          `Upload failed after ${uploadedCount}/${files.length} strip(s): ${err instanceof Error ? err.message : String(err)}`,
+          'Upload failed',
+        )
+        failed = true
+        break
+      }
+      uploadedCount += batch.length
+      labelIdx += batch.length
+      // Shift the next batch to land right after the freshly-uploaded one.
+      if (currentMode === 'before') {
+        // splice(index, 0, ...batch) → new items occupy index..index+N-1.
+        // Next batch should go AFTER the last new item.
+        currentMode = 'after'
+        currentIndex = currentIndex + batch.length - 1
+      } else if (currentMode === 'after') {
+        // splice(index+1, 0, ...batch) → new items at index+1..index+N.
+        currentIndex = currentIndex + batch.length
+      } else if (currentMode === 'replace') {
+        // splice(index, N, ...batch) → replaced N items at index..index+N-1.
+        // Continue inserting after the last replaced item.
+        currentMode = 'after'
+        currentIndex = currentIndex + batch.length - 1
+      }
+    }
+
+    setGsel(new Set())
+    await resolve()
+    if (!failed) {
+      flashToast(
+        'ok',
+        files.length === 1 ? 'Strip uploaded'
+          : batches.length === 1 ? `${files.length} strips uploaded`
+            : `${files.length} strips uploaded (in ${batches.length} batches)`,
+      )
+    }
   }
 
   const convertExisting = async (i: number) => {
