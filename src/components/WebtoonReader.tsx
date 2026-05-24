@@ -80,17 +80,32 @@ async function fileToWebpWebtoon(file: File): Promise<File> {
 }
 
 // If a single converted strip is still over the per-request cap, retry
-// the WebP encode at a lower quality so it fits — vs. failing the upload.
+// the WebP encode at progressively smaller width + lower quality. Pure
+// quality reduction often isn't enough for very tall strips — at 1600px
+// wide and full WEBTOON_MAX_H, even q=0.5 can stay over 3.8 MB.
 async function reencodeWebtoonSmaller(file: File, targetMaxBytes: number): Promise<File> {
-  for (const q of [0.65, 0.5]) {
+  const strategies: { maxW: number; q: number }[] = [
+    { maxW: 1400, q: 0.7 },
+    { maxW: 1200, q: 0.6 },
+    { maxW: 1000, q: 0.55 },
+    { maxW: 900, q: 0.5 },
+  ]
+  for (const { maxW, q } of strategies) {
     try {
       const bmp = await createImageBitmap(file)
-      const c = drawScaledWebtoon(bmp, bmp.width, bmp.height)
+      let scale = 1
+      if (bmp.width > maxW) scale = maxW / bmp.width
+      if (bmp.height * scale > WEBTOON_MAX_H) scale = WEBTOON_MAX_H / bmp.height
+      const outW = Math.max(1, Math.round(bmp.width * scale))
+      const outH = Math.max(1, Math.round(bmp.height * scale))
+      const c = document.createElement('canvas')
+      c.width = outW; c.height = outH
+      c.getContext('2d')!.drawImage(bmp, 0, 0, outW, outH)
       const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/webp', q))
       if (blob.size <= targetMaxBytes) {
         return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' })
       }
-    } catch { /* try next */ }
+    } catch { /* try next strategy */ }
   }
   return file
 }
@@ -460,6 +475,13 @@ export function WebtoonReader(
     let labelIdx = 0
     let uploadedCount = 0
     let failed = false
+    // Sticky flag: even though batches 2+ switch to mode='after' (so they
+    // *insert* into the right spot rather than re-replace), the user's
+    // original intent was "replace this slot with N files" so we keep
+    // reading original strip labels for ALL batches, anchored at the
+    // initial replace index — otherwise batched replace would diverge
+    // from the single-request behavior.
+    const originalReplaceIdx = job.mode === 'replace' ? job.index : -1
 
     for (const batch of batches) {
       const fd = new FormData()
@@ -467,9 +489,14 @@ export function WebtoonReader(
       fd.append('mode', currentMode); fd.append('index', String(currentIndex))
       batch.forEach((f, i) => {
         const overall = labelIdx + i
-        const lbl = currentMode === 'replace'
-          ? (strips[currentIndex + overall]?.label || sec)
-          : (files.length > 1 ? `${sec} ${overall + 1}` : sec)
+        let lbl: string
+        if (originalReplaceIdx >= 0) {
+          lbl = strips[originalReplaceIdx + overall]?.label || sec
+        } else if (files.length > 1) {
+          lbl = `${sec} ${overall + 1}`
+        } else {
+          lbl = sec
+        }
         fd.append('label', lbl)
         fd.append('section', sec)
         fd.append('file', f)
