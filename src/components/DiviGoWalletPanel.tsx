@@ -301,16 +301,13 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width={22} height={22} style={{ borderRadius: '50%' }} />
         DiviGo Wallet
-        {status?.projectName && (
-          <span style={{ fontSize: '0.7rem', color: 'var(--lw-text-muted)', fontWeight: 400, marginLeft: '0.25rem' }}>
-            · {status.projectName}
-          </span>
-        )}
+        {/* Status line: matches the DiviGo Wallet title's font + size, no
+            chip/box. Only the color shifts to signal state. */}
         <span style={{
-          marginLeft: 'auto', fontSize: '0.7rem',
+          marginLeft: 'auto',
+          fontFamily: 'var(--lw-font-display)',
+          fontSize: '1.1rem',
           color: headerBadge.color,
-          border: `1px solid ${headerBadge.border}`,
-          borderRadius: 4, padding: '1px 6px',
         }}>
           {headerBadge.text}
         </span>
@@ -340,37 +337,54 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                 Connect to DiviGo in Telegram
               </h3>
 
-              {/* Flow A — Has DiviGo + Telegram. Primary purple CTA. */}
+              {/* All three buttons share the same black, left-aligned styling.
+                  Equal weight; only the action differs. Border gives them
+                  definition against the panel background (#181818). */}
+              {/* Flow A — Has DiviGo + Telegram. */}
               <button
                 onClick={startLinkFlow}
                 disabled={linkStarting}
-                className="lw-btn lw-btn-primary"
-                style={{ width: '100%', padding: '0.6rem 1rem', marginBottom: '0.4rem',
-                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                style={{
+                  width: '100%', padding: '0.6rem 0.9rem', marginBottom: '0.4rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '0.5rem',
+                  background: '#000', color: 'var(--lw-text-white)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6,
+                  fontSize: '0.9rem', fontWeight: 600, textAlign: 'left',
+                  cursor: linkStarting ? 'wait' : 'pointer',
+                  opacity: linkStarting ? 0.6 : 1,
+                }}
               >
                 {linkStarting ? 'Starting…' : 'Have DiviGo? — Connect'}
               </button>
 
-              {/* Flow B — Has Telegram, no DiviGo. Secondary button, opens
-                  @DiviGoBot for the standard DiviGo signup flow. */}
+              {/* Flow B — Has Telegram, no DiviGo. Opens @DiviGoBot for
+                  DiviGo's normal signup flow. */}
               <a
                 href={`https://t.me/${DIVIGO_BOT_HANDLE}`}
                 target="_blank" rel="noopener noreferrer"
-                className="lw-btn lw-btn-secondary"
-                style={{ width: '100%', padding: '0.6rem 1rem', marginBottom: '0.4rem',
-                         textDecoration: 'none', boxSizing: 'border-box',
-                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                style={{
+                  width: '100%', padding: '0.6rem 0.9rem', marginBottom: '0.4rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '0.5rem',
+                  background: '#000', color: 'var(--lw-text-white)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6,
+                  fontSize: '0.9rem', fontWeight: 600, textAlign: 'left',
+                  textDecoration: 'none', boxSizing: 'border-box',
+                }}
               >
                 Have Telegram but not DiviGo?
               </a>
 
-              {/* Flow C — No Telegram. Secondary button that expands the
-                  install-links panel. Telegram logo precedes the text. */}
+              {/* Flow C — No Telegram. Expands install-links panel. */}
               <button
                 onClick={() => setShowTelegramHelp(s => !s)}
-                className="lw-btn lw-btn-secondary"
-                style={{ width: '100%', padding: '0.6rem 1rem',
-                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                style={{
+                  width: '100%', padding: '0.6rem 0.9rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '0.5rem',
+                  background: '#000', color: 'var(--lw-text-white)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6,
+                  fontSize: '0.9rem', fontWeight: 600, textAlign: 'left',
+                  cursor: 'pointer',
+                }}
               >
                 <TelegramIcon size={18} />
                 <span><strong>GET</strong> Telegram First…</span>
