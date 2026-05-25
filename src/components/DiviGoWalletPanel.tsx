@@ -303,14 +303,25 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
           )}
 
           {/* ─── Linked-account summary ──────────────────────────────── */}
-          {linked && status.link && (
+          {linked && status.link && (() => {
+            const id = status.link.divigo_number
+            // If it contains non-digits, treat as a DiviGo @username and
+            // re-attach the @ for display (we strip it on input).
+            const display = /^\d+$/.test(id) ? id : `@${id}`
+            const ROUTE_LABEL: Record<string, string> = {
+              telegram: 'Telegram', telegramLaunchGoat: 'Telegram',
+              wa: 'WhatsApp', whatsapp: 'WhatsApp',
+              meta: 'Messenger', signal: 'Signal',
+            }
+            const routeLabel = ROUTE_LABEL[status.link.divigo_route] || status.link.divigo_route
+            return (
             <div style={panelStyle({ padding: '0.7rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' })}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>Linked DiviGo account</div>
                 <div style={{ color: 'var(--lw-text-white)', fontSize: '0.9rem', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                  {status.link.divigo_number}
+                  {display}
                   <span style={{ color: 'var(--lw-text-muted)', marginLeft: '0.5rem', fontFamily: 'inherit' }}>
-                    via {status.link.divigo_route === 'wa' ? 'WhatsApp' : status.link.divigo_route}
+                    via {routeLabel}
                   </span>
                 </div>
               </div>
@@ -325,7 +336,8 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                 Unlink
               </button>
             </div>
-          )}
+            )
+          })()}
 
           {/* ─── Balance block (always shown so the UI shape is stable) ── */}
           <div style={panelStyle({ padding: '1rem', marginBottom: '0.75rem', opacity: linked && configured ? 1 : 0.5 })}>

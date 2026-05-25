@@ -50,13 +50,32 @@ export type MsgRoute = 'telegram' | 'telegramLaunchGoat' | 'wa' | 'whatsapp' | '
 
 async function callApi(method: string, params: Record<string, unknown>): Promise<unknown> {
   if (!KEY) throw new DiviGoNotConfiguredError()
-  const res = await fetch(`${BASE}/api`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret: KEY, method, ...params }),
-    signal: AbortSignal.timeout(15000),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/api`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: KEY, method, ...params }),
+      signal: AbortSignal.timeout(15000),
+    })
+  } catch (e) {
+    // Network-level failure — most commonly TLS validation (DiviGo's cert has
+    // been expired & on the wrong CN since 2024-09) or DNS / connection refused.
+    // Unwrap the cause chain so the UI can show "certificate has expired"
+    // instead of the opaque "fetch failed".
+    const msg = e instanceof Error ? e.message : String(e)
+    const cause = (e && typeof e === 'object' && 'cause' in e && e.cause)
+      ? (e.cause instanceof Error ? e.cause.message : String(e.cause))
+      : ''
+    throw new Error(`DiviGo ${method} unreachable: ${msg}${cause ? ` — ${cause}` : ''}`)
+  }
   const text = await res.text()
+  // The production divigo.com sits behind a JS-based bot challenge (strategicts.net)
+  // that returns an HTML fingerprinting page in response to every POST. If we see
+  // that — or any other HTML — surface a clearer message than a JSON parse error.
+  if (text.trimStart().startsWith('<')) {
+    throw new Error(`DiviGo ${method} returned an HTML page instead of JSON (bot-challenge / TLS proxy in front of /api). Our server IP likely needs to be allowlisted by DiviGo, or a partner-only API hostname is required.`)
+  }
   let data: unknown
   try { data = JSON.parse(text) } catch { data = text }
   if (!res.ok) {
