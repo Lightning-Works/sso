@@ -2,8 +2,12 @@
  * POST /api/divigo/link   — link the signed-in user to a DiviGo account.
  *
  * Body: { number, route }
- *   number — phone with country code (without +) for wa/whatsapp, or
- *            numeric Telegram user ID for telegram routes.
+ *   number — any of these (DiviGo accepts all three forms):
+ *              - DiviGo username (with or without leading @)
+ *              - phone with country code (no +)
+ *              - numeric Telegram user ID (only useful for telegram routes)
+ *            DiviGo's apiBalance picks the right column based on whether
+ *            the input is all-numeric (number) or contains letters (username).
  *   route  — 'telegram' | 'wa' | 'whatsapp' | 'telegramLaunchGoat' | 'meta' | 'signal'
  *
  * We do NOT verify the account exists here, because DiviGo's balance lookup
@@ -32,19 +36,18 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
 
   const body = await request.json().catch(() => ({}))
-  // Strip the optional '+' (DiviGo does too) and any spaces / dashes the user typed.
-  const number = String(body.number || '').replace(/[+\s-]/g, '').trim()
+  // Normalise: strip leading @, the optional '+' (DiviGo does too), and any
+  // spaces / dashes the user typed. Lowercased so the (number, route) unique
+  // constraint matches DiviGo's case-insensitive username lookup.
+  const number = String(body.number || '').replace(/^@/, '').replace(/[+\s-]/g, '').trim().toLowerCase()
   const route = String(body.route || '').trim()
 
-  if (number.length < 5) return NextResponse.json({ error: 'Number must be at least 5 digits' }, { status: 400 })
+  if (number.length < 4) return NextResponse.json({ error: 'Identifier is too short' }, { status: 400 })
+  if (number.length > 64) return NextResponse.json({ error: 'Identifier is too long' }, { status: 400 })
+  if (!/^[a-z0-9_.]+$/.test(number)) {
+    return NextResponse.json({ error: 'Use a DiviGo username, phone number, or Telegram ID — no special characters' }, { status: 400 })
+  }
   if (!VALID_ROUTES.has(route)) return NextResponse.json({ error: 'Unknown route' }, { status: 400 })
-  // For telegram routes DiviGo expects a numeric user ID; for others it's a phone.
-  if ((route === 'telegram' || route === 'telegramLaunchGoat') && !/^\d+$/.test(number)) {
-    return NextResponse.json({ error: 'Telegram routes require a numeric Telegram user ID' }, { status: 400 })
-  }
-  if ((route === 'wa' || route === 'whatsapp') && !/^\d{5,15}$/.test(number)) {
-    return NextResponse.json({ error: 'WhatsApp routes require a phone number with country code' }, { status: 400 })
-  }
 
   const { error } = await svc().from('divigo_links').upsert({
     user_id: user.id,

@@ -278,7 +278,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                   type="text"
                   value={linkNumber}
                   onChange={e => setLinkNumber(e.target.value)}
-                  placeholder={linkRoute === 'telegram' ? 'Telegram user ID (numeric)' : 'Phone with country code (e.g. 15551234567)'}
+                  placeholder={linkRoute === 'telegram' ? '@username or phone (with country code)' : 'Phone with country code, or @username'}
                   style={{ ...inputStyle, flex: 1, minWidth: '220px' }}
                   disabled={linkBusy}
                 />
@@ -291,12 +291,9 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                   {linkBusy ? 'Linking…' : 'Link'}
                 </button>
               </div>
-              {linkRoute === 'telegram' && (
-                <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0' }}>
-                  Your Telegram ID is a number (not your @handle). Open the DiviGo bot and type
-                  &ldquo;myid&rdquo; (or check via @userinfobot) to find it.
-                </p>
-              )}
+              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0' }}>
+                Use the DiviGo @username you picked at signup, or the phone number you registered with (include the country code, no &lsquo;+&rsquo;). Whichever you used to set up your DiviGo account.
+              </p>
               {linkError && (
                 <p style={{ color: 'var(--lw-error)', fontSize: '0.78rem', margin: '0.4rem 0 0' }}>
                   {linkError}
