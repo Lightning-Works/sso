@@ -6,6 +6,7 @@ import { getDiviBreakdown } from '@/lib/wallets/balances/divi-balances'
 import { getTokenPrices } from '@/lib/wallets/balances/prices'
 import { validateDiviAddress } from '@/lib/wallets/divi'
 import { createClient } from '@/lib/supabase/client'
+import { DiviGoWalletPanel } from '@/components/DiviGoWalletPanel'
 
 interface Favorite { id: string; address: string; label: string | null }
 interface Breakdown { spendable: number; staked: number; total: number }
@@ -262,36 +263,10 @@ function DiviPortfolioContent() {
             )}
           </div>
 
-          {/* DiviGo wallet — full UI, greyed out until the API key is set */}
-          <div style={{ marginTop: '1.75rem' }}>
-            <h2 style={{ color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/divigo_logo_round_128px.webp" alt="DiviGo" width={22} height={22} style={{ borderRadius: '50%' }} />
-              DiviGo Wallet
-              <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--lw-text-muted)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', padding: '1px 6px' }}>
-                Inactive — no API key
-              </span>
-            </h2>
-            <div style={{ ...SUBPANEL, padding: '1rem', opacity: 0.5, pointerEvents: 'none' }} aria-disabled="true">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
-                {[['Balance', '— DIVI'], ['Staking', '— DIVI'], ['Value', '—']].map(([l, v]) => (
-                  <div key={l}>
-                    <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem' }}>{l}</div>
-                    <div style={{ color: 'var(--lw-text-white)', fontSize: '0.95rem', fontWeight: 600 }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <input className="lw-input" disabled placeholder="Amount (DIVI)"
-                  style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '120px' }} />
-                <input className="lw-input" disabled placeholder="Destination address"
-                  style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 2, minWidth: '200px' }} />
-                <button className="lw-btn lw-btn-primary" disabled style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>
-                  Send
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* DiviGo wallet — link form, real balance, send-with-approval polling.
+              Greyed where the API key isn't set yet; activates the moment
+              DIVIGO_API_KEY + DIVIGO_PROJECT_NAME land in the server env. */}
+          <DiviGoWalletPanel userId={userId} diviPrice={price} />
 
           <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
             <a href="/account" className="lw-link" style={{ fontSize: '0.85rem' }}>← Back to account</a>
