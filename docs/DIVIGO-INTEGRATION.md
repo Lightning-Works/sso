@@ -13,8 +13,9 @@ the keys and the user approves in Telegram on every outgoing transaction.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DIVIGO_API_KEY` | yes | The `secret` issued by DiviGo. Without this the client throws `DiviGoNotConfiguredError` on every call. |
+| `DIVIGO_API_KEY` | yes | The `secret` issued by DiviGo. Without this the client throws `DiviGoNotConfiguredError` on every call. Used for balance/send/check. |
 | `DIVIGO_PROJECT_NAME` | yes | The project name DiviGo gave us. Shown to the user in the approval prompt ("**LightningWorks** wants to send 100 DIVI to..."). Used as the default `company` field. |
+| `LW_SSO_DIVIGO_SHARED_SECRET` | yes (for linking) | Shared secret with the DiviGo bot. Verifies the `X-DiviGo-Shared-Secret` header on the `/api/divigo/link-callback` POST. Generate with `openssl rand -hex 32`; the matching value must be set as `LW_SSO_SHARED_SECRET` in DiviGo's bot env. |
 | `DIVIGO_API_BASE` | no | Defaults to `https://divigo.com`. Only set for testing against a different deployment. |
 
 Set them in Vercel → Settings → Environment Variables (Production), then
@@ -45,11 +46,33 @@ DiviGo identifies a user as a tuple `(number, route)`. From `apiBalance.js`:
   `meta`, `signal`. DiviGo normalizes `wa` → `botmaker` server-side. In our
   UI we expose **Telegram** and **WhatsApp** (the two anyone will pick).
 
-We don't try to verify ownership when a user links — DiviGo's balance lookup
-can't distinguish "no account" from "account with zero balance everywhere",
-and `gameuser` is for *game-username* lookups, not phone lookups. Instead,
-ownership is proven implicitly by the Telegram approval on the user's first
-send: if a fraudster linked someone else's account they cannot approve.
+## Linking flow (verified via Telegram deep-link)
+
+We don't ask the user to type their DiviGo identifier. Instead the link is
+proven by DiviGo's bot itself, mirroring DiviGo's own existing
+`LWSITELOGIN-` pattern in `processMessage.js`:
+
+1. User clicks **Link** → our server generates a 32-char URL-safe token,
+   inserts a pending row in `divigo_links` (10-min expiry).
+2. We open `https://t.me/DiviGoBot?start=lwsso_<token>` for the user (the
+   button), plus a QR code of the same URL (for desktop → phone).
+3. User taps **Start** in Telegram → DiviGo's bot receives
+   `/start lwsso_<token>` and POSTs to our `/api/divigo/link-callback`
+   with `{ token, number, route, username, telegramId }` + the shared
+   secret header.
+4. Our callback fills in number/route/username/telegram_id on the pending
+   row, sets `verified_at`, clears the token.
+5. UI polls `/api/divigo/status` every 2s; sees `verified: true`; flashes
+   "Linked!" and unlocks the wallet panel.
+
+Three onboarding paths supported in the UI:
+
+- **Has DiviGo + Telegram** → primary blue button + QR modal (above).
+- **Has Telegram, no DiviGo** → secondary "Sign up with @DiviGoBot" link
+  that opens DiviGo's normal onboarding in Telegram; user comes back and
+  hits **Link** when done.
+- **No Telegram** → expandable "Don't have Telegram?" section with iOS /
+  Android / Desktop / Telegram Web install links.
 
 ## What's left to confirm with DiviGo (nice-to-have, not blocking)
 

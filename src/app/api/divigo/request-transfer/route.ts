@@ -59,8 +59,10 @@ export async function POST(request: Request) {
 
   const db = svc()
   const { data: link } = await db.from('divigo_links')
-    .select('divigo_number, divigo_route').eq('user_id', user.id).maybeSingle()
-  if (!link) return NextResponse.json({ error: 'not_linked' }, { status: 404 })
+    .select('divigo_number, divigo_route, verified_at').eq('user_id', user.id).maybeSingle()
+  if (!link || !link.verified_at || !link.divigo_number || !link.divigo_route) {
+    return NextResponse.json({ error: 'not_linked' }, { status: 404 })
+  }
 
   // Per-user rate limit on creation. Cheap, race-free enough for this volume.
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()

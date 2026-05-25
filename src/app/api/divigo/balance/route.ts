@@ -29,8 +29,12 @@ export async function GET() {
 
   const db = svc()
   const { data: link } = await db.from('divigo_links')
-    .select('divigo_number, divigo_route').eq('user_id', user.id).maybeSingle()
-  if (!link) return NextResponse.json({ error: 'not_linked' }, { status: 404 })
+    .select('divigo_number, divigo_route, verified_at').eq('user_id', user.id).maybeSingle()
+  // Pending rows have null number/route — treat as not_linked so the UI
+  // keeps the link-flow UX instead of trying to fetch balance for nothing.
+  if (!link || !link.verified_at || !link.divigo_number || !link.divigo_route) {
+    return NextResponse.json({ error: 'not_linked' }, { status: 404 })
+  }
 
   try {
     const result = await diviGoBalance({

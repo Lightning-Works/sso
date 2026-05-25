@@ -1,68 +1,67 @@
 /**
- * POST /api/divigo/link   — link the signed-in user to a DiviGo account.
+ * POST /api/divigo/link   — start the DiviGo-account linking flow.
  *
- * Body: { number, route }
- *   number — any of these (DiviGo accepts all three forms):
- *              - DiviGo username (with or without leading @)
- *              - phone with country code (no +)
- *              - numeric Telegram user ID (only useful for telegram routes)
- *            DiviGo's apiBalance picks the right column based on whether
- *            the input is all-numeric (number) or contains letters (username).
- *   route  — 'telegram' | 'wa' | 'whatsapp' | 'telegramLaunchGoat' | 'meta' | 'signal'
+ * We generate a one-shot token, store it as a pending link for this SSO
+ * user (10-min expiry), and return the Telegram deep-link the client will
+ * open. The user taps Start in Telegram, DiviGo's bot POSTs to our
+ * /api/divigo/link-callback with their DiviGo identity, and we mark the
+ * link verified there.
  *
- * We do NOT verify the account exists here, because DiviGo's balance lookup
- * cannot distinguish "no account" from "account with zero balance everywhere"
- * and gameuser is for in-game-username lookups only. Verification is implicit:
- * the first send triggers a Telegram approval — only the real owner can
- * approve. If they linked someone else's account they cannot spend.
- *
- * Uniqueness is enforced both ways:
- *   - user_id is the PK (one DiviGo account per SSO user)
- *   - (number, route) is unique (one SSO user per DiviGo account)
+ * Body: ignored (kept for future expansion — e.g. preferred route).
+ * Returns: { token, deepLink, expiresAt }
  */
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
 
-const VALID_ROUTES = new Set(['telegram', 'telegramLaunchGoat', 'wa', 'whatsapp', 'meta', 'signal'])
+const TOKEN_TTL_MS = 10 * 60 * 1000  // 10 minutes — long enough to switch apps, short enough to limit interception risk
 
 function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-export async function POST(request: Request) {
+// URL-safe random token. 24 random bytes → 32 base64url chars. Enough entropy
+// (≈192 bits) that an attacker can't brute-force valid tokens; short enough
+// to fit cleanly in a Telegram deep-link param (Telegram allows up to 64).
+function newLinkToken(): string {
+  return randomBytes(24).toString('base64url')
+}
+
+// DiviGo's bot username. Hardcoded here because it's a constant of their
+// product, not a config we ever flip per-environment. If they ever change
+// the bot, update this single line.
+const DIVIGO_BOT_HANDLE = 'DiviGoBot'
+
+export async function POST() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
 
-  const body = await request.json().catch(() => ({}))
-  // Normalise: strip leading @, the optional '+' (DiviGo does too), and any
-  // spaces / dashes the user typed. Lowercased so the (number, route) unique
-  // constraint matches DiviGo's case-insensitive username lookup.
-  const number = String(body.number || '').replace(/^@/, '').replace(/[+\s-]/g, '').trim().toLowerCase()
-  const route = String(body.route || '').trim()
+  const token = newLinkToken()
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString()
 
-  if (number.length < 4) return NextResponse.json({ error: 'Identifier is too short' }, { status: 400 })
-  if (number.length > 64) return NextResponse.json({ error: 'Identifier is too long' }, { status: 400 })
-  if (!/^[a-z0-9_.]+$/.test(number)) {
-    return NextResponse.json({ error: 'Use a DiviGo username, phone number, or Telegram ID — no special characters' }, { status: 400 })
-  }
-  if (!VALID_ROUTES.has(route)) return NextResponse.json({ error: 'Unknown route' }, { status: 400 })
-
+  // Upsert a pending row. If the user already has a link (verified or
+  // pending), we reset it to a fresh pending state — this is also how
+  // re-linking works (e.g. switched DiviGo accounts).
   const { error } = await svc().from('divigo_links').upsert({
     user_id: user.id,
-    divigo_number: number,
-    divigo_route: route,
+    divigo_number: null,
+    divigo_route: null,
+    divigo_username: null,
+    telegram_id: null,
+    verified_at: null,
+    link_token: token,
+    token_expires_at: expiresAt,
     linked_at: new Date().toISOString(),
+    last_balance: null,
   }, { onConflict: 'user_id' })
 
-  if (error) {
-    // 23505 = unique_violation on (number, route): someone else already linked this DiviGo account.
-    if (error.code === '23505') {
-      return NextResponse.json({ error: 'That DiviGo account is already linked to another SSO user' }, { status: 409 })
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, link: { divigo_number: number, divigo_route: route } })
+  return NextResponse.json({
+    token,
+    deepLink: `https://t.me/${DIVIGO_BOT_HANDLE}?start=lwsso_${token}`,
+    expiresAt,
+  })
 }
