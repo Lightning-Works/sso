@@ -47,7 +47,16 @@ const COIN_LABEL: Record<string, string> = {
 }
 
 const DIVIGO_BOT_HANDLE = 'DiviGoBot'  // mirror of server-side constant
-const TELEGRAM_BLUE = '#229ED9'        // brand color for "Open Telegram" CTA
+const TELEGRAM_BLUE = '#229ED9'        // brand-blue used only for the Telegram icon glyph
+
+// Telegram paper-plane glyph. Used as a small icon, never as a button fill.
+function TelegramIcon({ size = 16, color = TELEGRAM_BLUE }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg" aria-hidden style={{ flexShrink: 0 }}>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.05-.2-.06-.06-.16-.04-.23-.02-.1.02-1.68 1.07-4.75 3.14-.45.31-.86.46-1.22.45-.4-.01-1.17-.23-1.75-.42-.71-.23-1.27-.35-1.22-.74.03-.21.32-.42.86-.64 3.37-1.47 5.62-2.44 6.74-2.91 3.21-1.34 3.88-1.57 4.31-1.58.1 0 .31.02.45.13.12.09.15.21.17.3.02.09.04.27.02.42z"/>
+    </svg>
+  )
+}
 
 const PANEL_BG = '#181818'
 const RADIUS = 8
@@ -94,9 +103,12 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
   const [linkExpiresAt, setLinkExpiresAt] = useState<string | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [linkStarting, setLinkStarting] = useState(false)
-  // We optimistically detect verification by polling /status; flag locally
-  // so the modal can flash a success state for a second before closing.
-  const [linkVerifiedFlash, setLinkVerifiedFlash] = useState(false)
+  // Modal lifecycle states beyond the simple Open/Closed:
+  //   'pending'   — waiting for the user to tap Start in Telegram
+  //   'verified'  — DiviGo confirmed; flash success then close
+  //   'expired'   — token timed out; let the user retry
+  //   'error'     — backend returned a hard error (e.g. duplicate link)
+  const [linkPhase, setLinkPhase] = useState<'pending' | 'verified' | 'expired' | 'error'>('pending')
   const [showTelegramHelp, setShowTelegramHelp] = useState(false)
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false)
   const linkPollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -157,7 +169,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
   useEffect(() => () => stopLinkPolling(), [stopLinkPolling])
 
   const startLinkFlow = async () => {
-    setLinkStarting(true); setLinkError(null); setLinkVerifiedFlash(false)
+    setLinkStarting(true); setLinkError(null); setLinkPhase('pending')
     try {
       const r = await fetch('/api/divigo/link', { method: 'POST' })
       const j = await r.json()
@@ -165,20 +177,27 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
       setLinkDeepLink(j.deepLink)
       setLinkExpiresAt(j.expiresAt)
       setLinkModalOpen(true)
-      // Begin polling. Use the inline tick so we don't depend on stopLinkPolling
-      // changing identity (it would re-trigger this effect).
+      // Begin polling /api/divigo/check-link — it fans out to DiviGo's
+      // /lwLoginVerify and updates our row when the bot has stored the link.
       stopLinkPolling()
       const tick = async () => {
-        const s = await loadStatus()
-        if (s?.verified) {
-          stopLinkPolling()
-          setLinkVerifiedFlash(true)
-          setTimeout(() => { setLinkModalOpen(false); setLinkVerifiedFlash(false) }, 1500)
-        } else if (s && !s.pending) {
-          // Token expired before they confirmed — leave the modal open so the
-          // user can retry. They'll see the "Link expired" message below.
-          stopLinkPolling()
-        }
+        try {
+          const r2 = await fetch('/api/divigo/check-link', { cache: 'no-store' })
+          const j2 = await r2.json()
+          if (j2.status === 'verified') {
+            stopLinkPolling()
+            setLinkPhase('verified')
+            await loadStatus()
+            setTimeout(() => { setLinkModalOpen(false); setLinkPhase('pending') }, 1500)
+          } else if (j2.status === 'expired') {
+            stopLinkPolling()
+            setLinkPhase('expired')
+          } else if (j2.status === 'error') {
+            stopLinkPolling()
+            setLinkPhase('error')
+            setLinkError(j2.error || 'Link failed')
+          }
+        } catch { /* keep polling */ }
       }
       linkPollTimer.current = setInterval(tick, 2000)
     } catch (e) {
@@ -193,7 +212,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
     setLinkDeepLink(null)
     setLinkExpiresAt(null)
     setLinkError(null)
-    setLinkVerifiedFlash(false)
+    setLinkPhase('pending')
   }
 
   const submitUnlink = async () => {
@@ -310,63 +329,61 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
           {/* ─── Link choices (when not yet verified) ─────────────────── */}
           {!verified && (
             <div style={panelStyle({ padding: '1rem', marginBottom: '0.75rem' })}>
-              <p style={{ color: 'var(--lw-text-secondary)', fontSize: '0.85rem', margin: '0 0 0.75rem', lineHeight: 1.45 }}>
-                Connect your DiviGo account to see your balance and send crypto. Every transaction needs
-                your approval in Telegram — we only ask, we never hold your keys.
-              </p>
+              <h3 style={{
+                color: 'var(--lw-text-muted)',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                margin: '0 0 0.65rem',
+              }}>
+                Connect to DiviGo in Telegram
+              </h3>
 
-              {/* Flow A — has DiviGo + Telegram */}
+              {/* Flow A — Has DiviGo + Telegram. Primary purple CTA. */}
               <button
                 onClick={startLinkFlow}
                 disabled={linkStarting}
-                style={{
-                  width: '100%', padding: '0.7rem 1rem',
-                  background: TELEGRAM_BLUE, color: '#fff',
-                  border: 'none', borderRadius: 6,
-                  fontSize: '0.95rem', fontWeight: 700,
-                  cursor: linkStarting ? 'wait' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                  marginBottom: '0.5rem',
-                }}
+                className="lw-btn lw-btn-primary"
+                style={{ width: '100%', padding: '0.6rem 1rem', marginBottom: '0.4rem',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
-                <span aria-hidden style={{ fontSize: '1.05rem' }}>✈</span>
-                {linkStarting ? 'Starting…' : 'Link my DiviGo account via Telegram'}
+                {linkStarting ? 'Starting…' : 'Have DiviGo? — Connect'}
+              </button>
+
+              {/* Flow B — Has Telegram, no DiviGo. Secondary button, opens
+                  @DiviGoBot for the standard DiviGo signup flow. */}
+              <a
+                href={`https://t.me/${DIVIGO_BOT_HANDLE}`}
+                target="_blank" rel="noopener noreferrer"
+                className="lw-btn lw-btn-secondary"
+                style={{ width: '100%', padding: '0.6rem 1rem', marginBottom: '0.4rem',
+                         textDecoration: 'none', boxSizing: 'border-box',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+              >
+                Have Telegram but not DiviGo?
+              </a>
+
+              {/* Flow C — No Telegram. Secondary button that expands the
+                  install-links panel. Telegram logo precedes the text. */}
+              <button
+                onClick={() => setShowTelegramHelp(s => !s)}
+                className="lw-btn lw-btn-secondary"
+                style={{ width: '100%', padding: '0.6rem 1rem',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+              >
+                <TelegramIcon size={18} />
+                <span><strong>GET</strong> Telegram First…</span>
+                <span aria-hidden style={{ marginLeft: 'auto', color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>
+                  {showTelegramHelp ? '▴' : '▾'}
+                </span>
               </button>
 
               {linkError && (
-                <p style={{ color: 'var(--lw-error)', fontSize: '0.78rem', margin: '0 0 0.5rem' }}>{linkError}</p>
+                <p style={{ color: 'var(--lw-error)', fontSize: '0.78rem', margin: '0.5rem 0 0' }}>{linkError}</p>
               )}
 
-              {/* Flow B — has Telegram, no DiviGo */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                <a
-                  href={`https://t.me/${DIVIGO_BOT_HANDLE}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{
-                    flex: 1, minWidth: '200px',
-                    padding: '0.5rem 0.75rem', textAlign: 'center',
-                    background: 'rgba(255,255,255,0.06)', color: 'var(--lw-text-secondary)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6,
-                    fontSize: '0.82rem', textDecoration: 'none',
-                  }}
-                >
-                  Don&apos;t have DiviGo? → Sign up with @DiviGoBot
-                </a>
-                <button
-                  onClick={() => setShowTelegramHelp(s => !s)}
-                  style={{
-                    flex: 1, minWidth: '200px',
-                    padding: '0.5rem 0.75rem',
-                    background: 'rgba(255,255,255,0.06)', color: 'var(--lw-text-secondary)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6,
-                    fontSize: '0.82rem', cursor: 'pointer',
-                  }}
-                >
-                  Don&apos;t have Telegram? {showTelegramHelp ? '▴' : '▾'}
-                </button>
-              </div>
-
-              {/* Flow C — no Telegram */}
+              {/* Install-links sub-panel (Flow C content). */}
               {showTelegramHelp && (
                 <div style={{
                   marginTop: '0.5rem',
@@ -377,7 +394,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                   color: 'var(--lw-text-secondary)', fontSize: '0.8rem', lineHeight: 1.45,
                 }}>
                   <p style={{ margin: '0 0 0.5rem' }}>
-                    Install Telegram first, then come back here:
+                    Install Telegram first, then come back and tap <strong>Have DiviGo? — Connect</strong>:
                   </p>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                     <a href="https://apps.apple.com/app/telegram-messenger/id686449807" target="_blank" rel="noopener noreferrer"
@@ -398,7 +415,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                     </a>
                   </div>
                   <p style={{ margin: '0.6rem 0 0', color: 'var(--lw-text-muted)', fontSize: '0.72rem' }}>
-                    Telegram Web works right in your browser — no app install needed if you&apos;d rather not.
+                    Telegram Web works right in your browser — no app install needed.
                   </p>
                 </div>
               )}
@@ -558,28 +575,29 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
             <div onClick={closeLinkModal}
               style={{ position: 'fixed', inset: 0, zIndex: 10010, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
               <div onClick={e => e.stopPropagation()}
-                style={{ background: '#1a1a2e', border: `1px solid ${TELEGRAM_BLUE}55`, borderRadius: 12, padding: '1.5rem', minWidth: 'min(420px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
-                {linkVerifiedFlash ? (
+                style={{ background: '#1a1a2e', border: '1px solid rgba(106,36,250,0.45)', borderRadius: 12, padding: '1.5rem', minWidth: 'min(420px, 92vw)', maxWidth: '92vw', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
+                {linkPhase === 'verified' ? (
                   <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-                    <div style={{ fontSize: '3rem', color: '#2ea043', marginBottom: '0.5rem' }}>✓</div>
+                    <div style={{ fontSize: '3rem', color: 'var(--lw-success)', marginBottom: '0.5rem' }}>✓</div>
                     <h3 style={{ color: '#fff', margin: '0 0 0.25rem', fontSize: '1.1rem', fontWeight: 700 }}>Linked!</h3>
                     <p style={{ color: '#bab1a8', fontSize: '0.85rem', margin: 0 }}>Your DiviGo wallet is ready.</p>
                   </div>
                 ) : (
                   <>
                     <h3 style={{ color: '#fff', margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span aria-hidden style={{ color: TELEGRAM_BLUE, fontSize: '1.2rem' }}>✈</span>
+                      <TelegramIcon size={20} />
                       Confirm in Telegram
                     </h3>
                     <p style={{ color: '#e4dad1', fontSize: '0.88rem', margin: '0 0 1rem', lineHeight: 1.45 }}>
-                      Open the DiviGo bot and tap <strong>Start</strong>. Your wallet will link automatically — usually within a couple of seconds.
+                      Tap <strong>Open Telegram</strong>, then <strong>Start</strong> when @DiviGoBot opens. The bot will reply confirming the link — you can ignore any link it sends; just come back here.
                     </p>
 
                     <a href={linkDeepLink} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'block', textAlign: 'center', width: '100%', padding: '0.7rem 1rem',
-                        background: TELEGRAM_BLUE, color: '#fff', border: 'none', borderRadius: 6,
-                        fontSize: '0.95rem', fontWeight: 700, textDecoration: 'none',
-                        boxSizing: 'border-box', marginBottom: '1rem' }}>
+                      className="lw-btn lw-btn-primary"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                               width: '100%', padding: '0.6rem 1rem', textDecoration: 'none',
+                               boxSizing: 'border-box', marginBottom: '1rem' }}>
+                      <TelegramIcon size={18} color="#fff" />
                       Open Telegram
                     </a>
 
@@ -593,11 +611,13 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                     </div>
 
                     <div style={{ textAlign: 'center', color: 'var(--lw-text-muted)', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
-                      {status?.pending
-                        ? <>Waiting for confirmation… <span style={{ opacity: 0.7 }}>(checking every 2s)</span></>
-                        : <>Link expired — close this and start over.</>}
+                      {linkPhase === 'expired'
+                        ? <span style={{ color: '#f0b85a' }}>Link expired — close this and try again.</span>
+                        : linkPhase === 'error'
+                        ? <span style={{ color: 'var(--lw-error)' }}>{linkError}</span>
+                        : <>Waiting for confirmation… <span style={{ opacity: 0.7 }}>(checking every 2s)</span></>}
                     </div>
-                    {linkExpiresAt && status?.pending && (
+                    {linkExpiresAt && linkPhase === 'pending' && (
                       <div style={{ textAlign: 'center', color: 'var(--lw-text-muted)', fontSize: '0.7rem', marginBottom: '0.75rem' }}>
                         Expires {new Date(linkExpiresAt).toLocaleTimeString()}
                       </div>
@@ -606,7 +626,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button onClick={closeLinkModal}
                         style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 4, color: '#bab1a8', cursor: 'pointer' }}>
-                        Cancel
+                        Close
                       </button>
                     </div>
                   </>

@@ -1,14 +1,21 @@
 /**
  * POST /api/divigo/link   — start the DiviGo-account linking flow.
  *
- * We generate a one-shot token, store it as a pending link for this SSO
- * user (10-min expiry), and return the Telegram deep-link the client will
- * open. The user taps Start in Telegram, DiviGo's bot POSTs to our
- * /api/divigo/link-callback with their DiviGo identity, and we mark the
- * link verified there.
+ * We piggyback on DiviGo's already-deployed `LWSITELOGIN-` handler (see
+ * processMessage.js ~line 298 in the DiviGoReboot repo). When the user
+ * opens our Telegram deep-link and taps Start, the bot:
+ *   1. Sees `/start LWSITELOGIN-<code>`, parses out the code
+ *   2. Inserts a row in DiviGo's `LWLogin` collection
+ *      ({ user, code, wallets, added })
+ *   3. Replies in Telegram with a `lightningworks.io/market/?divigo=<code>`
+ *      link — user can ignore it; we use the LWLogin row itself.
+ *
+ * The reverse lookup is `GET <DIVIGO_API_BASE>/lwLoginVerify/<code>`,
+ * which our /api/divigo/check-link route polls. Zero new bot code on
+ * DiviGo's side.
  *
  * Body: ignored (kept for future expansion — e.g. preferred route).
- * Returns: { token, deepLink, expiresAt }
+ * Returns: { code, deepLink, expiresAt }
  */
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
@@ -21,16 +28,16 @@ function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-// URL-safe random token. 24 random bytes → 32 base64url chars. Enough entropy
-// (≈192 bits) that an attacker can't brute-force valid tokens; short enough
-// to fit cleanly in a Telegram deep-link param (Telegram allows up to 64).
-function newLinkToken(): string {
-  return randomBytes(24).toString('base64url')
+// 10-char URL-safe code, matching DiviGo's own `APP.randomString(10)` style
+// for payment-request codes. ≈60 bits of entropy — plenty since each code is
+// single-use and expires in 10 minutes.
+function newLinkCode(): string {
+  // base64url over 8 bytes → 11 chars; trim to 10 for parity with their format.
+  return randomBytes(8).toString('base64url').slice(0, 10)
 }
 
 // DiviGo's bot username. Hardcoded here because it's a constant of their
-// product, not a config we ever flip per-environment. If they ever change
-// the bot, update this single line.
+// product, not a config we ever flip per-environment.
 const DIVIGO_BOT_HANDLE = 'DiviGoBot'
 
 export async function POST() {
@@ -38,12 +45,12 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
 
-  const token = newLinkToken()
+  const code = newLinkCode()
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString()
 
   // Upsert a pending row. If the user already has a link (verified or
-  // pending), we reset it to a fresh pending state — this is also how
-  // re-linking works (e.g. switched DiviGo accounts).
+  // pending), we reset it — this is also how re-linking works (e.g.
+  // switched DiviGo accounts).
   const { error } = await svc().from('divigo_links').upsert({
     user_id: user.id,
     divigo_number: null,
@@ -51,7 +58,7 @@ export async function POST() {
     divigo_username: null,
     telegram_id: null,
     verified_at: null,
-    link_token: token,
+    link_token: code,
     token_expires_at: expiresAt,
     linked_at: new Date().toISOString(),
     last_balance: null,
@@ -60,8 +67,11 @@ export async function POST() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({
-    token,
-    deepLink: `https://t.me/${DIVIGO_BOT_HANDLE}?start=lwsso_${token}`,
+    code,
+    // Telegram deep link. When tapped, Telegram sends "/start LWSITELOGIN-<code>"
+    // to @DiviGoBot. Their existing handler matches on `LWSITELOGIN-` anywhere
+    // in the text (split(...).length == 2), so the "/start " prefix is harmless.
+    deepLink: `https://t.me/${DIVIGO_BOT_HANDLE}?start=LWSITELOGIN-${code}`,
     expiresAt,
   })
 }
