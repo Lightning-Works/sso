@@ -151,12 +151,7 @@ function DiviPortfolioContent() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
               <DiviLogo size={48} />
-              <div>
-                <h1 style={{ margin: 0, color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.6rem' }}>Divi Portfolio</h1>
-                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.8rem' }}>
-                  {rows.length} address{rows.length === 1 ? '' : 'es'}
-                </span>
-              </div>
+              <h1 style={{ margin: 0, color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.6rem' }}>Divi Portfolio</h1>
               {userId && (
                 <button
                   onClick={() => { setMsg(''); setNewAddr(''); setNewLabel(''); setShowAddModal(true) }}
