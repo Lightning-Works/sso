@@ -160,6 +160,28 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
     else { setBalances(null); setBalanceError(null) }
   }, [status?.verified, status?.configured, loadBalance])
 
+  // If the user just came back from DiviGo's bot via the
+  // https://sso.lightningworks.io/?divigo=<code> return link (which our root
+  // page forwards here), fire one immediate check-link to finalize the
+  // verification without waiting for the modal's 2s polling cycle. Strip the
+  // query param so a refresh doesn't re-run the flow.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('divigo')) return
+    url.searchParams.delete('divigo')
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''))
+    ;(async () => {
+      try {
+        const r = await fetch('/api/divigo/check-link', { cache: 'no-store' })
+        const j = await r.json()
+        if (j.status === 'verified') await loadStatus()
+      } catch { /* the manual Connect button still works as a fallback */ }
+    })()
+    // Only run on initial mount — once the param is stripped this effect is a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Link-flow polling — runs while the modal is open, looking for the
   // verified_at flip caused by the bot callback. 2s cadence is the right
   // tradeoff: feels responsive without hammering the server.
