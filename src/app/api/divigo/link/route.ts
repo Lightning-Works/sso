@@ -68,10 +68,11 @@ export async function POST() {
 
   return NextResponse.json({
     code,
-    // Telegram deep link. When tapped, Telegram sends "/start LWSITELOGIN-<code>"
-    // to @DiviGoBot. Their existing handler matches on `LWSITELOGIN-` anywhere
-    // in the text (split(...).length == 2), so the "/start " prefix is harmless.
-    deepLink: `https://t.me/${DIVIGO_BOT_HANDLE}?start=LWSITELOGIN-${code}`,
+    // Telegram deep link. When tapped, Telegram sends
+    // "/start LWSSOSITELOGIN-<code>" to @DiviGoBot. DiviGo dev runs their
+    // own handler for this prefix (parallel to the existing LWSITELOGIN-
+    // market flow) so SSO links don't collide with marketplace logins.
+    deepLink: `https://t.me/${DIVIGO_BOT_HANDLE}?start=LWSSOSITELOGIN-${code}`,
     expiresAt,
   })
 }
