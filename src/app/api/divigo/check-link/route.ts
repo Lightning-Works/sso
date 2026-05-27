@@ -19,7 +19,8 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { diviGoConfigured } from '@/lib/divigo/client'
 import { NextResponse } from 'next/server'
 
-const BASE = (process.env.DIVIGO_API_BASE || 'https://divigo.com').replace(/\/+$/, '')
+// No default — DIVIGO_API_BASE must be set to the partner's real hostname.
+const BASE = (process.env.DIVIGO_API_BASE || '').replace(/\/+$/, '')
 
 function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -52,11 +53,14 @@ export async function GET() {
     return NextResponse.json({ status: 'expired' })
   }
 
+  if (!BASE) {
+    // Hostname not configured — there's no real server we can poll yet.
+    // Surface explicitly so the UI doesn't sit in 'pending' forever.
+    return NextResponse.json({ status: 'pending', note: 'DIVIGO_API_BASE not set on server' })
+  }
   if (!diviGoConfigured()) {
-    // No API key set — we can still poll (lwLoginVerify is unauthenticated),
-    // but flagging this lets the UI message it accurately.
-    // Fall through to the fetch attempt; if the host is also wrong, it just
-    // returns 'pending'.
+    // API key not set isn't fatal for the unauthenticated lwLoginVerify
+    // path; fall through and let it return pending or verified naturally.
   }
 
   // Fetch DiviGo's verification endpoint. The handler is unauthenticated and

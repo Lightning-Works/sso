@@ -25,19 +25,21 @@
  *      the server maps 'wa' → 'botmaker' for us.
  */
 
-const BASE = (process.env.DIVIGO_API_BASE || 'https://divigo.com').replace(/\/+$/, '')
+// No default — DIVIGO_API_BASE must be set explicitly to the partner's
+// real hostname. `divigo.com` is a parked Sedo domain and is NOT DiviGo.
+const BASE = (process.env.DIVIGO_API_BASE || '').replace(/\/+$/, '')
 const KEY = process.env.DIVIGO_API_KEY || ''
 const PROJECT_NAME = process.env.DIVIGO_PROJECT_NAME || ''
 
 export class DiviGoNotConfiguredError extends Error {
-  constructor() {
-    super('DiviGo API not configured — set DIVIGO_API_KEY (and DIVIGO_PROJECT_NAME) in the server environment.')
+  constructor(reason?: string) {
+    super(reason || 'DiviGo API not configured — set DIVIGO_API_BASE + DIVIGO_API_KEY (and DIVIGO_PROJECT_NAME) in the server environment.')
     this.name = 'DiviGoNotConfiguredError'
   }
 }
 
 export function diviGoConfigured(): boolean {
-  return KEY.length > 0
+  return BASE.length > 0 && KEY.length > 0
 }
 
 /** The DiviGo project name shown in approval prompts. Used as default
@@ -50,6 +52,7 @@ export type MsgRoute = 'telegram' | 'telegramLaunchGoat' | 'wa' | 'whatsapp' | '
 
 async function callApi(method: string, params: Record<string, unknown>): Promise<unknown> {
   if (!KEY) throw new DiviGoNotConfiguredError()
+  if (!BASE) throw new DiviGoNotConfiguredError('DIVIGO_API_BASE not set — need the real hostname for DiviGo (divigo.com is a parked Sedo domain).')
   let res: Response
   try {
     res = await fetch(`${BASE}/api`, {
