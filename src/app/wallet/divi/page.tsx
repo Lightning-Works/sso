@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
 import { getDiviBreakdown } from '@/lib/wallets/balances/divi-balances'
 import { getTokenPrices } from '@/lib/wallets/balances/prices'
@@ -59,6 +60,8 @@ function DiviPortfolioContent() {
   const [newAddr, setNewAddr] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [msg, setMsg] = useState('')
+  // Add-address modal, opened by the + NEW ADDRESS header button.
+  const [showAddModal, setShowAddModal] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null))
@@ -120,6 +123,7 @@ function DiviPortfolioContent() {
     )
     if (error) { setMsg('Error: ' + error.message); return }
     setNewAddr(''); setNewLabel(''); setMsg('Saved.')
+    setShowAddModal(false)
     load()
   }
 
@@ -141,7 +145,9 @@ function DiviPortfolioContent() {
             1 DIVI = <strong style={{ color: 'var(--lw-text-white)' }}>{loading ? '—' : price ? fmtPrice(price) : '—'}</strong>
           </div>
 
-          {/* Header: Divi logo + total USD */}
+          {/* Header: Divi logo + total USD. The +NEW ADDRESS button sits
+              next to the wallet name so the add-address form can live in
+              a modal rather than a permanent section. */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
               <DiviLogo size={48} />
@@ -151,6 +157,26 @@ function DiviPortfolioContent() {
                   {rows.length} address{rows.length === 1 ? '' : 'es'}
                 </span>
               </div>
+              {userId && (
+                <button
+                  onClick={() => { setMsg(''); setNewAddr(''); setNewLabel(''); setShowAddModal(true) }}
+                  style={{
+                    background: 'transparent',
+                    color: 'var(--lw-text-secondary)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 6,
+                    padding: '0.35rem 0.7rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Save a new Divi address"
+                >
+                  + NEW ADDRESS
+                </button>
+              )}
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: 'var(--lw-text-white)', fontSize: '1.5rem', fontWeight: 600 }}>
@@ -173,7 +199,7 @@ function DiviPortfolioContent() {
             <p style={{ color: 'var(--lw-text-secondary)', textAlign: 'center', padding: '2.5rem 0' }}>Loading balances</p>
           ) : rows.length === 0 ? (
             <p style={{ color: 'var(--lw-text-muted)', textAlign: 'center', padding: '2rem 0', fontSize: '0.9rem' }}>
-              No Divi addresses yet. Add one below.
+              No Divi addresses yet. {userId ? <>Use <strong>+ NEW ADDRESS</strong> above to save one.</> : <><a href="/login" className="lw-link">Sign in</a> to save Divi addresses.</>}
             </p>
           ) : rows.map(r => {
             const open = expandedKey === r.key
@@ -242,26 +268,49 @@ function DiviPortfolioContent() {
             )
           })}
 
-          {/* Bottom: manage saved addresses */}
-          <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            <h2 style={{ color: 'var(--lw-text-white)', fontFamily: 'var(--lw-font-display)', fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-              Saved Divi Addresses
-            </h2>
-            {!userId ? (
-              <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>
-                <a href="/login" className="lw-link">Sign in</a> to save Divi addresses.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 2, minWidth: '210px' }}
-                  placeholder="DIVI address (starts with D)" value={newAddr} onChange={e => setNewAddr(e.target.value)} />
-                <input className="lw-input" style={{ backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', flex: 1, minWidth: '130px' }}
+          {/* Add-address modal — opens via + NEW ADDRESS in the header.
+              Lives at the bottom of the JSX tree so it portals cleanly
+              over any scroll position. */}
+          {showAddModal && userId && typeof document !== 'undefined' && createPortal(
+            <div onClick={() => setShowAddModal(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 10010, background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background: '#1a1a2e', border: '1px solid rgba(106,36,250,0.45)', borderRadius: 12,
+                  padding: '1.5rem', minWidth: 'min(420px, 92vw)', maxWidth: '92vw',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
+                <h3 style={{ color: '#fff', margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>
+                  Save a Divi address
+                </h3>
+                <p style={{ color: '#e4dad1', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.45 }}>
+                  Saved addresses appear in your portfolio list so you can track their balances.
+                </p>
+                <input className="lw-input"
+                  style={{ width: '100%', backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', marginBottom: '0.5rem', boxSizing: 'border-box' }}
+                  placeholder="DIVI address (starts with D)" value={newAddr} onChange={e => setNewAddr(e.target.value)} autoFocus />
+                <input className="lw-input"
+                  style={{ width: '100%', backgroundColor: 'rgb(26,17,46)', color: '#bab1a8', marginBottom: '0.75rem', boxSizing: 'border-box' }}
                   placeholder="Label (optional)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
-                <button onClick={() => addFavorite(newAddr, newLabel)} className="lw-btn lw-btn-primary"
-                  style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>Add</button>
+                {msg && msg.startsWith('Error') && (
+                  <p style={{ color: 'var(--lw-error)', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>{msg.replace(/^Error: ?/, '')}</p>
+                )}
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowAddModal(false)}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.08)',
+                      border: 'none', borderRadius: 4, color: '#bab1a8', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => addFavorite(newAddr, newLabel)}
+                    className="lw-btn lw-btn-primary"
+                    disabled={!newAddr.trim()}
+                    style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>
+                    Save
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
+            </div>,
+            document.body,
+          )}
 
           {/* DiviGo wallet — link form, real balance, send-with-approval polling.
               Greyed where the API key isn't set yet; activates the moment
