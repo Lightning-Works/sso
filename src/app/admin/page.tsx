@@ -34,6 +34,8 @@ interface App {
   admin_api_key: string | null
   theme: LoginTheme | null
   redirect_origins: string[] | null
+  divigo_enabled?: boolean | null
+  api_secret_hash?: string | null
   companies?: Company | null
 }
 
@@ -376,11 +378,33 @@ export default function AdminPage() {
     const [companyId, setCompanyId] = useState(app?.company_id || companies[0]?.id || 0)
     const [theme, setTheme] = useState<LoginTheme>(app?.theme || {})
     const [redirectOrigins, setRedirectOrigins] = useState<string>((app?.redirect_origins || []).join('\n'))
+    const [divigoEnabled, setDivigoEnabled] = useState<boolean>(!!app?.divigo_enabled)
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const headerRef = useRef<HTMLInputElement>(null)
 
+    // DiviGo API secret rotation — generated server-side; the plaintext is
+    // shown once in a modal so the admin can paste it into the app's env.
+    const [secretBusy, setSecretBusy] = useState(false)
+    const [newSecret, setNewSecret] = useState<string | null>(null)
+    const [secretError, setSecretError] = useState<string | null>(null)
+
     const markDirty = () => setSaved(false)
+
+    const rotateSecret = async () => {
+      if (!app) return
+      const ok = window.confirm('Generate a new API secret? Any app servers currently using the old secret will start getting 401 errors until you give them the new one.')
+      if (!ok) return
+      setSecretBusy(true); setSecretError(null); setNewSecret(null)
+      try {
+        const r = await fetch(`/api/admin/apps/${app.id}/divigo-secret`, { method: 'POST' })
+        const j = await r.json()
+        if (!r.ok) { setSecretError(j.error || `HTTP ${r.status}`); setSecretBusy(false); return }
+        setNewSecret(j.secret)
+        loadData()
+      } catch (e) { setSecretError(e instanceof Error ? e.message : String(e)) }
+      setSecretBusy(false)
+    }
 
     const handleSave = async () => {
       setSaving(true)
@@ -396,7 +420,8 @@ export default function AdminPage() {
 
       if (isNew) {
         const { error } = await supabase.from('apps').insert({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr,
+          divigo_enabled: divigoEnabled,
         })
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -411,7 +436,8 @@ export default function AdminPage() {
         }
       } else {
         const { error } = await supabase.from('apps').update({
-          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr
+          name, slug: slug.toLowerCase(), company_id: companyId, app_header_img: headerImg, theme, redirect_origins: originsArr,
+          divigo_enabled: divigoEnabled,
         }).eq('id', app!.id)
         if (error) { setMessage('Error: ' + error.message) }
         else {
@@ -476,6 +502,32 @@ export default function AdminPage() {
           <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', margin: '0.25rem 0 0 0' }}>
             App theme overrides company theme. URL parameters (e.g. ?primary_color=%23A35B4E) override both.
           </p>
+
+          {/* ── DiviGo wallet integration (admin-only) ───────────────── */}
+          <div style={{ marginTop: '1.25rem', padding: '0.85rem 1rem', background: 'rgba(106,36,250,0.06)', border: '1px solid rgba(106,36,250,0.25)', borderRadius: 6 }}>
+            <label style={{ color: 'var(--lw-text-primary)', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={divigoEnabled} onChange={e => { setDivigoEnabled(e.target.checked); markDirty() }} />
+              Enable DiviGo wallet access
+            </label>
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.72rem', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+              Allows this app to call <code>/api/oauth/divigo/*</code> on behalf of consenting users (read balance, request payments). Every send still requires the user&apos;s Telegram approval.
+            </p>
+            {!isNew && (
+              <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button type="button" onClick={rotateSecret} disabled={secretBusy || !divigoEnabled}
+                  className="lw-btn lw-btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}>
+                  {secretBusy ? 'Generating…' : app?.api_secret_hash ? 'Rotate API secret' : 'Generate API secret'}
+                </button>
+                <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.72rem' }}>
+                  {app?.api_secret_hash ? 'A secret is set. Rotating invalidates the old one immediately.' : 'No secret yet. Generate one to enable app calls.'}
+                </span>
+              </div>
+            )}
+            {secretError && (
+              <p style={{ color: 'var(--lw-error)', fontSize: '0.78rem', margin: '0.5rem 0 0' }}>{secretError}</p>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button onClick={handleSave} disabled={saving || saved} className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.5rem 1.5rem' }}>
               {saving ? 'Saving...' : saved ? 'Saved' : isNew ? 'Create App' : 'Save'}
@@ -484,6 +536,36 @@ export default function AdminPage() {
               Cancel
             </button>
           </div>
+
+          {/* One-time secret display modal. The plaintext is never persisted
+              or re-shown; admin must copy and stash it now. */}
+          {newSecret && (
+            <div onClick={() => setNewSecret(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 10020, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background: '#1a1a2e', border: '1px solid rgba(46,160,67,0.5)', borderRadius: 12, padding: '1.5rem', minWidth: 'min(540px, 92vw)', maxWidth: '92vw' }}>
+                <h3 style={{ color: '#fff', margin: '0 0 0.5rem', fontSize: '1.05rem', fontWeight: 700 }}>
+                  New API secret for {name}
+                </h3>
+                <p style={{ color: '#e4dad1', fontSize: '0.85rem', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                  Copy this value <strong>now</strong> — it cannot be recovered. Set it as <code>LW_SSO_APP_SECRET</code> on the app&apos;s server.
+                </p>
+                <pre style={{ background: '#0b0b0b', color: '#fff', padding: '0.75rem', borderRadius: 6, fontSize: '0.85rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap', margin: '0 0 0.75rem' }}>
+                  {newSecret}
+                </pre>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { navigator.clipboard.writeText(newSecret).catch(() => {}) }}
+                    className="lw-btn lw-btn-secondary" style={{ width: 'auto', padding: '0.4rem 1rem' }}>
+                    Copy
+                  </button>
+                  <button onClick={() => setNewSecret(null)}
+                    className="lw-btn lw-btn-primary" style={{ width: 'auto', padding: '0.4rem 1.25rem' }}>
+                    I&apos;ve saved it
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
