@@ -40,10 +40,12 @@ interface StatusResponse {
   } | null
 }
 
-// Coins DiviGo's `balance` method iterates when coin='all'.
-const SUPPORTED_COINS = ['divi', 'btc', 'eth', 'ltc', 'doge', 'core'] as const
+// Coins offered in the Send dropdown. Covers everything DiviGo's API
+// supports (standard 6 from 'all' iteration + extras we query individually).
+const SUPPORTED_COINS = ['divi', 'btc', 'eth', 'ltc', 'doge', 'core', 'wax', 'tlm', 'fio', 'bnb', 'dash'] as const
 const COIN_LABEL: Record<string, string> = {
   divi: 'DIVI', btc: 'BTC', eth: 'ETH', ltc: 'LTC', doge: 'DOGE', core: 'CORE',
+  wax: 'WAX', tlm: 'TLM', fio: 'FIO', bnb: 'BNB', dash: 'DASH',
 }
 
 const DIVIGO_BOT_HANDLE = 'DiviGoBot'  // mirror of server-side constant
@@ -159,6 +161,27 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
     if (status?.verified && status?.configured) loadBalance()
     else { setBalances(null); setBalanceError(null) }
   }, [status?.verified, status?.configured, loadBalance])
+
+  // Toast on link completion. We only flash "DiviGo connected" when the
+  // user's verified state genuinely *transitions* from false → true while
+  // the page is open — so users landing on an already-linked account don't
+  // see a stale celebration toast on every visit.
+  const seenUnverifiedRef = useRef(false)
+  const [showConnectedToast, setShowConnectedToast] = useState(false)
+  useEffect(() => {
+    if (!status) return
+    if (!status.verified) {
+      seenUnverifiedRef.current = true
+      return
+    }
+    if (status.verified && seenUnverifiedRef.current) {
+      setShowConnectedToast(true)
+      const t = setTimeout(() => setShowConnectedToast(false), 3500)
+      // Block a re-fire if the same status object lands again.
+      seenUnverifiedRef.current = false
+      return () => clearTimeout(t)
+    }
+  }, [status])
 
   // If the user just came back from DiviGo's bot via the
   // https://sso.lightningworks.io/?divigo=<code> return link (which our root
@@ -697,6 +720,24 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
             document.body,
           )}
         </>
+      )}
+
+      {/* "DiviGo connected" toast — fires only on a true false→true
+          verified transition; auto-dismisses after 3.5s. */}
+      {showConnectedToast && typeof document !== 'undefined' && createPortal(
+        <div style={{
+          position: 'fixed', bottom: '1.75rem', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 10020,
+          background: '#0d1f15', color: '#fff',
+          border: '1px solid rgba(46,160,67,0.5)', borderRadius: 8,
+          padding: '0.7rem 1.2rem', fontSize: '0.9rem', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: '0.55rem',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+        }}>
+          <span style={{ color: '#2ea043', fontSize: '1.15rem', lineHeight: 1 }}>✓</span>
+          DiviGo connected
+        </div>,
+        document.body,
       )}
     </div>
   )
