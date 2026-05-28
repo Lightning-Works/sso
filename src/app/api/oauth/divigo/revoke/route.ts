@@ -1,17 +1,12 @@
 /**
  * POST /api/oauth/divigo/revoke   — user revokes a specific app's access.
  *
- * Session-based (SSO cookie). Called from /account/connections.
- *
- * Body: { app_slug: string }
- *
- * Sets revoked_at on the (user, app) row. Future calls from that app
- * immediately get 403 no_grant. The user can re-grant later via the
- * consent screen.
+ * Sets revoked_at on the grant AND deletes the app's bearer token, so any
+ * cached copy on the app's server stops working on its very next call.
  */
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { audit } from '@/lib/oauth/divigo'
+import { audit, deleteAppToken } from '@/lib/oauth/divigo'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -36,6 +31,7 @@ export async function POST(request: Request) {
     .eq('user_id', user.id).eq('app_id', app.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  await deleteAppToken(user.id, app.id)
   await audit(user.id, app.id, 'revoke', null)
   return NextResponse.json({ ok: true })
 }

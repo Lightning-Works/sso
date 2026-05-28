@@ -3,16 +3,17 @@
 /**
  * /wallet/divi/grant?app=<slug>&scopes=balance:read,send:request&return=<url>
  *
- * The OAuth-style consent screen. A game (or any app) redirects the user
- * here to request DiviGo wallet access. The user sees what's being asked,
- * approves or denies, and is bounced back to `return` with either
- * `?divigo_granted=1` or `?divigo_granted=0`.
+ * OAuth-style consent screen. Apps redirect users here; after the user
+ * approves we POST /api/oauth/divigo/grant (which mints a per-(user,app)
+ * bearer token), then redirect back to `return` with the token in the
+ * URL fragment so it never appears in server logs.
  *
- * Three pre-conditions checked client-side:
- *   1. User signed in    → if not, redirect to /login?next=<this page>
- *   2. App valid + DiviGo-enabled → show the consent prompt
- *   3. User has DiviGo linked → if not, show "Link first" with a forward
- *      to /wallet/divi that returns here after linking.
+ * Security:
+ *   - `return` MUST match the app's allowed redirect_origins (server check
+ *      enforced by /api/oauth/divigo/grant-info; we also re-check before
+ *      navigating).
+ *   - User must be signed in (bounce to /login otherwise).
+ *   - User must have linked their DiviGo wallet first (link prompt).
  */
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
@@ -24,10 +25,12 @@ const SCOPE_LABELS: Record<string, string> = {
   'send:request': 'Request payments (each one approved in Telegram)',
 }
 
-function isSafeReturn(url: string): boolean {
-  // Allow http(s) absolute URLs. Apps will whitelist their own callback URL.
-  try { const u = new URL(url); return u.protocol === 'https:' || u.protocol === 'http:' }
-  catch { return false }
+interface AppInfo {
+  slug: string
+  name: string
+  linked: boolean
+  existingScopes: string[]
+  returnAllowed: boolean
 }
 
 function GrantInner() {
@@ -39,28 +42,23 @@ function GrantInner() {
 
   const [userId, setUserId] = useState<string | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
-  const [appInfo, setAppInfo] = useState<{ slug: string; name: string; linked: boolean; existingScopes: string[] } | null>(null)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Load the app's display name + check the user's DiviGo link status.
-  // Re-using /api/divigo/status (cookie session) gives us link state; for app
-  // info we hit a small lookup. To avoid building another endpoint, fold the
-  // checks into one round-trip via /api/oauth/divigo/grant-info (added below
-  // for the consent screen specifically).
   const loadInfo = useCallback(async () => {
     if (!appSlug) { setError('Missing app slug'); return }
+    if (!returnUrl) { setError('Missing return URL'); return }
     try {
-      const r = await fetch(`/api/oauth/divigo/grant-info?app=${encodeURIComponent(appSlug)}`, { cache: 'no-store' })
+      const r = await fetch(
+        `/api/oauth/divigo/grant-info?app=${encodeURIComponent(appSlug)}&return=${encodeURIComponent(returnUrl)}`,
+        { cache: 'no-store' },
+      )
       const j = await r.json()
       if (!r.ok) { setError(j.error || `HTTP ${r.status}`); return }
-      setAppInfo({
-        slug: j.slug, name: j.name,
-        linked: !!j.linked,
-        existingScopes: j.existingScopes || [],
-      })
+      setAppInfo(j)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
-  }, [appSlug])
+  }, [appSlug, returnUrl])
 
   useEffect(() => {
     const supabase = createClient()
@@ -68,20 +66,23 @@ function GrantInner() {
       setUserId(user?.id ?? null); setAuthChecked(true)
     })
   }, [])
-
-  useEffect(() => {
-    if (authChecked && userId) loadInfo()
-  }, [authChecked, userId, loadInfo])
+  useEffect(() => { if (authChecked && userId) loadInfo() }, [authChecked, userId, loadInfo])
 
   const validScopes = scopesRaw.filter(s => s in SCOPE_LABELS)
 
-  const finish = (granted: boolean) => {
-    if (!returnUrl || !isSafeReturn(returnUrl)) {
+  const finish = (granted: boolean, appToken?: string) => {
+    if (!appInfo?.returnAllowed) {
+      // Server already rejected the return URL — fall back to the user
+      // dashboard so they aren't stranded.
       router.push('/account/connections')
       return
     }
     const u = new URL(returnUrl)
     u.searchParams.set('divigo_granted', granted ? '1' : '0')
+    if (appToken) {
+      // Token in fragment — never sent to the server, not in HTTP logs.
+      u.hash = `app_token=${encodeURIComponent(appToken)}`
+    }
     window.location.href = u.toString()
   }
 
@@ -95,11 +96,10 @@ function GrantInner() {
       })
       const j = await r.json()
       if (!r.ok) { setError(j.error || `HTTP ${r.status}`); setBusy(false); return }
-      finish(true)
+      finish(true, j.app_token)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false) }
   }
 
-  // Need-sign-in branch — bounce to login with this page as `next`.
   if (authChecked && !userId) {
     const here = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/wallet/divi/grant'
     if (typeof window !== 'undefined') window.location.href = `/login?next=${encodeURIComponent(here)}`
@@ -116,6 +116,10 @@ function GrantInner() {
           {!appInfo ? (
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.85rem' }}>
               {error ? <span style={{ color: 'var(--lw-error)' }}>{error}</span> : 'Loading…'}
+            </p>
+          ) : !appInfo.returnAllowed ? (
+            <p style={{ color: 'var(--lw-error)', fontSize: '0.85rem' }}>
+              Return URL not allowed for this app. The admin must whitelist it in the app&apos;s redirect origins before consent can complete.
             </p>
           ) : (
             <>

@@ -1,20 +1,22 @@
 /**
  * POST /api/oauth/divigo/grant   — user grants a specific app DiviGo access.
  *
- * Session-based (SSO cookie). NOT for apps to call — apps trigger this by
- * redirecting the user to /wallet/divi/grant, which submits this from the
- * SSO's own UI.
+ * Session-based (SSO cookie). Called from the consent screen at
+ * /wallet/divi/grant. Apps DO NOT call this directly — they redirect the
+ * user there.
  *
- * Body: { app_slug: string, scopes: string[] }
- *   scopes — must be a subset of {'balance:read','send:request'}; anything
- *            else is rejected.
+ * Body: { app_slug, scopes[] }
  *
- * If a (user, app) row already exists, we replace its scopes and clear
- * revoked_at. That way re-granting works after a previous revoke.
+ * On success we:
+ *   1. Upsert the divigo_app_grants row (clears any prior revoked_at).
+ *   2. Mint a fresh per-(user, app) bearer token; any prior token is
+ *      deleted so re-granting always rotates credentials.
+ *   3. Return the plaintext token — the consent screen forwards it to
+ *      the app's callback URL once, in the URL fragment.
  */
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { ALL_SCOPES, audit } from '@/lib/oauth/divigo'
+import { ALL_SCOPES, audit, mintAppToken } from '@/lib/oauth/divigo'
 import { NextResponse } from 'next/server'
 
 function svc() {
@@ -42,16 +44,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'app_not_enabled' }, { status: 403 })
   }
 
-  // Upsert by (user_id, app_id) — the table has that as a UNIQUE constraint.
-  const { error } = await db.from('divigo_app_grants').upsert({
+  // Upsert the grant; clear revoked_at so a previously revoked user can
+  // grant again without admin intervention.
+  const { error: grantErr } = await db.from('divigo_app_grants').upsert({
     user_id: user.id,
     app_id: app.id,
     scopes,
     granted_at: new Date().toISOString(),
     revoked_at: null,
   }, { onConflict: 'user_id,app_id' })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (grantErr) return NextResponse.json({ error: grantErr.message }, { status: 500 })
+
+  // Mint (rotate) the bearer token.
+  const token = await mintAppToken(user.id, app.id)
 
   await audit(user.id, app.id, 'grant', { scopes })
-  return NextResponse.json({ ok: true, scopes })
+  return NextResponse.json({ ok: true, scopes, app_token: token })
 }
