@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { logAdmin } from '@/lib/audit'
 import { CharacterPanel, type CharacterData } from '@/lib/components/CharacterPanel'
 import { LwNftContractsPanel } from '@/lib/components/LwNftContractsPanel'
+import { DiviGoTokensPanel } from '@/lib/components/DiviGoTokensPanel'
 import { GatesPanel } from '@/lib/components/GatesPanel'
 import { UsersPanel } from '@/lib/components/UsersPanel'
 import { DEFAULT_THEME, THEME_KEYS, type LoginTheme } from '@/lib/theme'
@@ -46,7 +47,7 @@ export default function AdminPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [apps, setApps] = useState<App[]>([])
   const [characters, setCharacters] = useState<(CharacterData & { company_name?: string; app_name?: string })[]>([])
-  const validTabs = ['users', 'companies', 'apps', 'characters', 'gates', 'nft-contracts'] as const
+  const validTabs = ['users', 'companies', 'apps', 'characters', 'gates', 'nft-contracts', 'tokens'] as const
   const hashTab = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
   const initialTab = validTabs.includes(hashTab as typeof validTabs[number]) ? hashTab as typeof validTabs[number] : 'apps'
   const [activeTab, setActiveTab] = useState<typeof validTabs[number]>(initialTab)
@@ -876,9 +877,16 @@ export default function AdminPage() {
             <button
               onClick={() => switchTab('nft-contracts')}
               className="lw-btn"
-              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'nft-contracts' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+              style={{ borderRadius: '0', background: activeTab === 'nft-contracts' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
             >
               LW NFTs
+            </button>
+            <button
+              onClick={() => switchTab('tokens')}
+              className="lw-btn"
+              style={{ borderRadius: '0 4px 4px 0', background: activeTab === 'tokens' ? 'var(--lw-purple)' : 'var(--lw-bg-input)', color: 'white', width: 'auto', padding: '0.5rem 2rem', fontSize: '1.1rem', fontFamily: 'var(--lw-font-display)' }}
+            >
+              Tokens
             </button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginLeft: '1rem' }}>
@@ -1086,6 +1094,13 @@ export default function AdminPage() {
           <>
             <h2 className="lw-section-title" style={{ marginBottom: '1rem' }}>LightningWorks NFT Contracts</h2>
             <LwNftContractsPanel />
+          </>
+        )}
+
+        {activeTab === 'tokens' && (
+          <>
+            <h2 className="lw-section-title" style={{ marginBottom: '1rem' }}>DiviGo Custom Tokens</h2>
+            <DiviGoTokensPanel />
           </>
         )}
 

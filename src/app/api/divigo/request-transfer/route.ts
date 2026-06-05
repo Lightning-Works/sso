@@ -29,6 +29,13 @@ import { NextResponse } from 'next/server'
 
 const HOURLY_LIMIT = 5
 
+// Hard server-side allowlist of coins DiviGo can actually SEND from its pool.
+// The UI already only offers these, but this guard stops a direct/forged API
+// call from pushing an unsendable slug (e.g. a balance-only ERC-20) — or a
+// random coin string — at DiviGo's (compromised) backend. Custom ERC-20 tokens
+// are intentionally excluded until their `send_enabled` path is wired.
+const SENDABLE_COINS = new Set(['divi', 'btc', 'eth', 'ltc', 'doge', 'core', 'poly', 'wax', 'tlm', 'bnb', 'dash'])
+
 function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
@@ -50,6 +57,9 @@ export async function POST(request: Request) {
   const subject = String(body.subject || '').trim().slice(0, 200) || 'Send from LightningWorks SSO'
 
   if (!coin) return NextResponse.json({ error: 'coin is required' }, { status: 400 })
+  if (!SENDABLE_COINS.has(coin)) {
+    return NextResponse.json({ error: `coin '${coin}' is not sendable via DiviGo` }, { status: 400 })
+  }
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
   }

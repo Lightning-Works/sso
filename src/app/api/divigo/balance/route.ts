@@ -19,7 +19,10 @@ import { balance as diviGoBalance, diviGoConfigured, type MsgRoute, DiviGoNotCon
 import { NextResponse } from 'next/server'
 
 // Coins to query individually after the 'all' call.
-const EXTRA_COINS = ['wax', 'tlm', 'fio', 'bnb', 'dash'] as const
+// (which only covers divi/btc/eth/ltc/doge/core). `poly` + the ERC-20 tokens
+// (usdc/usdt/edivi) + `water` (Waterfall) read balance fine even though some
+// can't be sent yet. `fio` dropped per request.
+const EXTRA_COINS = ['poly', 'usdc', 'usdt', 'edivi', 'water', 'wax', 'tlm', 'bnb', 'dash'] as const
 
 function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)

@@ -40,12 +40,18 @@ interface StatusResponse {
   } | null
 }
 
-// Coins offered in the Send dropdown. Covers everything DiviGo's API
-// supports (standard 6 from 'all' iteration + extras we query individually).
-const SUPPORTED_COINS = ['divi', 'btc', 'eth', 'ltc', 'doge', 'core', 'wax', 'tlm', 'fio', 'bnb', 'dash'] as const
+// Coins offered in the Send dropdown — only those DiviGo can actually SEND
+// from its pool today. `poly` (Polygon) is wired in DiviGo's tx() path; `fio`
+// was dropped per request. Note the ERC-20 tokens (usdc/usdt/edivi) and
+// `water` (Waterfall) are intentionally NOT here: DiviGo reads their balance
+// but its send path doesn't cover them yet (see docs/DIVIGO-ERC20-TOKEN-REPORT.md).
+const SUPPORTED_COINS = ['divi', 'btc', 'eth', 'ltc', 'doge', 'core', 'poly', 'wax', 'tlm', 'bnb', 'dash'] as const
+// Labels for everything that can show up in the balance list, including the
+// receive-only coins above that aren't in the Send dropdown.
 const COIN_LABEL: Record<string, string> = {
   divi: 'DIVI', btc: 'BTC', eth: 'ETH', ltc: 'LTC', doge: 'DOGE', core: 'CORE',
-  wax: 'WAX', tlm: 'TLM', fio: 'FIO', bnb: 'BNB', dash: 'DASH',
+  poly: 'POLY', wax: 'WAX', tlm: 'TLM', bnb: 'BNB', dash: 'DASH',
+  usdc: 'USDC', usdt: 'USDT', edivi: 'eDIVI', water: 'WATER',
 }
 
 const DIVIGO_BOT_HANDLE = 'DiviGoBot'  // mirror of server-side constant
