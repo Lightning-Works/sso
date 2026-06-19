@@ -46,6 +46,7 @@ const KNOWN_COLLECTION_SLUGS = COLLECTIONS.filter(c => c.slug !== '__misc__').ma
 function WaxPortfolioContent() {
   const searchParams = useSearchParams()
   const account = searchParams.get('account') || ''
+  const embed = searchParams.get('embed') === '1'   // embedded in a game client (Dreadroot) iframe
 
   const [tokens, setTokens] = useState<WalletToken[]>([])
   const [syndicateTokens, setSyndicateTokens] = useState<SyndicateToken[]>([])
@@ -123,6 +124,22 @@ function WaxPortfolioContent() {
     }
     load()
   }, [account])
+
+  // Embedded in a game client (Dreadroot): echo the account to the parent so it can persist the link,
+  // and auto-fit the iframe to content. Only posts to allow-listed Lightningworks/Dreadroot parents.
+  useEffect(() => {
+    if (!embed || typeof window === 'undefined' || window.parent === window) return
+    let parentOrigin = ''
+    try { parentOrigin = document.referrer ? new URL(document.referrer).origin : '' } catch {}
+    const ok = /^https:\/\/([a-z0-9-]+\.)*(dreadroot\.com|lightningworks\.io)$/.test(parentOrigin)
+      || /^https:\/\/[a-z0-9-]+\.pages\.dev$/.test(parentOrigin)
+    if (!ok) return
+    const post = (msg: Record<string, unknown>) => { try { window.parent.postMessage({ source: 'lw-sso', ...msg }, parentOrigin) } catch { /* dropped */ } }
+    if (account) post({ type: 'wax-account', account })
+    const ro = new ResizeObserver(() => post({ type: 'resize', height: Math.ceil(document.documentElement.scrollHeight) }))
+    ro.observe(document.documentElement)
+    return () => ro.disconnect()
+  }, [embed, account])
 
   // Load NFTs when collection changes
   useEffect(() => {
@@ -227,9 +244,11 @@ function WaxPortfolioContent() {
             <h1 className="lw-heading-xl" style={{ margin: 0 }}>WAX Portfolio</h1>
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', marginTop: '0.25rem', fontFamily: 'monospace' }}>{account}</p>
           </div>
-          <a href="/account" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>
-            ← Back
-          </a>
+          {!embed && (
+            <a href="/account" className="lw-btn lw-btn-connect" style={{ width: 'auto', textDecoration: 'none', padding: '0.5rem 1.5rem' }}>
+              ← Back
+            </a>
+          )}
         </div>
 
         {loading ? (
