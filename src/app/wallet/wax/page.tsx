@@ -241,7 +241,7 @@ function WaxPortfolioContent() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
           <div>
-            <h1 className="lw-heading-xl" style={{ margin: 0 }}>WAX Portfolio</h1>
+            <h1 className="lw-heading-xl" style={{ margin: 0 }}>Alien Worlds Portfolio</h1>
             <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', marginTop: '0.25rem', fontFamily: 'monospace' }}>{account}</p>
           </div>
           {!embed && (
@@ -266,6 +266,7 @@ function WaxPortfolioContent() {
                   nativeSymbol="WAX"
                   labelOverrides={{ TLM: ' - Trilium' }}
                   storageKey={`token-spam-wax-${account}`}
+                  allowSpam={false}
                 />
 
                 {/* Syndicate Tokens */}
@@ -338,7 +339,8 @@ function WaxPortfolioContent() {
               </div>
             </div>
 
-            {/* Collection Tabs */}
+            {/* Collection Tabs — hidden in the Alien Worlds wallet (only Alien Worlds NFTs show) */}
+            {false && (
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',
@@ -387,6 +389,7 @@ function WaxPortfolioContent() {
                 </button>
               ))}
             </div>
+            )}
 
             {/* NFTs */}
             <div className="lw-section">

@@ -38,6 +38,8 @@ interface TokenGridProps {
   /** Optional display suffix for native token (e.g. ' - Trilium') */
   labelOverrides?: Record<string, string>
   storageKey?: string
+  /** When false (e.g. the Alien Worlds wallet) the Mark-as-Spam UI is hidden and all tokens show. */
+  allowSpam?: boolean
 }
 
 function loadSpam(key: string): Set<string> {
@@ -57,6 +59,7 @@ export function TokenGrid({
   nativeSymbol,
   labelOverrides = {},
   storageKey = 'token-spam',
+  allowSpam = true,
 }: TokenGridProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [spam, setSpam] = useState<Set<string>>(new Set())
@@ -103,6 +106,7 @@ export function TokenGrid({
   })
 
   const visible = sortedTokens.filter(t => {
+    if (!allowSpam) return true
     const key = `${t.symbol}-${t.walletAddress}`
     if (viewMode === 'spam') return spam.has(key)
     return !spam.has(key)
@@ -131,6 +135,7 @@ export function TokenGrid({
   }
 
   const handleContextMenu = (e: React.MouseEvent, t: WalletToken) => {
+    if (!allowSpam) return
     e.preventDefault()
     const key = `${t.symbol}-${t.walletAddress}`
     if (!selected.has(key)) setSelected(new Set([key]))
@@ -248,7 +253,7 @@ export function TokenGrid({
       `}</style>
 
       {/* Tabs */}
-      {tokens.length > 0 && (spamCount > 0 || selected.size > 0) && (
+      {allowSpam && tokens.length > 0 && (spamCount > 0 || selected.size > 0) && (
         <div className="token-view-tabs">
           {selected.size > 0 && (
             <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', marginRight: 'auto' }}>
