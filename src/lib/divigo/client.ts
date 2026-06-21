@@ -172,6 +172,22 @@ export function getPrice(coin = 'divi'): Promise<unknown> {
 }
 
 /**
+ * List the NFTs a user holds on an EVM network, from the address DiviGo custodies for them. Used to
+ * check Ethereum NFT ownership (e.g. the LightningWorks Portal) from just their DiviGo identity —
+ * DiviGo resolves their eth/poly address internally and queries the chain. Pass `contract` to filter
+ * to one collection. Returns the raw NFT array (empty if none). DiviGo's own `nfts` API method
+ * (src/controllers/api.js) — verified to exist in DiviGoReboot.
+ */
+export async function getNfts(p: { number: string; route: MsgRoute; network?: 'eth' | 'poly'; contract?: string }): Promise<unknown[]> {
+  const data = await callApi('nfts', {
+    number: p.number, route: p.route,
+    network: p.network ?? 'eth',
+    ...(p.contract ? { contract: p.contract } : {}),
+  })
+  return Array.isArray(data) ? data : []
+}
+
+/**
  * Create a new DiviGo account for a phone+route. Use sparingly — accounts
  * are normally created via the Telegram bot's onboarding flow.
  * Returns true if the account was created.
