@@ -1,29 +1,26 @@
 /**
- * POST /api/divigo/partner-holdings   — server-to-server, shared-secret locked.
+ * POST /api/divigo/partner-holdings   — server-to-server, authenticated with the SAME app credentials
+ * the calling app already has (X-LW-App-Slug + X-LW-App-Secret — the existing Dreadroot↔SSO link). No
+ * new secret.
  *
  * Given a DiviGo account { number, route }, returns the user's DIVI balance and whether they hold a
  * given NFT (e.g. the LightningWorks Portal) — DiviGo resolves their eth address internally. This
  * BYPASSES the normal per-user Telegram consent — it exists only for the one-time Siege Worlds VIP
- * backfill, where LightningWorks already operates the DiviGo accounts. It is read-only and gated by
- * LW_PARTNER_HOLDINGS_SECRET (set the same value on the calling backend). NOT a public endpoint.
+ * backfill, where LightningWorks already operates the DiviGo accounts. Read-only. NOT public.
  *
  * Body: { number, route?, portalContract?, portalNetwork? }   ->   { divi, hasPortal, portalCount }
- * Requires header: x-lw-partner-secret: <LW_PARTNER_HOLDINGS_SECRET>
+ * Requires headers: X-LW-App-Slug + X-LW-App-Secret (a registered, divigo-enabled app).
  */
 import { balance, getNfts, diviGoConfigured, type MsgRoute } from '@/lib/divigo/client'
+import { statusContext, OAuthError } from '@/lib/oauth/divigo'
 import { NextResponse } from 'next/server'
 
-function constEq(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let r = 0
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return r === 0
-}
-
 export async function POST(request: Request) {
-  const expected = process.env.LW_PARTNER_HOLDINGS_SECRET || ''
-  const got = request.headers.get('x-lw-partner-secret') || ''
-  if (!expected || !got || !constEq(got, expected)) {
+  // Reuse the existing app-credential check (same as the OAuth DiviGo endpoints Dreadroot already calls).
+  try {
+    await statusContext(request)   // throws OAuthError unless X-LW-App-Slug/Secret are valid + divigo-enabled
+  } catch (e) {
+    if (e instanceof OAuthError) return e.toResponse()
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (!diviGoConfigured()) return NextResponse.json({ error: 'divigo_not_configured' }, { status: 503 })
