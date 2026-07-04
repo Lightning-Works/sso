@@ -1,7 +1,5 @@
 /**
- * POST /api/divigo/partner-holdings   — server-to-server, authenticated with the SAME app credentials
- * the calling app already has (X-LW-App-Slug + X-LW-App-Secret — the existing Dreadroot↔SSO link). No
- * new secret.
+ * POST /api/divigo/partner-holdings   — server-to-server, dedicated read credential.
  *
  * Given a DiviGo account { number, route }, returns the user's DIVI balance and whether they hold a
  * given NFT (e.g. the LightningWorks Portal) — DiviGo resolves their eth address internally. This
@@ -9,18 +7,23 @@
  * backfill, where LightningWorks already operates the DiviGo accounts. Read-only. NOT public.
  *
  * Body: { number, route?, portalContract?, portalNetwork? }   ->   { divi, hasPortal, portalCount }
- * Requires headers: X-LW-App-Slug + X-LW-App-Secret (a registered, divigo-enabled app).
+ * Auth: header X-LW-Holdings-Secret === LW_HOLDINGS_SECRET — a DEDICATED read-only credential, separate
+ * from the DiviGo OAuth app secret (least privilege).
  */
 import { balance, getNfts, diviGoConfigured, type MsgRoute } from '@/lib/divigo/client'
-import { statusContext, OAuthError } from '@/lib/oauth/divigo'
 import { NextResponse } from 'next/server'
 
+function constEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let r = 0
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return r === 0
+}
+
 export async function POST(request: Request) {
-  // Reuse the existing app-credential check (same as the OAuth DiviGo endpoints Dreadroot already calls).
-  try {
-    await statusContext(request)   // throws OAuthError unless X-LW-App-Slug/Secret are valid + divigo-enabled
-  } catch (e) {
-    if (e instanceof OAuthError) return e.toResponse()
+  const expected = process.env.LW_HOLDINGS_SECRET || ''
+  const got = request.headers.get('x-lw-holdings-secret') || ''
+  if (!expected || !got || !constEq(got, expected)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (!diviGoConfigured()) return NextResponse.json({ error: 'divigo_not_configured' }, { status: 503 })

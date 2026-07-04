@@ -6,22 +6,30 @@
  * trusting a pasted address. Read-only. NOT public.
  *
  * Body: { email }  ->  { wallets: [{ chain, address }] }   (chain = 'solana' | 'evm' | 'wax' | 'divi')
- * Requires headers: X-LW-App-Slug + X-LW-App-Secret (a registered, divigo-enabled app).
- * Requires the DB function public.app_wallets_by_email(text) (see docs/SOLANA_INTEGRATION_SETUP.md).
+ * Auth: header X-LW-Holdings-Secret === LW_HOLDINGS_SECRET. This is a DEDICATED read-only credential,
+ * deliberately separate from the DiviGo OAuth app secret (least privilege — a leak here exposes only
+ * wallet lookups, never the DiviGo money path). Requires the DB function public.app_wallets_by_email
+ * (see docs/SOLANA_INTEGRATION_SETUP.md).
  */
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { statusContext, OAuthError } from '@/lib/oauth/divigo'
 import { NextResponse } from 'next/server'
 
 function svc() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// Constant-time comparison — never leak secret length/prefix via early-exit timing.
+function constEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let r = 0
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return r === 0
+}
+
 export async function POST(request: Request) {
-  try {
-    await statusContext(request)   // validates X-LW-App-Slug/Secret; throws OAuthError otherwise
-  } catch (e) {
-    if (e instanceof OAuthError) return e.toResponse()
+  const expected = process.env.LW_HOLDINGS_SECRET || ''
+  const got = request.headers.get('x-lw-holdings-secret') || ''
+  if (!expected || !got || !constEq(got, expected)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 

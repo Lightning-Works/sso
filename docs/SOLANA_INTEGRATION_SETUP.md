@@ -29,5 +29,8 @@ can read `auth.users`). Read-only.
 
 ## Env
 - `NEXT_PUBLIC_HELIUS_API_KEY` — already set; powers all Solana balance/NFT reads.
-- The `dreadroot` app must be registered + divigo-enabled in the `apps` table (already done) — that's
-  the credential `/api/app/connected-wallets` checks.
+- **`LW_HOLDINGS_SECRET`** — a NEW dedicated read-only credential (pick any long random string). Set the
+  SAME value on the SSO and on the Dreadroot edge functions. It authorizes the two server-to-server read
+  endpoints — `/api/app/connected-wallets` and `/api/divigo/partner-holdings` — via the header
+  `X-LW-Holdings-Secret`. Kept SEPARATE from the DiviGo OAuth app secret so a leak here exposes only
+  wallet lookups, never the DiviGo money path (least privilege). Rotate by changing it in both places.
