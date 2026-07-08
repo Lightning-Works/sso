@@ -310,9 +310,14 @@ export function WebtoonReader(
     if (fb?.pages?.length) {
       const isCoverSlot = (label: string, i: number) =>
         i === 0 || /^cover$|^front\s*cover$/i.test(label || '')
+      // Non-admin readers also skip image-less strips (empty slots left in the
+      // data) so stray blanks never interrupt the scroll — except a cover slot,
+      // which falls back to the NFT image.
       const visible = isAdminNow
         ? fb.pages
-        : fb.pages.filter(p => !p.tier || rankIn(p.tier, tierRank) <= viewerRank)
+        : fb.pages.filter((p, i) =>
+            (!p.tier || rankIn(p.tier, tierRank) <= viewerRank) &&
+            (!!p.url || isCoverSlot(p.label, i)))
       setStrips(visible.map((p, i) => ({
         label: p.label,
         file: p.file,

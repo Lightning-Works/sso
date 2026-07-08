@@ -4,12 +4,17 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { ComicReaderDispatch } from './ComicReaderDispatch'
 
-/** A readable comic = has a comic HTML bundle (animationUrl) + a comic marker. */
+/** A readable comic = a comic marker + a way to resolve its pages. */
 function isComic(n: NftItem): boolean {
-  if (!n.animationUrl) return false
   const attrComic = (n.attributes || []).some(a =>
     a.key.toLowerCase() === 'media type' && a.value.toLowerCase().includes('comic'))
-  return attrComic || /comic/i.test(n.collection || '') || /comic/i.test(n.name || '')
+  const marked = attrComic || /comic/i.test(n.collection || '') || /comic/i.test(n.name || '')
+  if (!marked) return false
+  // Resolvable if it has an on-chain bundle (animationUrl) OR a contract
+  // address. Pages are keyed by contract address and shared across every mint
+  // of the series, so a mint indexed WITHOUT an animation_url (it happens —
+  // e.g. AW0 Starblind #266) still opens the same stored pages as its siblings.
+  return !!(n.animationUrl || n.contractAddress)
 }
 
 function isUltraRare(nft: NftItem): boolean {
@@ -1256,7 +1261,7 @@ export function NftGrid({
       {/* Comic Reader — dispatches to paged or webtoon reader by format.
           A webtoon opens even with no animationUrl (it's keyed to the
           contract, not an IPFS bundle). */}
-      {readerNft && (readerNft.animationUrl || readerWebtoon) && (
+      {readerNft && (readerNft.animationUrl || readerWebtoon || readerNft.contractAddress) && (
         <ComicReaderDispatch
           name={readerNft.name}
           url={readerNft.animationUrl || ''}
