@@ -332,6 +332,11 @@ export function ComicReader(
   const zoomBoxRef = useRef<HTMLDivElement>(null)
   const pinch = useRef<{ d0: number; z0: number; px0: number; py0: number; mx: number; my: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
+  // The actual reader panel (the flip area). We decide single- vs two-page
+  // from ITS width, not the browser window — the window can differ from the
+  // panel, and page-flip lays out against the panel, so this is the width
+  // that must drive the decision for the two to stay in sync.
+  const panelRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ mode: string; index: number } | null>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
@@ -388,10 +393,14 @@ export function ComicReader(
   }, [contractAddress])
 
   useEffect(() => {
-    const mq = window.matchMedia(`(max-width:${NARROW_MAX}px)`)
-    const u = () => setNarrow(mq.matches)
-    u(); mq.addEventListener('change', u)
-    return () => mq.removeEventListener('change', u)
+    const el = panelRef.current
+    if (!el) return
+    // Fall back to the window width until the panel has a measured size.
+    const u = () => setNarrow((el.clientWidth || window.innerWidth) <= NARROW_MAX)
+    u()
+    const ro = new ResizeObserver(u)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   const resolve = useCallback(async () => {
@@ -959,7 +968,7 @@ export function ComicReader(
 
         <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onFile} />
 
-        <div style={{ flex: 1, position: 'relative', background: '#111111' }}>
+        <div ref={panelRef} style={{ flex: 1, position: 'relative', background: '#111111' }}>
           {phase === 'resolving' && <div style={msg}><p style={{ color: '#bab1a8', fontSize: '.9rem', margin: 0 }}>Checking comic data&hellip;</p></div>}
           {phase === 'unavailable' && (
             <div style={msg}>

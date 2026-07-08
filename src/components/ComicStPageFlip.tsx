@@ -196,11 +196,19 @@ export function StPageFlipEffect(p: PageTurnProps) {
       const ch = Math.max(360, liveHost.clientHeight - 16)
       startLeaf = propsRef.current.currentLeaf ?? 0
 
+      // page-flip only actually renders single-page ("portrait") when the
+      // block width is below 2×minWidth (its fixed rule). With a small
+      // minWidth it stays 2-up for any panel wider than ~360px, silently
+      // ignoring usePortrait — which desynced our leaf↔page model on every
+      // tablet/phone. So when WE want portrait, raise minWidth above half
+      // the panel to guarantee page-flip agrees; landscape keeps 180.
+      const pfMinWidth = portrait ? Math.max(180, Math.floor(cw / 2) + 20) : 180
+
       try {
         pf = new PageFlip(container, {
           width: 480, height: 680,        // single-page aspect basis
           size: 'stretch',
-          minWidth: 180, maxWidth: cw,
+          minWidth: pfMinWidth, maxWidth: cw,
           minHeight: 260, maxHeight: ch,
           drawShadow: true,
           flippingTime: FLIP_MS,
