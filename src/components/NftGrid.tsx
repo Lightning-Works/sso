@@ -133,6 +133,10 @@ interface NftGridProps {
   /** Called after the grid mutates loans (Return/Revoke) so the parent
    *  can re-fetch /api/loans/mine and refresh the badges/overlays. */
   onLoansChanged?: () => void
+  /** Show the NFTs/Spam view tabs. Off when the grid is already scoped to a
+   *  single curated collection — there's no spam there and everything is an
+   *  NFT, so the toggle is just noise. */
+  showViewTabs?: boolean
 }
 
 export function NftGrid({
@@ -148,6 +152,7 @@ export function NftGrid({
   storageKey = 'nft-tags',
   isSuperadmin = false,
   onLoansChanged,
+  showViewTabs = true,
 }: NftGridProps) {
   // Loan action under user confirmation. null when no action pending.
   const [loanConfirm, setLoanConfirm] = useState<{ kind: 'return' | 'revoke'; loanId: string; nftName: string; counterpartyLabel: string } | null>(null)
@@ -758,7 +763,7 @@ export function NftGrid({
           <input
             className="nft-search-input"
             type="text"
-            placeholder="Search NFTs..."
+            placeholder="Search Digital Collectibles..."
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); setViewMode('all') }}
           />
@@ -781,7 +786,7 @@ export function NftGrid({
       )}
 
       {/* View tabs */}
-      {!loading && nfts.length > 0 && !searchQuery && (
+      {showViewTabs && !loading && nfts.length > 0 && !searchQuery && (
         <div className="nft-view-tabs">
           {selected.size > 0 && (
             <span style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', alignSelf: 'center', marginRight: 'auto' }}>

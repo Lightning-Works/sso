@@ -352,7 +352,7 @@ function LwWalletContent() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
           <div>
             <h1 className="lw-heading-xl" style={{ margin: 0 }}>LightningWorks Wallet</h1>
-            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>Your NFT collections</p>
+            <p style={{ color: 'var(--lw-text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>Your Digital Collectibles</p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             {selectedContractData && (
@@ -411,6 +411,7 @@ function LwWalletContent() {
               storageKey="nft-tags-lw-loans"
               isSuperadmin={isSuperadmin}
               onLoansChanged={refreshLoans}
+              showViewTabs={false}
             />
           </div>
         ) : (
@@ -515,6 +516,7 @@ function LwWalletContent() {
                   storageKey={onLoanedToMe ? 'nft-tags-lw-loans' : `nft-tags-lw-${selectedContractData!.contract_address}`}
                   isSuperadmin={isSuperadmin}
                   onLoansChanged={refreshLoans}
+                  showViewTabs={false}
                 />
               </div>
             )}
