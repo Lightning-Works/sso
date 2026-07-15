@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { themeFromSearchParams, mergeThemes, themeToCssVars } from '@/lib/theme'
 import { CHAT_EMBED_BASE } from '@/lib/chat'
 import { getWaxBalances, getSyndicateTokens, type SyndicateToken, type PlanetDaoData, SYNDICATE_PLANETS } from '@/lib/wallets/balances/wax-balances'
 import { useCallback } from 'react'
@@ -47,6 +48,21 @@ function WaxPortfolioContent() {
   const searchParams = useSearchParams()
   const account = searchParams.get('account') || ''
   const embed = searchParams.get('embed') === '1'   // embedded in a game client (Dreadroot) iframe
+
+  // When embedded, the parent game passes its live HUD colors as theme params. Apply them (and go fully
+  // transparent, dropping our own panel blur) so the wallet reads as one native panel inside the game's
+  // frosted-glass User Panel. Non-embedded views are untouched — this only runs for embed=1.
+  const embedThemeCss = useMemo(() => {
+    if (!embed) return ''
+    const overrides = themeFromSearchParams(new URLSearchParams(searchParams.toString()))
+    const vars = themeToCssVars(mergeThemes(null, null, overrides))
+    return `${vars}
+      html, body, .lw-account-page { background: transparent !important; background-image: none !important; }
+      .lw-account-page { padding: 0 !important; min-height: 0 !important; }
+      .wax-main-content { padding: 0.75rem !important; }
+      .lw-section { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 1px solid var(--lw-border) !important; }
+    `
+  }, [embed, searchParams])
 
   const [tokens, setTokens] = useState<WalletToken[]>([])
   const [syndicateTokens, setSyndicateTokens] = useState<SyndicateToken[]>([])
@@ -206,6 +222,7 @@ function WaxPortfolioContent() {
 
   return (
     <div className="lw-account-page">
+      {embed && <style dangerouslySetInnerHTML={{ __html: embedThemeCss }} />}
       <style>{`
         .wax-page-layout {
           display: flex;

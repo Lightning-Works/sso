@@ -11,6 +11,9 @@ export interface LoginTheme {
   panel_bg_color?: string      // login panel background
   text_color?: string          // primary text color
   text_secondary_color?: string // subtitle/muted text
+  text_muted_color?: string    // faint/label text (--lw-text-muted)
+  text_white_color?: string    // brightest text (--lw-text-white)
+  wallet_row_bg_color?: string // wallet row / token-tile background (--lw-wallet-row-bg)
   input_bg_color?: string      // form input background
   input_text_color?: string    // form input text color
   divider_color?: string       // divider lines
@@ -26,6 +29,9 @@ export const DEFAULT_THEME: Required<LoginTheme> = {
   panel_bg_color: 'rgba(0, 0, 0, 0.8)',
   text_color: '#e4dad1',
   text_secondary_color: '#bab1a8',
+  text_muted_color: '#7a7572',
+  text_white_color: '#ffffff',
+  wallet_row_bg_color: 'rgb(26, 26, 28)',
   input_bg_color: 'rgba(26, 17, 46, 1)',
   input_text_color: '#bab1a8',
   divider_color: '#4c4946',
@@ -117,6 +123,9 @@ export function themeToCssVars(theme: Required<LoginTheme>): string {
       --lw-panel: ${theme.panel_bg_color};
       --lw-text-primary: ${theme.text_color};
       --lw-text-secondary: ${theme.text_secondary_color};
+      --lw-text-muted: ${theme.text_muted_color};
+      --lw-text-white: ${theme.text_white_color};
+      --lw-wallet-row-bg: ${theme.wallet_row_bg_color};
       --lw-input-bg: ${inputBg};
       --lw-border: ${theme.divider_color};
       --lw-radius: ${theme.border_radius};
