@@ -1,7 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { CHAT_EMBED_BASE } from '@/lib/chat'
+import { CHAT_EMBED_BASE, CHAT_EMBED_ORIGIN, isChatEmbedOrigin } from '@/lib/chat'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
@@ -202,7 +202,9 @@ function LoginContent() {
   // Listen for ALL messages from the chat iframe and respond with user identity
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin.includes('lovable.app') || event.origin.includes('kinet.ink')) {
+      // Exact-origin match only — a substring test would also accept
+      // attacker-controlled hosts like evil-lovable.app.bad.com.
+      if (isChatEmbedOrigin(event.origin)) {
         console.log('[SSO Login] Message from embed:', event.data)
         const iframe = document.querySelector('iframe[title="Character Chat"]') as HTMLIFrameElement
         if (iframe?.contentWindow) {
@@ -221,7 +223,7 @@ function LoginContent() {
             userColor: userBorderColor || '',
           }
           console.log('[SSO Login] Sending identity:', { type: msg.type, hasAvatar: !!msg.avatar, name: msg.name })
-          iframe.contentWindow.postMessage(msg, '*')
+          iframe.contentWindow.postMessage(msg, CHAT_EMBED_ORIGIN)
         }
       }
     }
@@ -564,7 +566,7 @@ function LoginContent() {
                       userInnerColor: userInnerColor || '',
                       userColor: userBorderColor || '',
                     }
-                    const send = () => iframe.contentWindow?.postMessage(msg, '*')
+                    const send = () => iframe.contentWindow?.postMessage(msg, CHAT_EMBED_ORIGIN)
                     send()
                     setTimeout(send, 500)
                     setTimeout(send, 1500)

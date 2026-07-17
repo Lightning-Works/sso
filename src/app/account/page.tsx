@@ -1,7 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { CHAT_EMBED_BASE } from '@/lib/chat'
+import { CHAT_EMBED_BASE, CHAT_EMBED_ORIGIN, isChatEmbedOrigin } from '@/lib/chat'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
@@ -147,15 +147,16 @@ export default function AccountPage() {
   // Listen for ALL messages from the chat iframe and respond with user identity
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Log all iframe messages for debugging
-      if (event.origin.includes('lovable.app') || event.origin.includes('kinet.ink')) {
+      // Exact-origin match only — a substring test would also accept
+      // attacker-controlled hosts like evil-lovable.app.bad.com.
+      if (isChatEmbedOrigin(event.origin)) {
         console.log('[SSO] Message from embed:', event.data)
         // Respond to ANY message from the embed with user identity
         const iframe = document.querySelector('iframe[title="Character Chat"]') as HTMLIFrameElement
         if (iframe?.contentWindow) {
           const msg = buildUserIdentityMsg()
           console.log('[SSO] Sending identity response:', { type: msg.type, hasAvatar: !!msg.avatar, name: msg.name, borderColor: msg.borderColor })
-          iframe.contentWindow.postMessage(msg, '*')
+          iframe.contentWindow.postMessage(msg, CHAT_EMBED_ORIGIN)
         }
       }
     }
@@ -901,7 +902,7 @@ export default function AccountPage() {
                 // Send immediately and retry a few times in case embed isn't ready
                 const send = () => {
                   console.log('[SSO] Sending identity on load/retry:', { type: msg.type, hasAvatar: !!msg.avatar, name: msg.name })
-                  iframe.contentWindow?.postMessage(msg, '*')
+                  iframe.contentWindow?.postMessage(msg, CHAT_EMBED_ORIGIN)
                 }
                 send()
                 setTimeout(send, 500)
