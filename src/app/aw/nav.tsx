@@ -13,6 +13,7 @@ import Balances from './features/Balances'
 import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
+import BuyTrilium from './features/BuyTrilium'
 import StubView from './ui/StubView'
 
 export type NavChild = { id: string; label: string; render: (p: FeatureProps) => ReactNode }
@@ -28,6 +29,12 @@ export const NAV: NavGroup[] = [
       { id: 'wallet.send', label: 'Send', render: stub('Phase 1', 'Send', ['Send WAX, Trilium or planet tokens to another account.'], ['Send']) },
       { id: 'wallet.receive', label: 'Receive', render: stub('Phase 1', 'Receive', ['Show your account name and a QR code to receive tokens.']) },
       { id: 'wallet.activity', label: 'Activity', render: stub('Phase 1', 'Activity', ['Recent transactions on your account.']) },
+    ],
+  },
+  {
+    id: 'buy', label: 'Buy Trilium', icon: '💰', children: [
+      { id: 'buy.card', label: 'With Card', render: () => <BuyTrilium /> },
+      { id: 'buy.swap', label: 'Swap to TLM', render: stub('Phase 2', 'Swap to Trilium', ['Swap USDT → TLM on Binance, or WAX → TLM on Alcor.', 'Auto-routes to the cheapest path.'], ['Swap']) },
     ],
   },
   {
@@ -63,10 +70,17 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'mine', label: 'Mine', icon: '⛏️', children: [
-      { id: 'mine.mine', label: 'Mine', render: stub('Phase 4', 'Mine', ['Mine Trilium on your land or others’ land with your tools.'], ['Mine']) },
+      { id: 'mine.mine', label: 'Mine', render: stub('Phase 4', 'Mine', ['Equip a Land and up to 3 tools, then mine Trilium + NFTs.', 'Tool stats: Mining Power, NFT Luck, Charge Time, Proof of Work.'], ['Mine']) },
       { id: 'mine.claim', label: 'Claim Rewards', render: stub('Phase 4', 'Claim Rewards', ['Claim mined Trilium and NFT game cards.'], ['Claim']) },
       { id: 'mine.land', label: 'My Land', render: stub('Phase 4', 'My Land', ['Land you own and commission earned from miners.']) },
-      { id: 'mine.tools', label: 'Tools', render: stub('Phase 4', 'Tools', ['Equip tools to boost your mining power.']) },
+      { id: 'mine.tools', label: 'Tools', render: stub('Phase 4', 'Tools', ['Equip up to 3 tools to boost your mining power.']) },
+    ],
+  },
+  {
+    id: 'missions', label: 'Missions', icon: '🚀', children: [
+      { id: 'mis.send', label: 'Send Mission', render: stub('Phase 4', 'Send a Mission', ['Lock Trilium on Binance to send a mining spacecraft (40–2000 TLM).', 'Earn a share of the reward pool + up to 5 NFTs per mission.'], ['Launch']) },
+      { id: 'mis.mine', label: 'My Missions', render: stub('Phase 4', 'My Missions', ['Active and completed missions, lockups and rewards.']) },
+      { id: 'mis.adv', label: 'Adventures', render: stub('Phase 4', 'Adventures', ['Send your NFTs on 24h adventures for Reward Points and XP.'], ['Send on adventure']) },
     ],
   },
   {
@@ -77,6 +91,8 @@ export const NAV: NavGroup[] = [
       { id: 'inv.avatars', label: 'Avatars', render: p => <Inventory {...p} schema="avatar" /> },
       { id: 'inv.weapons', label: 'Weapons', render: p => <Inventory {...p} schema="arms" /> },
       { id: 'inv.minions', label: 'Minions', render: p => <Inventory {...p} schema="minion" /> },
+      { id: 'inv.shine', label: 'Shine (Forge)', render: stub('Phase 4', 'Shine — Forge NFTs', ['Forge 4 identical NFTs into one of higher shine: Stone → Gold → Stardust → Antimatter.', 'Higher shine boosts attributes and value.'], ['Shine']) },
+      { id: 'inv.shards', label: 'Shards / Outpost', render: stub('Phase 4', 'Shards & NFT Outpost', ['Shards (NFT points) are earned by mining.', 'Fuse shards at the NFT Outpost to craft new tools.'], ['Fuse shards']) },
     ],
   },
   {
