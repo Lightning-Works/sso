@@ -111,6 +111,26 @@ export const COLOR_CONTROLS: { key: keyof ThemeVars; label: string }[] = [
   { key: '--aww-border', label: 'Borders' },
 ]
 
+/**
+ * Map our tokens onto the SSO `--lw-*` variables so reused SSO components
+ * (NftGrid, comic/webtoon reader) theme with the active skin.
+ */
+export function lwVarsFrom(v: ThemeVars): Record<string, string> {
+  return {
+    '--lw-purple': v['--aww-primary'],
+    '--lw-purple-hover': v['--aww-primary-hover'],
+    '--lw-wallet-row-bg': v['--aww-surface-2'],
+    '--lw-text-white': v['--aww-text'],
+    '--lw-text-secondary': v['--aww-text-dim'],
+    '--lw-text-muted': v['--aww-text-muted'],
+    '--lw-accent': v['--aww-primary'],
+    '--lw-border': v['--aww-border'],
+    '--lw-radius-sm': v['--aww-radius'],
+    '--nft-card-bg': v['--aww-surface-2'],
+    '--nft-thumb-bg': v['--aww-surface-2'],
+  }
+}
+
 export const FONT_OPTIONS: { label: string; value: string }[] = [
   { label: 'Open Sans', value: "'Open Sans', system-ui, sans-serif" },
   { label: 'Inter', value: "'Inter', system-ui, sans-serif" },

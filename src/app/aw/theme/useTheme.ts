@@ -49,5 +49,16 @@ export function useTheme() {
 
   const reset = useCallback(() => { setSkinId(DEFAULT_SKIN_ID); setOverrides({}) }, [])
 
-  return { skinId, vars, setToken, applySkin, reset, ready }
+  /** Import a skin (validated: only known token keys, short string values). */
+  const importVars = useCallback((incoming: Record<string, unknown>) => {
+    const keys = Object.keys(defaultVars()) as (keyof ThemeVars)[]
+    const clean: Partial<ThemeVars> = {}
+    for (const k of keys) {
+      const val = incoming[k]
+      if (typeof val === 'string' && val.length > 0 && val.length < 120) clean[k] = val
+    }
+    if (Object.keys(clean).length) setOverrides(o => ({ ...o, ...clean }))
+  }, [])
+
+  return { skinId, vars, setToken, applySkin, reset, importVars, ready }
 }

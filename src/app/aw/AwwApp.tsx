@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import s from './aw.module.css'
 import { NAV, FIRST, type NavGroup, type NavChild } from './nav'
 import { useTheme } from './theme/useTheme'
+import { lwVarsFrom } from './theme/tokens'
 import { StylingPanel } from './theme/StylingPanel'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 
@@ -11,7 +12,7 @@ const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
 
 export default function AwwApp() {
-  const { skinId, vars, setToken, applySkin, reset } = useTheme()
+  const { skinId, vars, setToken, applySkin, reset, importVars } = useTheme()
 
   const [active, setActive] = useState(FIRST)
   const [expanded, setExpanded] = useState<Set<string>>(new Set([groupOf(FIRST).id]))
@@ -56,7 +57,8 @@ export default function AwwApp() {
   const activeChild = activeGroup.children.find(c => c.id === active) ?? activeGroup.children[0]
 
   return (
-    <div className={s.app} style={vars as unknown as CSSProperties}>
+    <div className={s.shell} style={{ ...vars, ...lwVarsFrom(vars) } as unknown as CSSProperties}>
+    <div className={s.app}>
       {/* Sidebar outline */}
       <aside className={`${s.sidebar} ${navOpen ? s.sidebarOpen : ''}`}>
         <div className={s.brand}>
@@ -133,6 +135,8 @@ export default function AwwApp() {
         </main>
       </div>
 
+      </div>
+
       {panelOpen && (
         <StylingPanel
           skinId={skinId}
@@ -140,6 +144,7 @@ export default function AwwApp() {
           setToken={setToken}
           applySkin={applySkin}
           reset={reset}
+          importVars={importVars}
           onClose={() => setPanelOpen(false)}
         />
       )}

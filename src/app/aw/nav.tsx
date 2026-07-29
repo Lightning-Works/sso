@@ -92,11 +92,11 @@ export const NAV: NavGroup[] = [
   {
     id: 'inventory', label: 'Inventory', icon: '🎒', children: [
       { id: 'inv.all', label: 'All', render: p => <Inventory {...p} /> },
-      { id: 'inv.land', label: 'Land', render: p => <Inventory {...p} schema="land" /> },
-      { id: 'inv.tools', label: 'Tools', render: p => <Inventory {...p} schema="tool" /> },
-      { id: 'inv.avatars', label: 'Avatars', render: p => <Inventory {...p} schema="face" /> },
-      { id: 'inv.weapons', label: 'Weapons', render: p => <Inventory {...p} schema="arms" /> },
-      { id: 'inv.crew', label: 'Crew', render: p => <Inventory {...p} schema="crew" /> },
+      { id: 'inv.land', label: 'Land', render: p => <Inventory {...p} schema="land.worlds" label="Land" /> },
+      { id: 'inv.tools', label: 'Tools', render: p => <Inventory {...p} schema="tool.worlds" label="Tools" /> },
+      { id: 'inv.avatars', label: 'Avatars', render: p => <Inventory {...p} schema="face.worlds" label="Avatars" /> },
+      { id: 'inv.weapons', label: 'Weapons', render: p => <Inventory {...p} schema="arms.worlds" label="Weapons" /> },
+      { id: 'inv.crew', label: 'Crew', render: p => <Inventory {...p} schema="crew.worlds" label="Crew" /> },
       { id: 'inv.shine', label: 'Shine (Forge)', render: stub('Phase 4', 'Shine — Forge NFTs', ['Forge 4 identical NFTs into one of higher shine: Stone → Gold → Stardust → Antimatter.', 'Higher shine boosts attributes and value.'], ['Shine']) },
       { id: 'inv.shards', label: 'Shards / Outpost', render: stub('Phase 4', 'Shards & NFT Outpost', ['Shards (NFT points) are earned by mining.', 'Fuse shards at the NFT Outpost to craft new tools.'], ['Fuse shards']) },
     ],
