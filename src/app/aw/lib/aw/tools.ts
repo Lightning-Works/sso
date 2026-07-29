@@ -5,13 +5,18 @@
  * tool.worlds (verified on-chain): delay (cooldown seconds), ease (reduces
  * proof-of-work), luck (NFT drop rate), difficulty, shine, rarity.
  *
- * Advisory model (defensible from the stats; TLM-per-mine itself is set by the
- * land + planet pool, so tool choice controls FREQUENCY and NFT luck):
- *   - A bag's cooldown ≈ the sum of its 3 tools' `delay`.
- *   - mines/hour ≈ 3600 / total delay  →  more mines = more TLM over time.
- *   - NFT drops/hour ∝ total luck × mines/hour.
- * So: best-for-TLM = lowest total delay; best-for-NFTs = highest luck-per-delay.
+ * Advisory model (verified on-chain 2026-07-29 from m.federation tables + a
+ * real max-cadence miner):
+ *   - A bag's cooldown ≈ 0.8 × the sum of its 3 tools' `delay` (empirical).
+ *   - mines/hour ≈ 3600 / (0.8 × total delay).
+ *   - TLM per mine scales with total LUCK against the planet pool, so
+ *     TLM/hour ∝ total luck ÷ total delay.
+ *   - NFT drops/hour ∝ total luck.
+ * So: best-for-TLM = highest luck-per-delay ratio; best-for-NFTs = highest
+ * absolute luck (accept longer delays). Mine high-emission planets (Neri/
+ * Kavian/Veles) and own your land to skip the landowner commission.
  */
+const COOLDOWN_MULT = 0.8
 
 export type Tool = {
   assetId: string
@@ -56,16 +61,17 @@ export function combine(tools: Tool[]): Loadout {
   const delay = tools.reduce((s, t) => s + t.delay, 0)
   const luck = tools.reduce((s, t) => s + t.luck, 0)
   const ease = tools.reduce((s, t) => s + t.ease, 0)
-  const minesPerHr = delay > 0 ? 3600 / delay : 0
+  const cooldown = delay * COOLDOWN_MULT
+  const minesPerHr = cooldown > 0 ? 3600 / cooldown : 0
   return { tools, delay, luck, ease, minesPerHr, nftPerHr: Math.round(luck * minesPerHr) }
 }
 
-/** Lowest combined delay → mines most often → most TLM over time. */
+/** Highest luck-per-delay → best TLM/hour (TLM/hr ∝ luck ÷ delay). */
 export function bestForTlm(tools: Tool[]): Loadout {
-  return combine([...tools].sort((a, b) => a.delay - b.delay).slice(0, 3))
+  return combine([...tools].sort((a, b) => (b.luck / (b.delay || 1)) - (a.luck / (a.delay || 1))).slice(0, 3))
 }
 
-/** Highest luck-per-delay → most NFT drops over time. */
+/** Highest absolute luck → most NFT drops (accepts longer delays). */
 export function bestForNft(tools: Tool[]): Loadout {
-  return combine([...tools].sort((a, b) => (b.luck / (b.delay || 1)) - (a.luck / (a.delay || 1))).slice(0, 3))
+  return combine([...tools].sort((a, b) => b.luck - a.luck).slice(0, 3))
 }

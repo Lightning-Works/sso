@@ -16,6 +16,7 @@ import Inventory from './features/Inventory'
 import BuyTrilium from './features/BuyTrilium'
 import AutoMine from './features/AutoMine'
 import ToolAdvisor from './features/ToolAdvisor'
+import Market from './features/Market'
 import StubView from './ui/StubView'
 
 export type NavChild = { id: string; label: string; render: (p: FeatureProps) => ReactNode }
@@ -96,6 +97,14 @@ export const NAV: NavGroup[] = [
       { id: 'inv.crew', label: 'Crew', render: p => <Inventory {...p} schema="crew" /> },
       { id: 'inv.shine', label: 'Shine (Forge)', render: stub('Phase 4', 'Shine — Forge NFTs', ['Forge 4 identical NFTs into one of higher shine: Stone → Gold → Stardust → Antimatter.', 'Higher shine boosts attributes and value.'], ['Shine']) },
       { id: 'inv.shards', label: 'Shards / Outpost', render: stub('Phase 4', 'Shards & NFT Outpost', ['Shards (NFT points) are earned by mining.', 'Fuse shards at the NFT Outpost to craft new tools.'], ['Fuse shards']) },
+    ],
+  },
+  {
+    id: 'market', label: 'Market', icon: '🛒', children: [
+      { id: 'mkt.all', label: 'All', render: () => <Market /> },
+      { id: 'mkt.tools', label: 'Tools', render: () => <Market schema="tool.worlds" label="Tools" /> },
+      { id: 'mkt.land', label: 'Land', render: () => <Market schema="land.worlds" label="Land" /> },
+      { id: 'mkt.weapons', label: 'Weapons', render: () => <Market schema="arms.worlds" label="Weapons" /> },
     ],
   },
   {
