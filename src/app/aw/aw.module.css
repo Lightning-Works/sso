@@ -217,3 +217,8 @@
 .listRow:last-child { border-bottom: none; }
 .listRow > span:first-child { width: 22px; font-weight: 800; text-align: center; flex: none; }
 .listMeta { margin-left: auto; color: var(--aww-text-muted); font-size: 12px; white-space: nowrap; }
+
+/* ---------- Auto-mine message + log ---------- */
+.msg { padding: 12px 14px; border-radius: var(--aww-radius); background: color-mix(in srgb, var(--aww-primary) 14%, transparent); border: 1px solid color-mix(in srgb, var(--aww-primary) 35%, transparent); color: var(--aww-text); font-size: 13.5px; margin-bottom: 14px; }
+.logRow { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--aww-text-dim); padding: 7px 4px; border-bottom: 1px solid var(--aww-border); }
+.logRow:last-child { border-bottom: none; }
