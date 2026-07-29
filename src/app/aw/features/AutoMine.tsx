@@ -4,12 +4,19 @@ import { useSyncExternalStore } from 'react'
 import s from '../aw.module.css'
 import { Card, Grid, Stat, Empty, PageHead } from '../ui/primitives'
 import { subscribe, getState, startDemo, stop } from '../lib/aw/mining'
+import { usePrices } from '../lib/aw/usePrices'
+import { usdFor, fmtUsd } from '../lib/aw/prices'
 import type { FeatureProps } from './ctx'
 
 const time = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export default function AutoMine({ account }: FeatureProps) {
   const m = useSyncExternalStore(subscribe, getState, getState)
+  const prices = usePrices()
+  const usdSub = (amount: number) => {
+    const v = usdFor('TLM', amount, prices)
+    return v == null ? undefined : fmtUsd(v)
+  }
 
   return (
     <>
@@ -35,8 +42,8 @@ export default function AutoMine({ account }: FeatureProps) {
         <>
           <Card title="Rewards tracker" tag="tracked over time">
             <Grid>
-              <Stat label="This session" value={`${m.sessionTlm.toFixed(4)} TLM`} />
-              <Stat label="All-time (this device)" value={`${m.allTimeTlm.toFixed(4)} TLM`} />
+              <Stat label="This session" value={`${m.sessionTlm.toFixed(4)} TLM`} sub={usdSub(m.sessionTlm)} />
+              <Stat label="All-time (this device)" value={`${m.allTimeTlm.toFixed(4)} TLM`} sub={usdSub(m.allTimeTlm)} />
               <Stat label="Rate" value={`${m.ratePerHr.toFixed(2)} TLM/hr`} />
               <Stat label="Mines logged" value={`${m.events.length}`} />
             </Grid>

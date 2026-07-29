@@ -35,10 +35,11 @@ export function Grid({ children }: { children: ReactNode }) {
   return <div className={s.grid}>{children}</div>
 }
 
-export function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+export function Stat({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
     <div className={s.stat}>
       <div className={s.statVal} title={value}>{value}</div>
+      {sub && <div className={s.statUsd}>{sub}</div>}
       <div className={s.statLabel} style={color ? { color } : undefined}>{label}</div>
     </div>
   )

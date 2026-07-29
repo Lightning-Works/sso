@@ -123,6 +123,7 @@
 .stat { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 13px 15px; }
 .statVal { font-size: 21px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .statLabel { font-size: 12px; margin-top: 3px; color: var(--aww-text-dim); }
+.statUsd { font-size: 12px; margin-top: 1px; color: var(--aww-text-dim); }
 
 .planet { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-left-width: 3px; border-radius: var(--aww-radius); padding: 13px 15px; }
 .planetName { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
@@ -232,3 +233,14 @@
 .recPrice { font-size: 13px; font-weight: 700; }
 .recGain { font-size: 12.5px; color: #28c76f; }
 .recPay { font-size: 12px; color: var(--aww-text-dim); }
+
+/* ---------- Account hover card ---------- */
+.acctWrap { position: relative; display: inline-block; outline: none; }
+.acctTrigger { border-bottom: 1px dotted var(--aww-text-muted); cursor: help; }
+.acctWrap:hover .acctTrigger, .acctWrap:focus .acctTrigger { color: var(--aww-primary); border-bottom-color: var(--aww-primary); }
+.acctPop { position: absolute; top: 100%; left: 0; z-index: 60; margin-top: 6px; width: 300px; max-width: 84vw; display: block; background: var(--aww-surface); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 14px; box-shadow: 0 14px 44px rgba(0,0,0,.45); white-space: normal; }
+.acctHead { display: block; font-weight: 800; font-size: 14px; margin-bottom: 10px; word-break: break-all; }
+.acctGrid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12.5px; }
+.acctGrid i { color: var(--aww-text-muted); font-style: normal; }
+.acctGrid b { text-align: right; word-break: break-word; }
+.acctNote { display: block; margin-top: 10px; font-size: 11px; color: var(--aww-text-muted); line-height: 1.45; }
