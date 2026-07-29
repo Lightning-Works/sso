@@ -4,16 +4,21 @@ import s from '../aw.module.css'
 import { Card, Grid, Empty, PageHead } from '../ui/primitives'
 import type { FeatureProps } from './ctx'
 
-export default function Inventory({ holdings }: FeatureProps) {
-  const total = holdings?.nfts.reduce((sum, n) => sum + n.count, 0) ?? 0
+/** NFT inventory. An optional `schema` filters to one category (Land, Tools…). */
+export default function Inventory({ holdings, schema }: FeatureProps & { schema?: string }) {
+  const all = holdings?.nfts ?? []
+  const items = schema ? all.filter(n => (n.schema || '').toLowerCase().includes(schema.toLowerCase())) : all
+  const total = items.reduce((sum, n) => sum + n.count, 0)
+  const label = schema ? schema[0].toUpperCase() + schema.slice(1) : 'All'
+
   return (
     <>
-      <PageHead title="Inventory" desc="Your Alien Worlds NFTs — land, tools, avatars, weapons and more." />
-      <Card title={`Alien Worlds NFTs${total ? ` — ${total}` : ''}`} tag="live read">
-        {!holdings ? <Empty text="Load an account to see your NFTs." /> : (
-          holdings.nfts.length === 0 ? <Empty text="No Alien Worlds NFTs held on this account." /> : (
+      <PageHead title={`Inventory · ${label}`} desc="Your Alien Worlds NFTs — land, tools, avatars, weapons and more." />
+      <Card title={`${label}${total ? ` — ${total}` : ''}`} tag="live read">
+        {!holdings ? <Empty text="Connect or load a WAX account to see your NFTs." /> : (
+          items.length === 0 ? <Empty text={schema ? `No ${label.toLowerCase()} NFTs on this account.` : 'No Alien Worlds NFTs held.'} /> : (
             <Grid>
-              {holdings.nfts.slice(0, 60).map((n, i) => (
+              {items.slice(0, 80).map((n, i) => (
                 <div key={i} className={s.nft}>
                   <div className={s.nftSchema}>{n.schema || 'item'}</div>
                   <div className={s.nftMeta}>template #{n.template_id} · ×{n.count}</div>
