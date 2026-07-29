@@ -7,7 +7,13 @@
  * action sections are labeled phase-stubs. Additive route only — deployed as a
  * Vercel preview so production login is never affected.
  */
+import type { Metadata } from 'next'
 import AwwApp from './AwwApp'
+
+export const metadata: Metadata = {
+  title: 'Alien Worlds Wallet',
+  description: 'All-in-one Alien Worlds wallet — Trilium, planet tokens, syndicates, teleporter and NFTs.',
+}
 
 export default function Page() {
   return <AwwApp />
