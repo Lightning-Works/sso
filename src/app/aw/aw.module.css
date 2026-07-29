@@ -222,3 +222,13 @@
 .msg { padding: 12px 14px; border-radius: var(--aww-radius); background: color-mix(in srgb, var(--aww-primary) 14%, transparent); border: 1px solid color-mix(in srgb, var(--aww-primary) 35%, transparent); color: var(--aww-text); font-size: 13.5px; margin-bottom: 14px; }
 .logRow { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--aww-text-dim); padding: 7px 4px; border-bottom: 1px solid var(--aww-border); }
 .logRow:last-child { border-bottom: none; }
+
+/* ---------- Purchase advisor rows ---------- */
+.recRow { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--aww-border); }
+.recRow:last-child { border-bottom: none; }
+.recMain { display: flex; flex-direction: column; min-width: 0; }
+.recSub { font-size: 12px; color: var(--aww-text-muted); margin-top: 2px; }
+.recStats { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; white-space: nowrap; }
+.recPrice { font-size: 13px; font-weight: 700; }
+.recGain { font-size: 12.5px; color: #28c76f; }
+.recPay { font-size: 12px; color: var(--aww-text-dim); }

@@ -16,6 +16,7 @@ import Inventory from './features/Inventory'
 import BuyTrilium from './features/BuyTrilium'
 import AutoMine from './features/AutoMine'
 import ToolAdvisor from './features/ToolAdvisor'
+import PurchaseAdvisor from './features/PurchaseAdvisor'
 import Market from './features/Market'
 import StubView from './ui/StubView'
 
@@ -75,6 +76,7 @@ export const NAV: NavGroup[] = [
     id: 'mine', label: 'Mine', icon: '⛏️', children: [
       { id: 'mine.auto', label: 'Auto-Mine', render: p => <AutoMine {...p} /> },
       { id: 'mine.advisor', label: 'Tool Advisor', render: p => <ToolAdvisor {...p} /> },
+      { id: 'mine.upgrade', label: 'Upgrade Advisor', render: p => <PurchaseAdvisor {...p} /> },
       { id: 'mine.mine', label: 'Mine (manual)', render: stub('Phase 4', 'Mine', ['Equip a Land and up to 3 tools, then mine Trilium + NFTs.', 'Cooldown = combined tool delay; ease lowers proof-of-work; luck drives NFT drops.'], ['Mine']) },
       { id: 'mine.claim', label: 'Claim Rewards', render: stub('Phase 4', 'Claim Rewards', ['Claim mined Trilium and NFT game cards (m.federation::claimmines).'], ['Claim']) },
       { id: 'mine.land', label: 'My Land', render: stub('Phase 4', 'My Land', ['Land you own and commission earned from miners.']) },
