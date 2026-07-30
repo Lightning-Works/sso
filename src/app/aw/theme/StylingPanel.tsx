@@ -2,7 +2,7 @@
 
 import { useRef } from 'react'
 import s from '../aw.module.css'
-import { COLOR_CONTROLS, FONT_OPTIONS, SKINS, type ThemeVars } from './tokens'
+import { COLOR_CONTROLS, FONT_OPTIONS, H1_SIZES, H2_SIZES, TEXT_SIZES, SKINS, type ThemeVars } from './tokens'
 
 /**
  * Live styling — a bottom sheet. Pick a skin, tweak any token, or download /
@@ -64,9 +64,33 @@ export function StylingPanel({
             </div>
           ))}
           <div className={s.field}>
-            <label className={s.fieldLabel}>Font</label>
+            <label className={s.fieldLabel}>Headline font</label>
+            <select className={s.select} value={vars['--aww-font-head']} onChange={e => setToken('--aww-font-head', e.target.value)}>
+              {FONT_OPTIONS.map(f => <option key={f.label} value={f.value}>{f.label}</option>)}
+            </select>
+          </div>
+          <div className={s.field}>
+            <label className={s.fieldLabel}>Body font</label>
             <select className={s.select} value={vars['--aww-font']} onChange={e => setToken('--aww-font', e.target.value)}>
               {FONT_OPTIONS.map(f => <option key={f.label} value={f.value}>{f.label}</option>)}
+            </select>
+          </div>
+          <div className={s.field}>
+            <label className={s.fieldLabel}>Headline size</label>
+            <select className={s.select} value={vars['--aww-h1-size']} onChange={e => setToken('--aww-h1-size', e.target.value)}>
+              {H1_SIZES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div className={s.field}>
+            <label className={s.fieldLabel}>Headline 2 size</label>
+            <select className={s.select} value={vars['--aww-h2-size']} onChange={e => setToken('--aww-h2-size', e.target.value)}>
+              {H2_SIZES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div className={s.field}>
+            <label className={s.fieldLabel}>Body text size</label>
+            <select className={s.select} value={vars['--aww-text-size']} onChange={e => setToken('--aww-text-size', e.target.value)}>
+              {TEXT_SIZES.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
           <div className={s.field}>

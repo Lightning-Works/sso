@@ -6,6 +6,7 @@ import { NAV, FIRST, type NavGroup, type NavChild } from './nav'
 import { useTheme } from './theme/useTheme'
 import { lwVarsFrom } from './theme/tokens'
 import { StylingPanel } from './theme/StylingPanel'
+import { Icon } from './ui/Icon'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 
 const groupOf = (childId: string): NavGroup =>
@@ -24,8 +25,12 @@ export default function AwwApp() {
   const [error, setError] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
+  const [isFrame, setIsFrame] = useState(false)
 
   useEffect(() => { fetchPlanets().then(setPlanets).catch(() => setPlanets([])) }, [])
+  useEffect(() => { try { setIsFrame(new URLSearchParams(window.location.search).get('frame') === '1') } catch { /* ignore */ } }, [])
+
+  const groups = isFrame ? NAV.filter(g => g.id !== 'device') : NAV
 
   const load = useCallback(async () => {
     const acct = account.trim().toLowerCase()
@@ -62,14 +67,14 @@ export default function AwwApp() {
       {/* Sidebar outline */}
       <aside className={`${s.sidebar} ${navOpen ? s.sidebarOpen : ''}`}>
         <div className={s.brand}>
-          <div className={s.brandMark}>🌌</div>
+          <div className={s.brandMark}><Icon name="galaxy" size={18} /></div>
           <div>
             <div className={s.brandName}>Alien Worlds</div>
             <div className={s.brandSub}>WALLET</div>
           </div>
         </div>
 
-        {NAV.map(g => {
+        {groups.map(g => {
           const open = expanded.has(g.id)
           return (
             <div key={g.id}>
@@ -77,7 +82,7 @@ export default function AwwApp() {
                 className={`${s.navItem} ${activeGroup.id === g.id ? s.navItemActive : ''}`}
                 onClick={() => onGroup(g)}
               >
-                <span className={s.navIcon}>{g.icon}</span>
+                <span className={s.navIcon}><Icon name={g.icon} /></span>
                 <span className={s.navFill}>{g.label}</span>
                 <span className={`${s.chev} ${open ? s.chevOpen : ''}`}>›</span>
               </button>
@@ -105,7 +110,7 @@ export default function AwwApp() {
       {/* Main */}
       <div className={s.main}>
         <header className={s.topbar}>
-          <button className={`${s.iconBtn} ${s.hamburger}`} onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
+          <button className={`${s.iconBtn} ${s.hamburger}`} onClick={() => setNavOpen(o => !o)} aria-label="Menu"><Icon name="menu" /></button>
           <span className={s.crumb}>
             <span className={s.crumbGroup}>{activeGroup.label}</span>
             <span className={s.crumbSep}>›</span>
@@ -125,7 +130,7 @@ export default function AwwApp() {
               {loading ? '…' : 'Load'}
             </button>
           </div>
-          <button className={s.iconBtn} onClick={() => setPanelOpen(true)} aria-label="Styling" title="Styling & skins">🎨</button>
+          <button className={s.iconBtn} onClick={() => setPanelOpen(true)} aria-label="Styling" title="Styling & skins"><Icon name="gear" /></button>
         </header>
 
         <main className={s.content}>
