@@ -28,7 +28,7 @@
 
 /* ---------- Sidebar ---------- */
 .sidebar {
-  background: var(--aww-surface);
+  background: var(--aww-nav);
   border-right: 1px solid var(--aww-border);
   padding: 18px 12px;
   display: flex;
@@ -108,7 +108,7 @@
 
 /* ---------- Card ---------- */
 .card {
-  background: var(--aww-surface);
+  background: var(--aww-surface-2);
   border: 1px solid var(--aww-border);
   border-radius: calc(var(--aww-radius) + 4px);
   padding: 18px;
@@ -126,7 +126,7 @@
 
 /* ---------- Grid + stat + tiles ---------- */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
-.stat { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 13px 15px; }
+.stat { background: var(--aww-surface-3); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 13px 15px; }
 .statVal { font-size: 21px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .statLabel { font-size: 12px; margin-top: 3px; color: var(--aww-text-dim); }
 .statUsd { font-size: 12px; margin-top: 1px; color: var(--aww-text-dim); }
@@ -142,7 +142,7 @@
 .planetHeaderName { font-family: var(--aww-font-head); font-size: var(--aww-h1-size); font-weight: 800; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
 .planetHeaderSub { font-size: 12.5px; color: var(--aww-text-dim); text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
 
-.nft { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 12px 14px; }
+.nft { background: var(--aww-surface-3); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 12px 14px; }
 .nftSchema { font-size: 13px; font-weight: 700; text-transform: capitalize; }
 .nftMeta { font-size: 11px; color: var(--aww-text-muted); margin-top: 4px; }
 
@@ -172,7 +172,7 @@
 .input {
   font-family: inherit; font-size: 13.5px;
   padding: 10px 13px; border-radius: var(--aww-radius);
-  border: 1px solid var(--aww-border); background: var(--aww-surface-2); color: var(--aww-text);
+  border: 1px solid var(--aww-border); background: var(--aww-surface-3); color: var(--aww-text);
   outline: none; width: 100%;
 }
 .input:focus { border-color: var(--aww-primary); }
@@ -234,7 +234,7 @@
 .crumbSep { color: var(--aww-text-muted); margin: 0 7px; }
 
 /* ---------- Key/value review + lists ---------- */
-.review { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; padding: 14px 16px; background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); font-size: 13.5px; }
+.review { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; padding: 14px 16px; background: var(--aww-surface-3); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); font-size: 13.5px; }
 .review span { color: var(--aww-text-muted); }
 .review b { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list { display: flex; flex-direction: column; }

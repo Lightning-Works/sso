@@ -1,21 +1,26 @@
 /**
  * AWW design tokens + skins.
  *
- * Every visual value in the wallet is a CSS variable defined here. Changing a
- * token restyles the whole UI. Skins are named token presets the user can switch
- * between. The DEFAULT skin reproduces the LW-SSO palette so AWW starts life
- * looking like the existing SSO, per Geoff.
+ * Every visual value in the wallet is a CSS variable defined here. Distinct,
+ * independently-editable surface layers (outer → inner):
+ *   --aww-bg        page background (behind the app)
+ *   --aww-nav       left navigation background
+ *   --aww-surface   main panel (the content base + top bar)
+ *   --aww-surface-2 sub-panels / cards sitting on the main panel
+ *   --aww-surface-3 tiles / insets inside cards (stats, inputs, review boxes)
  */
 
 export type ThemeVars = {
-  '--aww-font': string        // body / text font family
-  '--aww-font-head': string   // headline font family
-  '--aww-h1-size': string     // page titles
-  '--aww-h2-size': string     // card / section titles
-  '--aww-text-size': string   // base body text
+  '--aww-font': string
+  '--aww-font-head': string
+  '--aww-h1-size': string
+  '--aww-h2-size': string
+  '--aww-text-size': string
   '--aww-bg': string
-  '--aww-surface': string     // sidebar, top bar, cards
-  '--aww-surface-2': string   // insets: stats, inputs, tiles
+  '--aww-nav': string
+  '--aww-surface': string
+  '--aww-surface-2': string
+  '--aww-surface-3': string
   '--aww-border': string
   '--aww-text': string
   '--aww-text-dim': string
@@ -27,7 +32,6 @@ export type ThemeVars = {
 
 export type Skin = { id: string; name: string; vars: ThemeVars }
 
-// Shared typography defaults (families differ per skin below).
 const TYPE = { '--aww-h1-size': '22px', '--aww-h2-size': '19px', '--aww-text-size': '14px' }
 
 /** DEFAULT = LW-SSO palette (kept as the initial look). */
@@ -36,8 +40,10 @@ const LW_SSO: ThemeVars = {
   '--aww-font-head': "'Open Sans', system-ui, sans-serif",
   ...TYPE,
   '--aww-bg': '#3b3b3b',
+  '--aww-nav': '#242426',
   '--aww-surface': '#2a2a2c',
-  '--aww-surface-2': '#1f1f21',
+  '--aww-surface-2': '#343437',
+  '--aww-surface-3': '#1f1f21',
   '--aww-border': '#4c4946',
   '--aww-text': '#e4dad1',
   '--aww-text-dim': '#bab1a8',
@@ -53,7 +59,7 @@ export const SKINS: Skin[] = [
     id: 'alien-dark', name: 'Alien Worlds Dark',
     vars: {
       '--aww-font': "'Inter', system-ui, sans-serif", '--aww-font-head': "'Inter', system-ui, sans-serif", ...TYPE,
-      '--aww-bg': '#0a0e1a', '--aww-surface': '#0e1424', '--aww-surface-2': '#0b101d', '--aww-border': '#1e2740',
+      '--aww-bg': '#0a0e1a', '--aww-nav': '#0b111e', '--aww-surface': '#0e1424', '--aww-surface-2': '#172038', '--aww-surface-3': '#0b1020', '--aww-border': '#1e2740',
       '--aww-text': '#e7ecf3', '--aww-text-dim': '#9aa4b2', '--aww-text-muted': '#6b7688',
       '--aww-primary': '#4d9dff', '--aww-primary-hover': '#6a7bff', '--aww-radius': '12px',
     },
@@ -62,7 +68,7 @@ export const SKINS: Skin[] = [
     id: 'trilium', name: 'Trilium Green',
     vars: {
       '--aww-font': "'Inter', system-ui, sans-serif", '--aww-font-head': "'Inter', system-ui, sans-serif", ...TYPE,
-      '--aww-bg': '#0a120d', '--aww-surface': '#101a13', '--aww-surface-2': '#0c140f', '--aww-border': '#1c2a20',
+      '--aww-bg': '#0a120d', '--aww-nav': '#0c150f', '--aww-surface': '#101a13', '--aww-surface-2': '#17251b', '--aww-surface-3': '#0b140f', '--aww-border': '#1c2a20',
       '--aww-text': '#eaf5ee', '--aww-text-dim': '#9ec4ab', '--aww-text-muted': '#5f7a68',
       '--aww-primary': '#28c76f', '--aww-primary-hover': '#34e07f', '--aww-radius': '10px',
     },
@@ -71,7 +77,7 @@ export const SKINS: Skin[] = [
     id: 'nebula', name: 'Nebula Purple',
     vars: {
       '--aww-font': "'Inter', system-ui, sans-serif", '--aww-font-head': "'Inter', system-ui, sans-serif", ...TYPE,
-      '--aww-bg': '#0f0a1e', '--aww-surface': '#160f2c', '--aww-surface-2': '#120c24', '--aww-border': '#2a1f45',
+      '--aww-bg': '#0f0a1e', '--aww-nav': '#130c26', '--aww-surface': '#160f2c', '--aww-surface-2': '#201640', '--aww-surface-3': '#120c24', '--aww-border': '#2a1f45',
       '--aww-text': '#f0eaff', '--aww-text-dim': '#b6a9d9', '--aww-text-muted': '#7a6ba0',
       '--aww-primary': '#c774f0', '--aww-primary-hover': '#d68bff', '--aww-radius': '14px',
     },
@@ -85,8 +91,10 @@ export const defaultVars = (): ThemeVars => ({ ...LW_SSO })
 export const COLOR_CONTROLS: { key: keyof ThemeVars; label: string }[] = [
   { key: '--aww-primary', label: 'Primary / accent' },
   { key: '--aww-bg', label: 'Background' },
+  { key: '--aww-nav', label: 'Left nav' },
   { key: '--aww-surface', label: 'Main panel' },
-  { key: '--aww-surface-2', label: 'Sub-panel (on top)' },
+  { key: '--aww-surface-2', label: 'Sub-panel (cards)' },
+  { key: '--aww-surface-3', label: 'Tiles / insets' },
   { key: '--aww-text', label: 'Text' },
   { key: '--aww-text-dim', label: 'Text dim' },
   { key: '--aww-text-muted', label: 'Secondary text (hints)' },
@@ -127,6 +135,6 @@ export function lwVarsFrom(v: ThemeVars): Record<string, string> {
     '--lw-border': v['--aww-border'],
     '--lw-radius-sm': v['--aww-radius'],
     '--nft-card-bg': v['--aww-surface-2'],
-    '--nft-thumb-bg': v['--aww-surface-2'],
+    '--nft-thumb-bg': v['--aww-surface-3'],
   }
 }
