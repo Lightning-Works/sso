@@ -52,21 +52,6 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: 'stake', label: 'Stake', icon: 'gem', children: [
-      { id: 'stake.stake', label: 'Stake', render: stub('Phase 1', 'Stake Trilium', ['Stake a planet token for voting power and higher daily rewards.', 'Signs on-chain via token.worlds::stake.'], ['Stake']) },
-      { id: 'stake.unstake', label: 'Unstake', render: stub('Phase 1', 'Unstake', ['Begin unstaking, then claim after the lockup delay.', 'token.worlds::unstake + claimunstkes.'], ['Unstake', 'Claim']) },
-      { id: 'stake.convert', label: 'Convert', render: stub('Phase 1', 'Convert Trilium', ['Convert Trilium ⇄ planet token (1:1, reversible).', 'Exact on-chain action being confirmed.']) },
-      { id: 'stake.mine', label: 'My Stakes', render: stub('Phase 1', 'My Stakes', ['Your staked planet tokens and unlock times.']) },
-    ],
-  },
-  {
-    id: 'vote', label: 'Vote', icon: 'vote', children: [
-      { id: 'vote.cast', label: 'Cast Votes', render: stub('Phase 2', 'Cast Votes', ['Vote for up to 2 custodian candidates per planet, weekly.', 'dao.worlds::votecust.'], ['Vote']) },
-      { id: 'vote.mine', label: 'My Votes', render: stub('Phase 2', 'My Votes', ['See who you are currently voting for on each planet.']) },
-      { id: 'vote.run', label: 'Run for Council', render: stub('Phase 2', 'Run for Council', ['Register as a candidate (convert + stake 5,000 Trilium).', 'dao.worlds::nominatecane.'], ['Nominate']) },
-    ],
-  },
-  {
     id: 'teleporter', label: 'Teleporter', icon: 'teleport', children: [
       { id: 'tp.out', label: 'WAX → Binance', render: stub('Phase 3 · prototype-gated', 'Teleport WAX → Binance', ['Send Trilium from WAX to Binance Smart Chain (min 100 TLM).'], ['Teleport']) },
       { id: 'tp.in', label: 'Binance → WAX', render: stub('Phase 3 · prototype-gated', 'Teleport Binance → WAX', ['Send Trilium from Binance back to WAX.'], ['Teleport']) },

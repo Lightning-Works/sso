@@ -57,6 +57,11 @@ export default function AwwApp() {
     if (!expanded.has(gid)) setExpanded(new Set(expanded).add(gid))
     setNavOpen(false)
   }
+  const goTo = (childId: string) => {
+    setActive(childId)
+    setExpanded(prev => new Set(prev).add(groupOf(childId).id))
+    setNavOpen(false)
+  }
 
   const activeGroup = groupOf(active)
   const activeChild = activeGroup.children.find(c => c.id === active) ?? activeGroup.children[0]
@@ -136,7 +141,7 @@ export default function AwwApp() {
         <main className={s.content}>
           {error && <p className={s.err}>⚠ {error}</p>}
           {loaded && !error && <p className={s.ok}>Showing live on-chain data for <b>{loaded}</b></p>}
-          {activeChild.render({ holdings, planets, account: loaded })}
+          {activeChild.render({ holdings, planets, account: loaded, navigate: goTo })}
         </main>
       </div>
 

@@ -10,11 +10,11 @@ import { useState, type CSSProperties } from 'react'
  *   - mode "tile": absolute cover background behind card content (0.7 opacity)
  *   - mode "header": absolute contain hero for the planet detail
  */
-export function PlanetVideo({ planet, mode }: { planet: string; mode: 'tile' | 'header' }) {
+export function PlanetVideo({ planet, mode }: { planet: string; mode: 'tile' | 'header' | 'banner' }) {
   const [loaded, setLoaded] = useState(false)
   const base: CSSProperties = {
     position: 'absolute', inset: 0, width: '100%', height: '100%',
-    objectFit: mode === 'tile' ? 'cover' : 'contain', pointerEvents: 'none',
+    objectFit: mode === 'header' ? 'contain' : 'cover', pointerEvents: 'none',
   }
   const target = mode === 'tile' ? 0.7 : 1
   return (
