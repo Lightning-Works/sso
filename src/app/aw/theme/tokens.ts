@@ -85,8 +85,8 @@ export const defaultVars = (): ThemeVars => ({ ...LW_SSO })
 export const COLOR_CONTROLS: { key: keyof ThemeVars; label: string }[] = [
   { key: '--aww-primary', label: 'Primary / accent' },
   { key: '--aww-bg', label: 'Background' },
-  { key: '--aww-surface', label: 'Panels' },
-  { key: '--aww-surface-2', label: 'Tiles / insets' },
+  { key: '--aww-surface', label: 'Main panel' },
+  { key: '--aww-surface-2', label: 'Sub-panel (on top)' },
   { key: '--aww-text', label: 'Text' },
   { key: '--aww-text-dim', label: 'Text dim' },
   { key: '--aww-text-muted', label: 'Secondary text (hints)' },

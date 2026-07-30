@@ -32,7 +32,8 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
   const usd = (amt: number, sym: string) => { const v = usdFor(sym, amt, prices); return v == null ? '' : ' ' + fmtUsd(v) }
   const withUsd = (asset: string) => { const v = usdFromAsset(asset, prices); return v == null ? asset : `${asset} ${fmtUsd(v)}` }
   const power = (raw: string) => (Number(raw) / 10000).toLocaleString(undefined, { maximumFractionDigits: 0 })
-  const supply = p ? Number((p.totalSupply || '0').split(' ')[0]).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '…'
+  const supplyNum = p ? Number((p.totalSupply || '0').split(' ')[0]) : 0
+  const supply = p ? supplyNum.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '…'
   const cycle = p ? (p.periodLength >= 86400 ? `${Math.round(p.periodLength / 86400)} days` : `${Math.round(p.periodLength / 3600)} hrs`) : '…'
 
   async function doStake() {
@@ -75,7 +76,7 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
         <div className={s.synHeaderInfo}>
           <h1 className={s.synHeaderTitle}>{planet} <span style={{ color: 'var(--aww-text-muted)', fontWeight: 600, fontSize: '0.6em' }}>${symbol}</span></h1>
           <div className={s.review}>
-            <span>Total {symbol} supply</span><b>{supply}</b>
+            <span>Total {symbol} supply</span><b>{supply}{p ? usd(supplyNum, symbol) : ''}</b>
             <span>Your {symbol} (liquid)</span><b>{account ? (hold ? fmt(hold.liquid) + usd(hold.liquid, symbol) : '…') : '—'}</b>
             <span>Your {symbol} staked</span><b>{account ? (hold ? fmt(hold.staked) + usd(hold.staked, symbol) : '…') : '—'}</b>
             <span>Custodians</span><b>{p ? `${p.custodians.length}/${p.numElected}` : '…'}</b>
