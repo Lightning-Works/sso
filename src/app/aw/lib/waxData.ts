@@ -13,7 +13,7 @@ export type Candidate = { name: string; totalVotePower: string; numVoters: numbe
 export type Planet = {
   planet: string; symbol: string; scope: string
   custodians: Custodian[]; candidates: Candidate[]
-  numElected: number; maxVotes: number
+  numElected: number; maxVotes: number; periodLength: number
   totalSupply: string; maxSupply: string
   proposalBudget: string; spendingsBudget: string
   stakingEnabled: boolean

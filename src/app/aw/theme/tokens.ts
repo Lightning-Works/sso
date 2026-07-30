@@ -28,7 +28,7 @@ export type ThemeVars = {
 export type Skin = { id: string; name: string; vars: ThemeVars }
 
 // Shared typography defaults (families differ per skin below).
-const TYPE = { '--aww-h1-size': '22px', '--aww-h2-size': '16px', '--aww-text-size': '14px' }
+const TYPE = { '--aww-h1-size': '22px', '--aww-h2-size': '19px', '--aww-text-size': '14px' }
 
 /** DEFAULT = LW-SSO palette (kept as the initial look). */
 const LW_SSO: ThemeVars = {
@@ -108,7 +108,7 @@ export const FONT_OPTIONS: { label: string; value: string }[] = [
 ]
 
 export const H1_SIZES = ['20px', '22px', '24px', '28px', '32px', '36px']
-export const H2_SIZES = ['14px', '16px', '18px', '20px', '22px']
+export const H2_SIZES = ['14px', '16px', '18px', '19px', '20px', '22px']
 export const TEXT_SIZES = ['13px', '14px', '15px', '16px', '17px']
 
 /**

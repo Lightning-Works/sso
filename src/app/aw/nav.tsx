@@ -37,7 +37,7 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: 'buy', label: 'Buy Trilium', icon: 'buy', children: [
+    id: 'buy', label: 'Buy Trilium', icon: 'trilium', children: [
       { id: 'buy.card', label: 'With Card', render: () => <BuyTrilium /> },
       { id: 'buy.swap', label: 'Swap to TLM', render: stub('Phase 2', 'Swap to Trilium', ['Swap USDT → TLM on Binance, or WAX → TLM on Alcor.', 'Auto-routes to the cheapest path.'], ['Swap']) },
     ],

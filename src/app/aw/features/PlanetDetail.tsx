@@ -32,6 +32,8 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
   const usd = (amt: number, sym: string) => { const v = usdFor(sym, amt, prices); return v == null ? '' : ' ' + fmtUsd(v) }
   const withUsd = (asset: string) => { const v = usdFromAsset(asset, prices); return v == null ? asset : `${asset} ${fmtUsd(v)}` }
   const power = (raw: string) => (Number(raw) / 10000).toLocaleString(undefined, { maximumFractionDigits: 0 })
+  const supply = p ? Number((p.totalSupply || '0').split(' ')[0]).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '…'
+  const cycle = p ? (p.periodLength >= 86400 ? `${Math.round(p.periodLength / 86400)} days` : `${Math.round(p.periodLength / 3600)} hrs`) : '…'
 
   async function doStake() {
     setMsg({})
@@ -68,29 +70,25 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
 
   return (
     <>
-      {/* Large spinning planet */}
-      <div className={s.planetHeroBig}><PlanetVideo planet={planet} mode="header" /></div>
-      <div className={s.pageHead}>
-        <h1 className={s.pageTitle}>{planet} <span style={{ color: 'var(--aww-text-muted)', fontWeight: 600, fontSize: '0.6em' }}>${symbol}</span></h1>
-        <p className={s.pageDesc}>Planetary Syndicate — your holdings, staking and voting. Hover a name for their on-chain profile.</p>
+      {/* Header: info (2/3) left, spinning planet (1/3) right */}
+      <div className={s.synHeader}>
+        <div className={s.synHeaderInfo}>
+          <h1 className={s.synHeaderTitle}>{planet} <span style={{ color: 'var(--aww-text-muted)', fontWeight: 600, fontSize: '0.6em' }}>${symbol}</span></h1>
+          <div className={s.review}>
+            <span>Total {symbol} supply</span><b>{supply}</b>
+            <span>Your {symbol} (liquid)</span><b>{account ? (hold ? fmt(hold.liquid) + usd(hold.liquid, symbol) : '…') : '—'}</b>
+            <span>Your {symbol} staked</span><b>{account ? (hold ? fmt(hold.staked) + usd(hold.staked, symbol) : '…') : '—'}</b>
+            <span>Custodians</span><b>{p ? `${p.custodians.length}/${p.numElected}` : '…'}</b>
+            <span>Election cycle</span><b>{cycle}</b>
+            <span>Proposal budget</span><b>{p ? withUsd(p.proposalBudget) : '…'}</b>
+            <span>Staking</span><b>{p ? (p.stakingEnabled ? 'Open' : 'Closed') : '…'}</b>
+          </div>
+        </div>
+        <div className={s.synHeaderPlanet}><PlanetVideo planet={planet} mode="header" /></div>
       </div>
 
       {msg.err && <p className={s.err}>⚠ {msg.err}</p>}
       {msg.ok && <p className={s.ok}>✓ {msg.ok}</p>}
-
-      {/* Your holdings */}
-      <Card title="Your holdings on this planet" tag="live read">
-        {!account ? <Empty text="Load or connect a WAX account to see your balances." />
-          : !hold ? <Empty text="Loading balances…" />
-          : (
-            <div className={s.review}>
-              <span>WAX</span><b>{fmt(hold.wax)}{usd(hold.wax, 'WAX')}</b>
-              <span>Trilium (TLM)</span><b>{fmt(hold.tlm)}{usd(hold.tlm, 'TLM')}</b>
-              <span>{symbol} (liquid)</span><b>{fmt(hold.liquid)}{usd(hold.liquid, symbol)}</b>
-              <span>{symbol} locked (staked)</span><b>{fmt(hold.staked)}{usd(hold.staked, symbol)}</b>
-            </div>
-          )}
-      </Card>
 
       {/* Stake */}
       <Card title={`Stake to ${planet}`} tag="signs on-chain">
@@ -124,31 +122,21 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
         </Card>
       )}
 
-      {/* Overview + council */}
+      {/* Council */}
       {p && (
-        <>
-          <Card title="Syndicate overview" tag="live read">
-            <div className={s.review}>
-              <span>Custodians</span><b>{p.custodians.length}/{p.numElected}</b>
-              <span>Candidates</span><b>{p.candidates.length}</b>
-              <span>Proposal budget</span><b>{withUsd(p.proposalBudget)}</b>
-              <span>Staking</span><b>{p.stakingEnabled ? 'Open' : 'Closed'}</b>
+        <Card title="Council (custodians)" tag="live read">
+          {p.custodians.length === 0 ? <Empty text="No custodians." /> : (
+            <div className={s.list}>
+              {p.custodians.map((cu, i) => (
+                <div key={i} className={s.listRow}>
+                  <span>{i + 1}</span>
+                  <b><AccountName name={cu.name} role={`Custodian #${i + 1}`} votePower={cu.totalVotePower} voters={cu.numVoters} pay={cu.requestedPay} /></b>
+                  <span className={s.listMeta}>{power(cu.totalVotePower)} power · {cu.numVoters} voters</span>
+                </div>
+              ))}
             </div>
-          </Card>
-          <Card title="Council (custodians)" tag="live read">
-            {p.custodians.length === 0 ? <Empty text="No custodians." /> : (
-              <div className={s.list}>
-                {p.custodians.map((cu, i) => (
-                  <div key={i} className={s.listRow}>
-                    <span>{i + 1}</span>
-                    <b><AccountName name={cu.name} role={`Custodian #${i + 1}`} votePower={cu.totalVotePower} voters={cu.numVoters} pay={cu.requestedPay} /></b>
-                    <span className={s.listMeta}>{power(cu.totalVotePower)} power · {cu.numVoters} voters</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </>
+          )}
+        </Card>
       )}
     </>
   )

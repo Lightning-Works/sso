@@ -72,11 +72,7 @@ export default function AwwApp() {
       {/* Sidebar outline */}
       <aside className={`${s.sidebar} ${navOpen ? s.sidebarOpen : ''}`}>
         <div className={s.brand}>
-          <div className={s.brandMark}><Icon name="galaxy" size={18} /></div>
-          <div>
-            <div className={s.brandName}>Alien Worlds</div>
-            <div className={s.brandSub}>WALLET</div>
-          </div>
+          <img src="/aww/aw-logo.webp" alt="Alien Worlds Community" className={s.brandLogo} />
         </div>
 
         {groups.map(g => {

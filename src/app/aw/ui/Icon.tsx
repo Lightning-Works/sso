@@ -26,7 +26,14 @@ const P: Record<string, ReactNode> = {
   close: <><path d="M6 6l12 12M18 6L6 18" /></>,
 }
 
+/** Icons that are raster/branded images rather than line SVGs. */
+const IMAGES: Record<string, string> = {
+  trilium: '/aww/trilium.webp',
+}
+
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
+  const img = IMAGES[name]
+  if (img) return <img src={img} width={size} height={size} alt="" style={{ objectFit: 'contain', display: 'block' }} />
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
