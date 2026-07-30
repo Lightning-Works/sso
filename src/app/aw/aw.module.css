@@ -132,8 +132,15 @@
 .statUsd { font-size: 12px; margin-top: 1px; color: var(--aww-text-dim); }
 
 .planet { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-left-width: 3px; border-radius: var(--aww-radius); padding: 13px 15px; }
-.planetName { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
-.planetRow { font-size: 12px; color: var(--aww-text-dim); line-height: 1.75; }
+.planetName { font-size: 15px; font-weight: 800; margin-bottom: 6px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.planetRow { font-size: 12px; color: var(--aww-text-dim); line-height: 1.75; text-shadow: 0 1px 2px rgba(0,0,0,0.85); }
+.planetScrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.78)); z-index: 0; }
+
+/* planet detail hero */
+.planetHeader { position: relative; height: clamp(150px, 26vw, 260px); background: #000; border: 1px solid var(--aww-border); border-radius: calc(var(--aww-radius) + 4px); overflow: hidden; margin-bottom: 16px; }
+.planetHeaderOverlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; padding: 26px 20px 16px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); display: flex; flex-direction: column; gap: 2px; }
+.planetHeaderName { font-family: var(--aww-font-head); font-size: var(--aww-h1-size); font-weight: 800; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
+.planetHeaderSub { font-size: 12.5px; color: var(--aww-text-dim); text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
 
 .nft { background: var(--aww-surface-2); border: 1px solid var(--aww-border); border-radius: var(--aww-radius); padding: 12px 14px; }
 .nftSchema { font-size: 13px; font-weight: 700; text-transform: capitalize; }

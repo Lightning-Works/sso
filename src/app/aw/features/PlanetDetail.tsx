@@ -1,14 +1,15 @@
 'use client'
 
 import s from '../aw.module.css'
-import { Card, Empty, PageHead } from '../ui/primitives'
+import { Card, Empty } from '../ui/primitives'
 import { planetColor } from '../lib/waxData'
+import { PlanetVideo } from '../ui/PlanetVideo'
 import { usePrices } from '../lib/aw/usePrices'
 import { usdFromAsset, fmtUsd } from '../lib/aw/prices'
 import AccountName from './AccountName'
 import type { FeatureProps } from './ctx'
 
-/** Detail view for a single planetary Syndicate — real dao.worlds data. */
+/** Detail view for a single planetary Syndicate — spinning planet + dao.worlds data. */
 export default function PlanetDetail({ planets, planet }: FeatureProps & { planet: string }) {
   const p = planets.find(x => x.planet === planet)
   const c = planetColor(planet)
@@ -18,7 +19,14 @@ export default function PlanetDetail({ planets, planet }: FeatureProps & { plane
 
   return (
     <>
-      <PageHead title={planet} desc="Planetary Syndicate — council, candidates and treasury. Hover a name for their on-chain profile." />
+      <div className={s.planetHeader}>
+        <PlanetVideo planet={planet} mode="header" />
+        <div className={s.planetHeaderOverlay}>
+          <span className={s.planetHeaderName} style={{ color: c }}>{planet}</span>
+          <span className={s.planetHeaderSub}>Planetary Syndicate — hover a name for their on-chain profile</span>
+        </div>
+      </div>
+
       {!p ? <Card><Empty text="Loading planet data…" /></Card> : (
         <>
           <Card title="Overview" tag="live read">
