@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import s from './aw.module.css'
 import { NAV, FIRST, type NavGroup, type NavChild } from './nav'
 import { useTheme } from './theme/useTheme'
@@ -10,6 +10,7 @@ import { Icon } from './ui/Icon'
 import { AccessGate } from './ui/AccessGate'
 import { AW_ACCESS_CODE } from './lib/access'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
+import { useSessionWax } from './lib/aw/useSessionWax'
 
 const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
@@ -29,8 +30,19 @@ export default function AwwApp() {
   const [navOpen, setNavOpen] = useState(false)
   const [isFrame, setIsFrame] = useState(false)
   const [unlocked, setUnlocked] = useState<boolean | null>(null)
+  const session = useSessionWax()
+  const autoLoaded = useRef(false)
 
   useEffect(() => { fetchPlanets().then(setPlanets).catch(() => setPlanets([])) }, [])
+  // Auto-load the logged-in SSO user's linked WAX account (their NFTs/WAX/TLM).
+  useEffect(() => {
+    if (session.wax && !autoLoaded.current && !loaded && !account.trim()) {
+      autoLoaded.current = true
+      setAccount(session.wax)
+      setLoaded(session.wax)
+      fetchHoldings(session.wax).then(setHoldings).catch(() => {})
+    }
+  }, [session.wax, loaded, account])
   useEffect(() => { try { setIsFrame(new URLSearchParams(window.location.search).get('frame') === '1') } catch { /* ignore */ } }, [])
   useEffect(() => {
     try {
@@ -132,6 +144,11 @@ export default function AwwApp() {
             {activeChild.label}
           </span>
           <div className={s.grow} />
+          {!session.loading && (session.email
+            ? <span style={{ fontSize: 12, color: 'var(--aww-text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }} title={`Signed in as ${session.email}`}>
+                {session.wax ? `Signed in · ${session.wax}` : 'Signed in · no WAX linked'}
+              </span>
+            : <a href="/login" style={{ fontSize: 12, color: 'var(--aww-primary)', whiteSpace: 'nowrap', textDecoration: 'none' }}>Log in →</a>)}
           <div className={s.account}>
             <span className={`${s.dot} ${loaded ? '' : s.dotOff}`} />
             <input
