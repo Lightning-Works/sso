@@ -7,8 +7,7 @@ import { useTheme } from './theme/useTheme'
 import { lwVarsFrom } from './theme/tokens'
 import { StylingPanel } from './theme/StylingPanel'
 import { Icon } from './ui/Icon'
-import { AccessGate } from './ui/AccessGate'
-import { AW_ACCESS_CODE } from './lib/access'
+import { LoginGate } from './ui/LoginGate'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 import { useSessionWax } from './lib/aw/useSessionWax'
 
@@ -29,7 +28,6 @@ export default function AwwApp() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [isFrame, setIsFrame] = useState(false)
-  const [unlocked, setUnlocked] = useState<boolean | null>(null)
   const session = useSessionWax()
   const autoLoaded = useRef(false)
 
@@ -44,13 +42,6 @@ export default function AwwApp() {
     }
   }, [session.wax, loaded, account])
   useEffect(() => { try { setIsFrame(new URLSearchParams(window.location.search).get('frame') === '1') } catch { /* ignore */ } }, [])
-  useEffect(() => {
-    try {
-      const key = new URLSearchParams(window.location.search).get('key')
-      if (key === AW_ACCESS_CODE) { localStorage.setItem('aww-access', AW_ACCESS_CODE); setUnlocked(true); return }
-      setUnlocked(localStorage.getItem('aww-access') === AW_ACCESS_CODE)
-    } catch { setUnlocked(false) }
-  }, [])
 
   const groups = isFrame ? NAV.filter(g => g.id !== 'device') : NAV
 
@@ -89,8 +80,8 @@ export default function AwwApp() {
   const activeChild = activeGroup.children.find(c => c.id === active) ?? activeGroup.children[0]
   const styleVars = { ...vars, ...lwVarsFrom(vars) } as unknown as CSSProperties
 
-  if (unlocked === null) return <div className={s.shell} style={styleVars} />
-  if (!unlocked) return <div className={s.shell} style={styleVars}><AccessGate onUnlock={() => setUnlocked(true)} /></div>
+  if (session.loading) return <div className={s.shell} style={styleVars} />
+  if (!session.email) return <div className={s.shell} style={styleVars}><LoginGate /></div>
 
   return (
     <div className={s.shell} style={styleVars}>
