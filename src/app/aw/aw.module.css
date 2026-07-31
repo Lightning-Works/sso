@@ -39,38 +39,11 @@
   --hud-jog: 10px;        /* depth of the side step */
   --hud-jog-half: 34px;   /* half-height of the side step */
 
-  --hud-shape: polygon(
-    var(--hud-cut) 0,
-    calc(100% - var(--hud-nick)) 0,
-    100% var(--hud-nick),
-    100% calc(50% - var(--hud-jog-half) - 10px),
-    calc(100% - var(--hud-jog)) calc(50% - var(--hud-jog-half)),
-    calc(100% - var(--hud-jog)) calc(50% + var(--hud-jog-half)),
-    100% calc(50% + var(--hud-jog-half) + 10px),
-    100% calc(100% - var(--hud-cut)),
-    calc(100% - var(--hud-cut)) 100%,
-    var(--hud-nick) 100%,
-    0 calc(100% - var(--hud-nick)),
-    0 calc(50% + var(--hud-jog-half) + 10px),
-    var(--hud-jog) calc(50% + var(--hud-jog-half)),
-    var(--hud-jog) calc(50% - var(--hud-jog-half)),
-    0 calc(50% - var(--hud-jog-half) - 10px),
-    0 var(--hud-cut)
-  );
-
-  /* smaller elements: just the two diagonals, no side step */
-  --hud-shape-sm: polygon(
-    14px 0, 100% 0,
-    100% calc(100% - 14px),
-    calc(100% - 14px) 100%,
-    0 100%, 0 14px
-  );
-
-  /* the edge line itself — brighter at the lit corner */
-  --hud-line: linear-gradient(148deg,
-    color-mix(in srgb, var(--aww-primary) 70%, var(--aww-border)),
-    var(--aww-border) 38%,
-    color-mix(in srgb, var(--aww-primary) 30%, var(--aww-border)) 100%);
+  /* Angled HUD corners — no side-notch, so panels stay correct at any height.
+     (The original side-step assumed tall panels and broke on shorter ones.) */
+  --hud-shape: polygon(var(--hud-cut) 0, calc(100% - var(--hud-nick)) 0, 100% var(--hud-nick), 100% calc(100% - var(--hud-cut)), calc(100% - var(--hud-cut)) 100%, var(--hud-nick) 100%, 0 calc(100% - var(--hud-nick)), 0 var(--hud-cut));
+  --hud-shape-sm: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  --hud-line: linear-gradient(148deg, color-mix(in srgb, var(--aww-primary) 70%, var(--aww-border)), var(--aww-border) 38%, color-mix(in srgb, var(--aww-primary) 30%, var(--aww-border)) 100%);
 }
 
 /* Opt-in utilities you can drop on any element. */

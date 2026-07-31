@@ -14,6 +14,7 @@ import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
 import BuyTrilium from './features/BuyTrilium'
+import Teleporter from './features/Teleporter'
 import AutoMine from './features/AutoMine'
 import ToolAdvisor from './features/ToolAdvisor'
 import PurchaseAdvisor from './features/PurchaseAdvisor'
@@ -53,9 +54,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'teleporter', label: 'Teleporter', icon: 'teleport', children: [
-      { id: 'tp.out', label: 'WAX → Binance', render: stub('Phase 3 · prototype-gated', 'Teleport WAX → Binance', ['Send Trilium from WAX to Binance Smart Chain (min 100 TLM).'], ['Teleport']) },
-      { id: 'tp.in', label: 'Binance → WAX', render: stub('Phase 3 · prototype-gated', 'Teleport Binance → WAX', ['Send Trilium from Binance back to WAX.'], ['Teleport']) },
-      { id: 'tp.history', label: 'History', render: stub('Phase 3', 'Teleport History', ['Past teleports and their claim status.']) },
+      { id: 'tp.all', label: 'All flows', render: () => <Teleporter /> },
     ],
   },
   {
