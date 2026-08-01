@@ -103,6 +103,9 @@ export default function AwwApp() {
 
   return (
     <div className={s.shell} style={styleVars}>
+    <div className={s.stars1} aria-hidden />
+    <div className={s.stars2} aria-hidden />
+    <div className={s.stars3} aria-hidden />
     <div className={s.app}>
       {/* Sidebar outline */}
       <aside className={`${s.sidebar} ${navOpen ? s.sidebarOpen : ''}`}>
