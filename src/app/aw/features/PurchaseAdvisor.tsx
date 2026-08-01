@@ -60,7 +60,7 @@ export default function PurchaseAdvisor({ account }: FeatureProps) {
 
       <Card title="Your current mining rate" tag="set this">
         <div className={s.formRow}>
-          <label className={s.fieldLabel}>Your current earnings (TLM / day) — set your real number for accurate payback</label>
+          <label className={s.fieldLabel}>Your current earnings ($TLM / day) — set your real number for accurate payback</label>
           <input className={s.input} inputMode="decimal" value={tlmPerDay} onChange={e => setTlmPerDay(e.target.value.replace(/[^0-9.]/g, ''))} />
         </div>
         <p className={s.empty}>
@@ -82,8 +82,8 @@ export default function PurchaseAdvisor({ account }: FeatureProps) {
                     <span className={s.recSub}>{r.offer.rarity} · delay {r.offer.delay}s · luck {r.offer.luck}</span>
                   </div>
                   <div className={s.recStats}>
-                    <span className={s.recPrice}>{r.offer.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} WAX{prices ? ` · $${r.priceUsd.toFixed(2)}` : ''}</span>
-                    <span className={s.recGain}>+{(r.improvePct * 100).toFixed(0)}% · +{r.deltaTlmDay.toFixed(1)} TLM/day</span>
+                    <span className={s.recPrice}>{r.offer.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} $WAX{prices ? ` · $${r.priceUsd.toFixed(2)}` : ''}</span>
+                    <span className={s.recGain}>+{(r.improvePct * 100).toFixed(0)}% · +{r.deltaTlmDay.toFixed(1)} $TLM/day</span>
                     <span className={s.recPay}>{prices && isFinite(r.paybackDays) ? `pays for itself in ~${Math.ceil(r.paybackDays)} days` : 'payback n/a'}</span>
                   </div>
                 </div>

@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, Grid, Stat, Empty, PageHead } from '../ui/primitives'
-import { fmt } from '../lib/waxData'
+import { fmtCoin } from '../lib/waxData'
 import { usePrices } from '../lib/aw/usePrices'
 import { usdFor, fmtUsd } from '../lib/aw/prices'
 import s from '../aw.module.css'
@@ -113,7 +113,7 @@ export default function DiviGoConnect() {
     try {
       const r = await fetch('/api/divigo/request-transfer', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coin, amount: amt, destination: dest.trim().toLowerCase(), subject: `Send ${coin.toUpperCase()} from Alien Worlds Wallet` }),
+        body: JSON.stringify({ coin, amount: amt, destination: dest.trim().toLowerCase(), subject: `Send $${coin.toUpperCase()} from Alien Worlds Wallet` }),
       })
       const j = await r.json()
       if (!r.ok) setSendErr(j.error || `HTTP ${r.status}`)
@@ -131,7 +131,7 @@ export default function DiviGoConnect() {
 
   return (
     <div>
-      <PageHead title="DiviGo (Telegram)" desc="Link your DiviGo account to use its WAX and TLM here. Sends are approved by tapping Confirm in Telegram — DiviGo holds the keys, so nothing moves without your OK." />
+      <PageHead title="DiviGo (Telegram)" desc="Link your DiviGo account to use its $WAX and $TLM here. Sends are approved by tapping Confirm in Telegram — DiviGo holds the keys, so nothing moves without your OK." />
 
       {status && !configured && (
         <Card title="DiviGo" tag="setup pending">
@@ -142,7 +142,7 @@ export default function DiviGoConnect() {
       {configured && !verified && (
         <Card title="Link your DiviGo account" tag="one-time">
           <p className={s.empty} style={{ marginBottom: 12 }}>
-            Tap the button, then in Telegram press <b>Start</b> in the DiviGo bot. This links your DiviGo wallet to Alien Worlds Wallet so your WAX and TLM appear here.
+            Tap the button, then in Telegram press <b>Start</b> in the DiviGo bot. This links your DiviGo wallet to Alien Worlds Wallet so your $WAX and $TLM appear here.
           </p>
           <div className={s.stubActions}>
             <button className={`${s.btn} ${s.btnPrimary}`} onClick={startLink} disabled={linkBusy || linkPhase === 'waiting'}>
@@ -163,26 +163,26 @@ export default function DiviGoConnect() {
             </p>
             {!balances ? <Empty text="Reading balances…" /> : (
               <Grid>
-                <Stat label="WAX (DiviGo)" value={fmt(waxBal)} sub={usd('WAX', waxBal)} />
-                <Stat label="Trilium (DiviGo)" value={fmt(tlmBal)} sub={usd('TLM', tlmBal)} />
+                <Stat label="WAX" value={fmtCoin(waxBal, 'WAX')} sub={usd('WAX', waxBal)} />
+                <Stat label="Trilium" value={fmtCoin(tlmBal, 'TLM')} sub={usd('TLM', tlmBal)} />
               </Grid>
             )}
             {balMsg && <p className={s.err} style={{ marginTop: 10 }}>⚠ {balMsg}</p>}
           </Card>
 
           <Card title="Send from DiviGo" tag="approve in Telegram">
-            <p className={s.empty} style={{ marginBottom: 10 }}>Choose WAX or TLM, enter an amount and a destination WAX account. DiviGo will message you on Telegram to confirm before anything is sent.</p>
+            <p className={s.empty} style={{ marginBottom: 10 }}>Choose $WAX or $TLM, enter an amount and a destination WAX account. DiviGo will message you on Telegram to confirm before anything is sent.</p>
             <div className={s.formRow}>
               <select className={s.input} value={coin} onChange={e => setCoin(e.target.value as Coin)}>
-                <option value="wax">WAX</option>
-                <option value="tlm">TLM (Trilium)</option>
+                <option value="wax">$WAX</option>
+                <option value="tlm">$TLM (Trilium)</option>
               </select>
             </div>
-            <div className={s.formRow}><input className={s.input} inputMode="decimal" placeholder={`Amount of ${coin.toUpperCase()}`} value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} /></div>
+            <div className={s.formRow}><input className={s.input} inputMode="decimal" placeholder={`Amount of $${coin.toUpperCase()}`} value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} /></div>
             <div className={s.formRow}><input className={s.input} placeholder="Destination WAX account" value={dest} onChange={e => setDest(e.target.value)} /></div>
             <div className={s.stubActions}>
               <button className={`${s.btn} ${s.btnPrimary}`} onClick={submitSend} disabled={sendBusy || !!sendCode}>
-                {sendBusy ? 'Requesting…' : sendCode ? 'Waiting for Telegram…' : `Send ${coin.toUpperCase()}`}
+                {sendBusy ? 'Requesting…' : sendCode ? 'Waiting for Telegram…' : `Send $${coin.toUpperCase()}`}
               </button>
             </div>
             {sendCode && <p className={s.ok} style={{ marginTop: 10 }}>Request sent — open Telegram and tap Confirm. Waiting for approval…</p>}

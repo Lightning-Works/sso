@@ -6,7 +6,7 @@ import { Card, Empty } from '../ui/primitives'
 import { PlanetVideo } from '../ui/PlanetVideo'
 import { usePrices } from '../lib/aw/usePrices'
 import { usdFor, usdFromAsset, fmtUsd } from '../lib/aw/prices'
-import { fmt } from '../lib/waxData'
+import { fmtCoin } from '../lib/waxData'
 import { fetchPlanetHoldings, type PlanetHoldings } from '../lib/aw/planetHoldings'
 import { useWax } from '../lib/aw/useWax'
 import AccountName from './AccountName'
@@ -76,9 +76,9 @@ export default function PlanetDetail({ planets, planet, account }: FeatureProps 
         <div className={s.synHeaderInfo}>
           <h1 className={s.synHeaderTitle}>{planet} <span style={{ color: 'var(--aww-text-muted)', fontWeight: 600, fontSize: '0.6em' }}>${symbol}</span></h1>
           <div className={s.review}>
-            <span>Total {symbol} supply</span><b>{supply}{p ? usd(supplyNum, symbol) : ''}</b>
-            <span>Your {symbol} (liquid)</span><b>{account ? (hold ? fmt(hold.liquid) + usd(hold.liquid, symbol) : '…') : '—'}</b>
-            <span>Your {symbol} staked</span><b>{account ? (hold ? fmt(hold.staked) + usd(hold.staked, symbol) : '…') : '—'}</b>
+            <span>Total {symbol} supply</span><b>{supply} ${symbol}{p ? usd(supplyNum, symbol) : ''}</b>
+            <span>Your {symbol} (liquid)</span><b>{account ? (hold ? fmtCoin(hold.liquid, symbol) + usd(hold.liquid, symbol) : '…') : '—'}</b>
+            <span>Your {symbol} staked</span><b>{account ? (hold ? fmtCoin(hold.staked, symbol) + usd(hold.staked, symbol) : '…') : '—'}</b>
             <span>Custodians</span><b>{p ? `${p.custodians.length}/${p.numElected}` : '…'}</b>
             <span>Election cycle</span><b>{cycle}</b>
             <span>Proposal budget</span><b>{p ? withUsd(p.proposalBudget) : '…'}</b>

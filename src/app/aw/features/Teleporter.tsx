@@ -22,7 +22,7 @@ export default function Teleporter() {
       <Panel
         title="WAX → Binance"
         phase="Phase 3 · prototype-gated"
-        lines={['Send Trilium from WAX to Binance Smart Chain (minimum 100 TLM).', 'WAX-side send, then claim on Binance via Metamask using the oracle proof.']}
+        lines={['Send Trilium from WAX to Binance Smart Chain (minimum 100 $TLM).', 'WAX-side send, then claim on Binance via Metamask using the oracle proof.']}
         action="Teleport WAX → Binance"
       />
       <Panel

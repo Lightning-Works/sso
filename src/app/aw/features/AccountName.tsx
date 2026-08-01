@@ -5,7 +5,7 @@ import s from '../aw.module.css'
 import { getAccountProfile, type AccountProfile } from '../lib/aw/account'
 import { usePrices } from '../lib/aw/usePrices'
 import { usdFor, fmtUsd } from '../lib/aw/prices'
-import { fmt } from '../lib/waxData'
+import { fmtCoin } from '../lib/waxData'
 
 function ageOf(iso: string | null): string {
   if (!iso) return '—'
@@ -48,10 +48,10 @@ export default function AccountName({
             {voters !== undefined && <><i>Voters</i><b>{voters}</b></>}
             {pay && <><i>Pay rate</i><b>{pay}</b></>}
             <><i>Account age</i><b>{loading && !prof ? '…' : ageOf(prof?.createdISO ?? null)}</b></>
-            <><i>WAX</i><b>{prof ? fmt(prof.wax) + usdW(prof.wax) : '…'}</b></>
-            <><i>Trilium</i><b>{prof ? fmt(prof.tlm) + usdT(prof.tlm) : '…'}</b></>
+            <><i>WAX</i><b>{prof ? fmtCoin(prof.wax, 'WAX') + usdW(prof.wax) : '…'}</b></>
+            <><i>Trilium</i><b>{prof ? fmtCoin(prof.tlm, 'TLM') + usdT(prof.tlm) : '…'}</b></>
             <><i>NFTs held</i><b>{prof ? prof.nftCount : '…'}</b></>
-            <><i>NFTs sold</i><b>{prof ? `${prof.soldCount}${prof.soldCapped ? '+' : ''} · ${fmt(prof.soldVolumeWax)} WAX` : '…'}</b></>
+            <><i>NFTs sold</i><b>{prof ? `${prof.soldCount}${prof.soldCapped ? '+' : ''} · ${fmtCoin(prof.soldVolumeWax, 'WAX')}` : '…'}</b></>
           </span>
           <span className={s.acctNote}>Tenure & lifetime custodian pay need deep indexing — showing current on-chain data.</span>
         </span>

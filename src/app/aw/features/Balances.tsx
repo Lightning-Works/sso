@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, Grid, Stat, Empty, PageHead } from '../ui/primitives'
-import { fmt, planetColor } from '../lib/waxData'
+import { fmtCoin, planetColor } from '../lib/waxData'
 import { usePrices } from '../lib/aw/usePrices'
 import { usdFor, fmtUsd } from '../lib/aw/prices'
 import type { FeatureProps } from './ctx'
@@ -23,7 +23,7 @@ export default function Balances({ holdings }: FeatureProps) {
       <Card title="Wallet" tag="live read">
         {!holdings ? <Empty text="Enter a WAX account above and hit Load to see balances." /> : (
           <Grid>
-            {base.map(t => <Stat key={t.symbol} label={LABELS[t.symbol] || t.symbol} value={fmt(t.amount)} sub={usdSub(t.symbol, t.amount)} />)}
+            {base.map(t => <Stat key={t.symbol} label={LABELS[t.symbol] || t.symbol} value={fmtCoin(t.amount, t.symbol)} sub={usdSub(t.symbol, t.amount)} />)}
             {base.length === 0 && <Empty text="No base tokens held." />}
           </Grid>
         )}
@@ -33,7 +33,7 @@ export default function Balances({ holdings }: FeatureProps) {
           planet.length === 0 ? <Empty text="No planet tokens held. Stake Trilium to a planet to receive them." /> : (
             <Grid>
               {planet.map(t => (
-                <Stat key={t.symbol} label={`${t.planet} (${t.symbol})`} value={fmt(t.amount)} sub={usdSub(t.symbol, t.amount)} color={planetColor(t.planet)} />
+                <Stat key={t.symbol} label={`${t.planet} (${t.symbol})`} value={fmtCoin(t.amount, t.symbol)} sub={usdSub(t.symbol, t.amount)} color={planetColor(t.planet)} />
               ))}
             </Grid>
           )

@@ -42,9 +42,9 @@ export default function AutoMine({ account }: FeatureProps) {
         <>
           <Card title="Rewards tracker" tag="tracked over time">
             <Grid>
-              <Stat label="This session" value={`${m.sessionTlm.toFixed(4)} TLM`} sub={usdSub(m.sessionTlm)} />
-              <Stat label="All-time (this device)" value={`${m.allTimeTlm.toFixed(4)} TLM`} sub={usdSub(m.allTimeTlm)} />
-              <Stat label="Rate" value={`${m.ratePerHr.toFixed(2)} TLM/hr`} />
+              <Stat label="This session" value={`${m.sessionTlm.toFixed(4)} $TLM`} sub={usdSub(m.sessionTlm)} />
+              <Stat label="All-time (this device)" value={`${m.allTimeTlm.toFixed(4)} $TLM`} sub={usdSub(m.allTimeTlm)} />
+              <Stat label="Rate" value={`${m.ratePerHr.toFixed(2)} $TLM/hr`} />
               <Stat label="Mines logged" value={`${m.events.length}`} />
             </Grid>
           </Card>
@@ -55,7 +55,7 @@ export default function AutoMine({ account }: FeatureProps) {
                 {[...m.events].reverse().slice(0, 15).map((e, i) => (
                   <div key={i} className={s.logRow}>
                     <span>{time(e.ts)}</span>
-                    <b>+{e.amount.toFixed(4)} TLM</b>
+                    <b>+{e.amount.toFixed(4)} $TLM</b>
                   </div>
                 ))}
               </div>

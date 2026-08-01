@@ -31,12 +31,12 @@ export default function Market({ schema, label }: { schema?: string; label?: str
           : rows.length === 0 ? <Empty text="No active listings." />
           : (
             <>
-              {floor !== undefined && <div className={s.msg}>Floor price: {price(floor)} WAX</div>}
+              {floor !== undefined && <div className={s.msg}>Floor price: {price(floor)} $WAX</div>}
               <div className={s.list}>
                 {rows.map(r => (
                   <div key={r.saleId} className={s.listRow}>
                     <b>{r.name}</b>
-                    <span className={s.listMeta}>{price(r.price)} WAX · {r.schema.replace('.worlds', '')} · {r.seller}</span>
+                    <span className={s.listMeta}>{price(r.price)} $WAX · {r.schema.replace('.worlds', '')} · {r.seller}</span>
                     <button className={`${s.btn} ${s.btnGhost}`} disabled title="Buy on-chain via atomicmarket::purchasesale — Phase 2">Buy</button>
                   </div>
                 ))}

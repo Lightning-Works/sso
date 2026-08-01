@@ -54,3 +54,13 @@ export function fmt(n: number): string {
   if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
   return n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 }
+
+/**
+ * A coin/token *amount* with its ticker, e.g. `500 $TLM`, `12.5 $WAX`.
+ * Convention: any spendable quantity of a coin/token shows `$` + SYMBOL.
+ * Abstract references (the WAX blockchain, a WAX account, the Trilium token,
+ * feature names like "Buy Trilium") do NOT get a `$` — keep those as plain prose.
+ */
+export function fmtCoin(n: number, symbol: string): string {
+  return `${fmt(n)} $${(symbol || '').toUpperCase()}`
+}
