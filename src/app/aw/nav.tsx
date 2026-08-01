@@ -10,6 +10,7 @@ import type { ReactNode } from 'react'
 import type { FeatureProps } from './features/ctx'
 import { PLANETS } from './lib/waxData'
 import Balances from './features/Balances'
+import Staking from './features/Staking'
 import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
@@ -32,6 +33,7 @@ export const NAV: NavGroup[] = [
   {
     id: 'wallet', label: 'Wallet', icon: 'wallet', children: [
       { id: 'wallet.overview', label: 'Overview', render: p => <Balances {...p} /> },
+      { id: 'wallet.staking', label: 'Staking (WAX)', render: p => <Staking {...p} /> },
       { id: 'wallet.send', label: 'Send', render: stub('Phase 1', 'Send', ['Send WAX, Trilium or planet tokens to another account.'], ['Send']) },
       { id: 'wallet.receive', label: 'Receive', render: stub('Phase 1', 'Receive', ['Show your account name and a QR code to receive tokens.']) },
       { id: 'wallet.activity', label: 'Activity', render: stub('Phase 1', 'Activity', ['Recent transactions on your account.']) },
