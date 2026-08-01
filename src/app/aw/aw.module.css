@@ -135,7 +135,7 @@
   border: none;
   border-radius: 0;
   overflow: hidden;
-  clip-path: polygon(34px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 34px) 100%, 0 100%, 0 34px);
+  clip-path: var(--hud-shape);
   backdrop-filter: blur(var(--aww-blur)) saturate(130%);
   -webkit-backdrop-filter: blur(var(--aww-blur)) saturate(130%);
   filter: drop-shadow(0 24px 50px var(--aww-shadow));

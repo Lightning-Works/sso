@@ -10,6 +10,7 @@ import { Icon } from './ui/Icon'
 import { LoginGate } from './ui/LoginGate'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 import { useSessionWax } from './lib/aw/useSessionWax'
+import { connectWax } from './lib/wax/session'
 
 const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
@@ -24,6 +25,7 @@ export default function AwwApp() {
   const [holdings, setHoldings] = useState<Holdings | null>(null)
   const [planets, setPlanets] = useState<Planet[]>([])
   const [loading, setLoading] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
@@ -58,6 +60,22 @@ export default function AwwApp() {
       setLoading(false)
     }
   }, [account])
+
+  // Connect the WAX Cloud Wallet (popup), then load that account.
+  const connectWallet = useCallback(async () => {
+    setConnecting(true); setError('')
+    try {
+      const acct = await connectWax()
+      if (!acct) { setError('Wallet connect was cancelled'); return }
+      setAccount(acct); setLoaded(acct)
+      const data = await fetchHoldings(acct)
+      setHoldings(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'wallet connect failed')
+    } finally {
+      setConnecting(false)
+    }
+  }, [])
 
   const onGroup = (g: NavGroup) => {
     const isOpen = expanded.has(g.id)
@@ -144,13 +162,17 @@ export default function AwwApp() {
             <span className={`${s.dot} ${loaded ? '' : s.dotOff}`} />
             <input
               className={s.acctInput}
-              placeholder="WAX account (e.g. name.wam)"
+              placeholder="WAX account — or Connect →"
               value={account}
               onChange={e => setAccount(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') load() }}
             />
-            <button className={`${s.btn} ${s.btnPrimary}`} onClick={load} disabled={loading}>
-              {loading ? '…' : 'Load'}
+            <button
+              className={`${s.btn} ${s.btnPrimary}`}
+              onClick={() => (account.trim() ? load() : connectWallet())}
+              disabled={loading || connecting}
+            >
+              {loading || connecting ? '…' : account.trim() ? 'Load' : 'Connect'}
             </button>
           </div>
           <button className={s.iconBtn} onClick={() => setPanelOpen(true)} aria-label="Styling" title="Styling & skins"><Icon name="gear" /></button>
