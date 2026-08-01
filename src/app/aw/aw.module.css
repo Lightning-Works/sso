@@ -123,6 +123,9 @@
 
 .app {
   --sidebar-w: 240px;
+  /* Bolder corner cuts on the big main panel so the HUD shape reads clearly. */
+  --hud-cut: 46px;
+  --hud-nick: 22px;
   position: relative;
   width: 80%;
   max-width: 1400px;
