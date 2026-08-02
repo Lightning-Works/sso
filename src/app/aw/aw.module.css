@@ -529,7 +529,7 @@
 .nftSchema { font-family: var(--aww-font-head); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .nftMeta { font-family: var(--aww-font-mono); font-size: 10.5px; color: var(--aww-text-muted); margin-top: 5px; letter-spacing: .06em; }
 
-.empty { color: var(--aww-text-muted); font-size: 13px; margin: 0; font-family: var(--aww-font-mono); letter-spacing: .04em; }
+.empty { color: color-mix(in srgb, var(--aww-text-muted) 50%, #ffffff); font-size: 13px; margin: 0; font-family: var(--aww-font-mono); letter-spacing: .04em; }
 .stub { margin: 0; padding-left: 18px; color: var(--aww-text-dim); list-style: none; }
 .stub li { position: relative; font-size: 13px; line-height: 2; }
 .stub li::before {
