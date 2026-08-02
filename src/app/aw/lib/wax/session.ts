@@ -26,6 +26,7 @@ export type AwAction = { account: string; name: string; authorization: AwAuth[];
 interface WaxLike {
   user?: { account?: string } | null
   login(): Promise<string>
+  isAutoLoginAvailable(): Promise<boolean>
   api: {
     transact(
       tx: { actions: AwAction[] },
@@ -73,6 +74,24 @@ export async function connectWax(): Promise<string | null> {
   const a = await w.login()
   account = a || (w.user?.account ?? null)
   return account
+}
+
+/**
+ * Silently restore a previous WAX Cloud Wallet session on load — NO popup.
+ * MyCloudWallet keeps the user logged in for a while; isAutoLoginAvailable()
+ * reconnects using that existing session so the user doesn't have to click
+ * Connect again after a refresh. Returns the account, or null if there's no
+ * live session (in which case the user connects normally).
+ */
+export async function autoLoginWax(): Promise<string | null> {
+  try {
+    const w = wax ?? (await preloadWax())
+    if (await w.isAutoLoginAvailable()) {
+      account = w.user?.account ?? account
+      return account
+    }
+  } catch { /* no live session — user will connect manually */ }
+  return null
 }
 
 export function currentAccount(): string | null {

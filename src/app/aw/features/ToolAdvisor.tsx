@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react'
 import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
+import { NftGrid, type NftItem } from '@/components/NftGrid'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
+import { NftDetailModal } from '../ui/NftDetailModal'
 import { fetchTools, bestForTlm, bestForNft, type Tool, type Loadout } from '../lib/aw/tools'
-import { fetchLands, type Land } from '../lib/aw/lands'
+import { fetchNftItems, type AwNft } from '../lib/aw/nftItems'
 import type { FeatureProps } from './ctx'
 
 function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
@@ -36,25 +39,32 @@ function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
 
 export default function ToolAdvisor({ account }: FeatureProps) {
   const [tools, setTools] = useState<Tool[]>([])
-  const [lands, setLands] = useState<Land[]>([])
+  const [toolNfts, setToolNfts] = useState<AwNft[]>([])
+  const [landNfts, setLandNfts] = useState<AwNft[]>([])
+  const [selected, setSelected] = useState<AwNft | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { fetchThumbs, applyThumbs } = useThumbnails()
 
   useEffect(() => {
-    if (!account) { setTools([]); setLands([]); return }
+    if (!account) { setTools([]); setToolNfts([]); setLandNfts([]); return }
     setLoading(true); setError('')
     Promise.all([
       fetchTools(account),
-      fetchLands(account).catch(() => [] as Land[]),
+      fetchNftItems(account, 'tool.worlds').catch(() => [] as AwNft[]),
+      fetchNftItems(account, 'land.worlds').catch(() => [] as AwNft[]),
     ])
-      .then(([t, l]) => { setTools(t); setLands(l) })
+      .then(([t, tn, ln]) => {
+        setTools(t); setToolNfts(tn); setLandNfts(ln)
+        fetchThumbs([...tn, ...ln], account)
+      })
       .catch(e => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false))
-  }, [account])
+  }, [account, fetchThumbs])
 
   return (
     <>
-      <PageHead title="Tool Advisor" desc="We read your tools' on-chain stats and recommend the best 3-tool loadout — verified against the mining contract." />
+      <PageHead title="Tool Advisor" desc="We read your tools' and land's on-chain stats and recommend the best 3-tool loadout — verified against the mining contract." />
 
       <Card title="How tool choice works" tag="analysis">
         <ul className={s.stub}>
@@ -75,40 +85,39 @@ export default function ToolAdvisor({ account }: FeatureProps) {
               <>
                 <LoadoutCard title="Best for Trilium (luck ÷ delay)" lo={bestForTlm(tools)} />
                 <LoadoutCard title="Best for NFT drops (max luck)" lo={bestForNft(tools)} />
-            <Card title={`All your tools (${tools.length})`} tag="live read">
-              <div className={s.list}>
-                {tools.map((t, i) => (
-                  <div key={t.assetId || i} className={s.listRow}>
-                    <span>{i + 1}</span>
-                    <b>{t.name}{t.shine ? ` · ${t.shine}` : ''}</b>
-                    <span className={s.listMeta}>delay {t.delay}s · luck {t.luck} · ease {t.ease} · {t.rarity}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
               </>
             )}
 
-            <Card title={`Your land (${lands.length})`} tag="live read">
-              {lands.length === 0
-                ? <Empty text="You don't own any land. Mining on land you own skips the landowner commission, so you keep the full reward." />
-                : (
-                  <>
-                    <p className={s.empty} style={{ marginBottom: 10 }}>Mine on your own land to skip the landowner commission and keep the full reward. A land&apos;s luck and ease also add to your effective mining stats.</p>
-                    <div className={s.list}>
-                      {lands.map((l, i) => (
-                        <div key={l.assetId || i} className={s.listRow}>
-                          <span>{i + 1}</span>
-                          <b>{l.name}</b>
-                          <span className={s.listMeta}>luck {l.luck} · ease {l.ease} · delay {l.delay}s · {l.rarity}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+            {/* Owned land grid — only when you have some */}
+            {landNfts.length > 0 && (
+              <Card title={`Your Land (${landNfts.length})`} tag="live read">
+                <p className={s.empty} style={{ marginBottom: 10 }}>Mine on your own land to skip the landowner commission. A land&apos;s luck and ease add to your mining stats — tap a card for details.</p>
+                <NftGrid
+                  nfts={applyThumbs(landNfts as NftItem[])}
+                  storageKey={`aww-mine-land-${account}`}
+                  emptyMessage="No land found."
+                  columns={5} mobileColumns={2} showViewTabs={false}
+                  onCardClick={(n) => setSelected(n as AwNft)}
+                />
+              </Card>
+            )}
+
+            {/* Owned tools grid */}
+            <Card title={`Your Tools (${toolNfts.length})`} tag="live read">
+              {toolNfts.length === 0
+                ? <Empty text="No mining tools found on this account." />
+                : <NftGrid
+                    nfts={applyThumbs(toolNfts as NftItem[])}
+                    storageKey={`aww-mine-tools-${account}`}
+                    emptyMessage="No tools found."
+                    columns={5} mobileColumns={2} showViewTabs={false}
+                    onCardClick={(n) => setSelected(n as AwNft)}
+                  />}
             </Card>
           </>
         )}
+
+      {selected && <NftDetailModal nft={selected} onClose={() => setSelected(null)} />}
     </>
   )
 }
