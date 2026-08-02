@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
 import { fetchTools, bestForTlm, bestForNft, type Tool, type Loadout } from '../lib/aw/tools'
+import { fetchLands, type Land } from '../lib/aw/lands'
 import type { FeatureProps } from './ctx'
 
 function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
@@ -35,13 +36,20 @@ function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
 
 export default function ToolAdvisor({ account }: FeatureProps) {
   const [tools, setTools] = useState<Tool[]>([])
+  const [lands, setLands] = useState<Land[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!account) { setTools([]); return }
+    if (!account) { setTools([]); setLands([]); return }
     setLoading(true); setError('')
-    fetchTools(account).then(setTools).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
+    Promise.all([
+      fetchTools(account),
+      fetchLands(account).catch(() => [] as Land[]),
+    ])
+      .then(([t, l]) => { setTools(t); setLands(l) })
+      .catch(e => setError(e instanceof Error ? e.message : 'failed'))
+      .finally(() => setLoading(false))
   }, [account])
 
   return (
@@ -59,13 +67,14 @@ export default function ToolAdvisor({ account }: FeatureProps) {
       </Card>
 
       {!account ? <Card><Empty text="Load or connect a WAX account to analyze your tools." /></Card>
-        : loading ? <Card><Empty text="Reading your tools from the chain…" /></Card>
+        : loading ? <Card><Empty text="Reading your tools and land from the chain…" /></Card>
         : error ? <Card><p className={s.err}>⚠ {error}</p></Card>
-        : tools.length === 0 ? <Card><Empty text="No mining tools found on this account." /></Card>
         : (
           <>
-            <LoadoutCard title="Best for Trilium (luck ÷ delay)" lo={bestForTlm(tools)} />
-            <LoadoutCard title="Best for NFT drops (max luck)" lo={bestForNft(tools)} />
+            {tools.length === 0 ? <Card><Empty text="No mining tools found on this account." /></Card> : (
+              <>
+                <LoadoutCard title="Best for Trilium (luck ÷ delay)" lo={bestForTlm(tools)} />
+                <LoadoutCard title="Best for NFT drops (max luck)" lo={bestForNft(tools)} />
             <Card title={`All your tools (${tools.length})`} tag="live read">
               <div className={s.list}>
                 {tools.map((t, i) => (
@@ -76,6 +85,27 @@ export default function ToolAdvisor({ account }: FeatureProps) {
                   </div>
                 ))}
               </div>
+            </Card>
+              </>
+            )}
+
+            <Card title={`Your land (${lands.length})`} tag="live read">
+              {lands.length === 0
+                ? <Empty text="You don't own any land. Mining on land you own skips the landowner commission, so you keep the full reward." />
+                : (
+                  <>
+                    <p className={s.empty} style={{ marginBottom: 10 }}>Mine on your own land to skip the landowner commission and keep the full reward. A land&apos;s luck and ease also add to your effective mining stats.</p>
+                    <div className={s.list}>
+                      {lands.map((l, i) => (
+                        <div key={l.assetId || i} className={s.listRow}>
+                          <span>{i + 1}</span>
+                          <b>{l.name}</b>
+                          <span className={s.listMeta}>luck {l.luck} · ease {l.ease} · delay {l.delay}s · {l.rarity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
             </Card>
           </>
         )}

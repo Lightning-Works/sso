@@ -1,42 +1,40 @@
 /**
- * Maps a WAX account's Alien Worlds NFTs (AtomicAssets) into the SSO NftGrid's
- * NftItem shape, so we reuse the existing grid (glows, lightbox, comic/webtoon
- * reader) instead of building our own.
+ * Maps a WAX account's Alien Worlds NFTs into the SSO NftGrid's NftItem shape.
+ *
+ * Reuses the SSO's proven fetcher (getWaxNfts) instead of a bespoke call, and
+ * mirrors the SSO wax wallet's `waxToNftItems` mapping (src/app/wallet/wax/page.tsx)
+ * so the AWW grid gets the same rich fields it shows there: video, description,
+ * max supply, rarity and an AtomicHub explorer link. Thumbnails are filled in
+ * separately by the useThumbnails hook (same /api/nft-thumbs the SSO uses).
  */
 import type { NftItem } from '@/components/NftGrid'
+import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 
-const ipfs = (h?: unknown): string | null =>
-  typeof h === 'string' && h ? `https://atomichub-ipfs.com/ipfs/${h}` : null
+function toItems(nfts: WaxNft[]): NftItem[] {
+  return nfts.map(nft => ({
+    id: nft.assetId,
+    name: nft.name,
+    imageUrl: nft.imageUrl,
+    videoUrl: nft.videoUrl,
+    thumbUrl: null,
+    collection: nft.collectionDisplayName || nft.collectionName,
+    description: nft.description,
+    rarity: nft.rarity,
+    mintNumber: nft.mintNumber,
+    maxSupply: nft.maxSupply,
+    chain: 'WAX',
+    tokenId: nft.assetId,
+    externalUrl: `https://wax.atomichub.io/explorer/asset/wax-mainnet/${nft.assetId}`,
+    attributes: Object.entries(nft.data)
+      .filter(([k]) => !['name', 'img', 'image', 'video', 'backimg', 'description', 'rarity', 'Rarity'].includes(k))
+      .map(([key, value]) => ({ key, value: String(value) })),
+  })) as NftItem[]
+}
 
 export async function fetchNftItems(account: string, schema?: string): Promise<NftItem[]> {
-  const p = new URLSearchParams({
-    owner: account, collection_name: 'alien.worlds',
-    page: '1', limit: '200', order: 'desc', sort: 'transferred',
-  })
-  if (schema) p.set('schema_name', schema)
-
-  const r = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?${p.toString()}`)
-  if (!r.ok) throw new Error('failed to load collectibles')
-  const d = await r.json()
-
-  return (d.data || []).map((a: Record<string, unknown>) => {
-    const tpl = (a.template as Record<string, unknown>) || {}
-    const im = { ...((tpl.immutable_data as Record<string, unknown>) || {}), ...((a.data as Record<string, unknown>) || {}) }
-    const img = ipfs(im.img) || ipfs(im.image)
-    const coll = (a.collection as Record<string, unknown>) || {}
-    return {
-      id: String(a.asset_id || ''),
-      name: String(im.name || a.name || 'NFT'),
-      imageUrl: img,
-      thumbUrl: img,
-      collection: String(coll.collection_name || 'alien.worlds'),
-      rarity: (im.rarity as string) || (im.shine as string) || null,
-      mintNumber: (a.template_mint as string) || null,
-      chain: 'WAX',
-      tokenId: String(a.asset_id || ''),
-      attributes: Object.entries(im)
-        .filter(([k]) => !['img', 'image', 'backimg', 'name'].includes(k))
-        .map(([key, value]) => ({ key, value: String(value) })),
-    } as NftItem
-  })
+  // Pull the whole Alien Worlds collection (up to 1000), then optionally scope
+  // to one schema (land.worlds, tool.worlds, …) for the category tabs.
+  const { nfts } = await getWaxNfts(account, 1, 1000, 'alien.worlds')
+  const filtered = schema ? nfts.filter(n => n.schemaName === schema) : nfts
+  return toItems(filtered)
 }
