@@ -79,7 +79,7 @@ export default function Inventory({ account, schema, label }: FeatureProps & { s
               <div style={{ marginBottom: 12 }}>
                 <h2 style={{ margin: 0, fontSize: 'var(--aww-h2-size, 19px)', color: 'var(--aww-text)', fontFamily: 'var(--aww-font-head, inherit)' }}>{collection} Collection</h2>
                 {usd != null && (
-                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700, color: 'var(--aww-primary, #b06cff)' }}>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 50%, #fff)' }}>
                     Total Collection Value: ~{usd > 0 ? fmtUsd(usd) : '$0.00'}
                   </div>
                 )}
