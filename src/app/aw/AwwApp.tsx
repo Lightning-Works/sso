@@ -1,8 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { usePathname } from 'next/navigation'
 import s from './aw.module.css'
-import { NAV, FIRST, type NavGroup, type NavChild } from './nav'
+import { NAV, FIRST, pathForChild, childForPath, type NavGroup, type NavChild } from './nav'
+
+// URL segments after "/aw" — e.g. "/aw/syndicates/kavian" → ['syndicates','kavian'].
+const segsOf = (p: string) => (p || '').replace(/^\/aw\/?/, '').split('/').filter(Boolean)
 import { useTheme } from './theme/useTheme'
 import { lwVarsFrom } from './theme/tokens'
 import { StylingPanel } from './theme/StylingPanel'
@@ -18,8 +22,11 @@ const groupOf = (childId: string): NavGroup =>
 export default function AwwApp() {
   const { skinId, vars, setToken, applySkin, reset, importVars } = useTheme()
 
-  const [active, setActive] = useState(FIRST)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set([groupOf(FIRST).id]))
+  // Initial page comes from the URL (deep links like /aw/syndicates/kavian).
+  const pathname = usePathname()
+  const initialId = childForPath(segsOf(pathname || '/aw'))
+  const [active, setActive] = useState(initialId)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set([groupOf(initialId).id]))
   const [account, setAccount] = useState('')
   const [loaded, setLoaded] = useState('')
   const [holdings, setHoldings] = useState<Holdings | null>(null)
@@ -77,22 +84,39 @@ export default function AwwApp() {
     }
   }, [])
 
-  const onGroup = (g: NavGroup) => {
-    const isOpen = expanded.has(g.id)
-    const next = new Set(expanded)
-    if (isOpen) { next.delete(g.id) } else { next.add(g.id); setActive(g.children[0].id) }
-    setExpanded(next)
-  }
-  const onChild = (c: NavChild, gid: string) => {
-    setActive(c.id)
-    if (!expanded.has(gid)) setExpanded(new Set(expanded).add(gid))
-    setNavOpen(false)
-  }
-  const goTo = (childId: string) => {
+  // Navigate to a nav child: update the page, expand its group, close the mobile
+  // drawer, and push a human-readable URL — WITHOUT a Next navigation, so the
+  // SPA shell (session, holdings, wallet connection) is preserved.
+  const setRoute = useCallback((childId: string) => {
     setActive(childId)
     setExpanded(prev => new Set(prev).add(groupOf(childId).id))
     setNavOpen(false)
+    const url = pathForChild(childId)
+    if (typeof window !== 'undefined' && window.location.pathname !== url) {
+      window.history.pushState(null, '', url)
+    }
+  }, [])
+
+  // Keep in sync with browser back/forward.
+  useEffect(() => {
+    const onPop = () => {
+      const id = childForPath(segsOf(window.location.pathname))
+      setActive(id)
+      setExpanded(prev => new Set(prev).add(groupOf(id).id))
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const onGroup = (g: NavGroup) => {
+    if (expanded.has(g.id)) {
+      setExpanded(prev => { const n = new Set(prev); n.delete(g.id); return n })
+    } else {
+      setRoute(g.children[0].id)
+    }
   }
+  const onChild = (c: NavChild) => setRoute(c.id)
+  const goTo = (childId: string) => setRoute(childId)
 
   const activeGroup = groupOf(active)
   const activeChild = activeGroup.children.find(c => c.id === active) ?? activeGroup.children[0]
@@ -131,7 +155,7 @@ export default function AwwApp() {
                     <button
                       key={c.id}
                       className={`${s.child} ${active === c.id ? s.childActive : ''}`}
-                      onClick={() => onChild(c, g.id)}
+                      onClick={() => onChild(c)}
                     >
                       {c.label}
                     </button>
