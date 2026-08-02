@@ -22,6 +22,7 @@ import ToolAdvisor from './features/ToolAdvisor'
 import PurchaseAdvisor from './features/PurchaseAdvisor'
 import Market from './features/Market'
 import DeviceEmulator from './features/DeviceEmulator'
+import MiningData from './features/MiningData'
 import StubView from './ui/StubView'
 
 export type NavChild = { id: string; label: string; slug: string; render: (p: FeatureProps) => ReactNode }
@@ -113,6 +114,11 @@ export const NAV: NavGroup[] = [
       { id: 'dev.desktop', label: 'Desktop', slug: 'desktop', render: () => <DeviceEmulator kind="desktop" /> },
       { id: 'dev.tablet', label: 'Tablet', slug: 'tablet', render: () => <DeviceEmulator kind="tablet" /> },
       { id: 'dev.phone', label: 'Phone', slug: 'phone', render: () => <DeviceEmulator kind="phone" /> },
+    ],
+  },
+  {
+    id: 'admin', label: 'Admin', icon: 'gear', slug: 'admin', children: [
+      { id: 'admin.mining', label: 'Mining Data', slug: 'mining-data', render: () => <MiningData /> },
     ],
   },
 ]

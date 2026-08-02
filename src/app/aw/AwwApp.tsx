@@ -37,8 +37,10 @@ export default function AwwApp() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [isFrame, setIsFrame] = useState(false)
+  const [isSuper, setIsSuper] = useState(false)
   const session = useSessionWax()
   const autoLoaded = useRef(false)
+  const beaconed = useRef(false)
 
   useEffect(() => { fetchPlanets().then(setPlanets).catch(() => setPlanets([])) }, [])
   // Auto-load the logged-in SSO user's linked WAX account (their NFTs/WAX/TLM).
@@ -51,6 +53,17 @@ export default function AwwApp() {
     }
   }, [session.wax, loaded, account])
   useEffect(() => { try { setIsFrame(new URLSearchParams(window.location.search).get('frame') === '1') } catch { /* ignore */ } }, [])
+  // Is this the Mining Data superadmin? Gates the Admin nav group.
+  useEffect(() => {
+    if (!session.email) { setIsSuper(false); return }
+    fetch('/api/aw/superadmin', { cache: 'no-store' }).then(r => r.json()).then(j => setIsSuper(!!j.superadmin)).catch(() => setIsSuper(false))
+  }, [session.email])
+  // Log this visitor for the admin node map (best-effort, once per load).
+  useEffect(() => {
+    if (beaconed.current || session.loading) return
+    beaconed.current = true
+    fetch('/api/aw/beacon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wax: session.wax || undefined }) }).catch(() => {})
+  }, [session.loading, session.wax])
   // Silently restore a live WAX Cloud Wallet connection after a refresh (no
   // popup) so the user stays connected and can sign without reconnecting.
   useEffect(() => {
@@ -63,7 +76,11 @@ export default function AwwApp() {
     }).catch(() => {})
   }, [])
 
-  const groups = isFrame ? NAV.filter(g => g.id !== 'device') : NAV
+  const groups = NAV.filter(g => {
+    if (g.id === 'device' && isFrame) return false
+    if (g.id === 'admin' && !isSuper) return false
+    return true
+  })
 
   const load = useCallback(async () => {
     const acct = account.trim().toLowerCase()
