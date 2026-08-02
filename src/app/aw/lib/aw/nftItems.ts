@@ -15,6 +15,21 @@
  */
 import type { NftItem } from '@/components/NftGrid'
 
+/**
+ * AWW-enriched NFT item: the shared NftItem plus the extra on-chain fields our
+ * custom detail modal shows (schema, template, mint date, owner) and the full
+ * raw immutable data so the collapsible "NFT Attributes" can list everything.
+ * `floorWax` is filled in later by the pricing pass (nftPrices.ts).
+ */
+export type AwNft = NftItem & {
+  schema?: string
+  templateId?: string | null
+  mintedAt?: string | null
+  owner?: string
+  floorWax?: number | null
+  raw?: Record<string, unknown>
+}
+
 const AA = 'https://wax.api.atomicassets.io/atomicassets/v1/assets'
 const PAGE = 100
 
@@ -24,7 +39,7 @@ function resolve(hash: unknown): string | null {
   return s.startsWith('http') ? s : `https://ipfs.io/ipfs/${s}`
 }
 
-export async function fetchNftItems(account: string, schema?: string): Promise<NftItem[]> {
+export async function fetchNftItems(account: string, schema?: string): Promise<AwNft[]> {
   const p = new URLSearchParams({
     owner: account, collection_name: 'alien.worlds',
     page: '1', limit: String(PAGE), order: 'desc', sort: 'transferred',
@@ -37,8 +52,10 @@ export async function fetchNftItems(account: string, schema?: string): Promise<N
 
   return (d.data || []).map((a: Record<string, unknown>) => {
     const tpl = (a.template as Record<string, unknown>) || {}
+    const sch = (a.schema as Record<string, unknown>) || {}
     const im = { ...((tpl.immutable_data as Record<string, unknown>) || {}), ...((a.data as Record<string, unknown>) || {}) }
     const coll = (a.collection as Record<string, unknown>) || {}
+    const mintedMs = a.minted_at_time ? Number(a.minted_at_time) : 0
     return {
       id: String(a.asset_id || ''),
       name: String(im.name || 'NFT'),
@@ -53,9 +70,13 @@ export async function fetchNftItems(account: string, schema?: string): Promise<N
       chain: 'WAX',
       tokenId: String(a.asset_id || ''),
       externalUrl: `https://wax.atomichub.io/explorer/asset/wax-mainnet/${a.asset_id}`,
-      attributes: Object.entries(im)
-        .filter(([k]) => !['name', 'img', 'image', 'video', 'backimg', 'description', 'rarity', 'Rarity'].includes(k))
-        .map(([key, value]) => ({ key, value: String(value) })),
-    } as NftItem
+      schema: String(sch.schema_name || ''),
+      templateId: tpl.template_id ? String(tpl.template_id) : null,
+      mintedAt: mintedMs ? new Date(mintedMs).toISOString() : null,
+      owner: String(a.owner || account),
+      floorWax: null,
+      raw: im,
+      attributes: Object.entries(im).map(([key, value]) => ({ key, value: String(value) })),
+    } as AwNft
   })
 }

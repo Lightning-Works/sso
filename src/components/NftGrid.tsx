@@ -137,6 +137,10 @@ interface NftGridProps {
    *  single curated collection — there's no spam there and everything is an
    *  NFT, so the toggle is just noise. */
   showViewTabs?: boolean
+  /** Optional: intercept a normal tile click to render a custom detail view
+   *  instead of the built-in lightbox. When omitted, the built-in lightbox is
+   *  used (default behaviour — the SSO wallet relies on this). */
+  onCardClick?: (nft: NftItem) => void
 }
 
 export function NftGrid({
@@ -153,6 +157,7 @@ export function NftGrid({
   isSuperadmin = false,
   onLoansChanged,
   showViewTabs = true,
+  onCardClick,
 }: NftGridProps) {
   // Loan action under user confirmation. null when no action pending.
   const [loanConfirm, setLoanConfirm] = useState<{ kind: 'return' | 'revoke'; loanId: string; nftName: string; counterpartyLabel: string } | null>(null)
@@ -383,6 +388,9 @@ export function NftGrid({
     } else if (selected.size > 0) {
       // If items are selected, clicking without modifier deselects all
       setSelected(new Set())
+    } else if (onCardClick) {
+      // Host provided a custom detail view (e.g. AWW's modal).
+      onCardClick(nft)
     } else {
       // Normal click: open lightbox
       setSelectedNft(nft)
