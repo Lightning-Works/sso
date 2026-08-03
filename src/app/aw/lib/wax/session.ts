@@ -66,6 +66,22 @@ if (typeof window !== 'undefined') {
   preloadWax().catch(() => { /* retried on demand in connectWax */ })
 }
 
+const REMEMBER_KEY = 'aww:wax'
+
+/** Remember the connected account for read-only display across reloads. */
+function remember(a: string | null) {
+  try { if (typeof window !== 'undefined' && a) window.localStorage.setItem(REMEMBER_KEY, a) } catch { /* ignore */ }
+}
+
+/**
+ * The last account this browser connected — used to show balances/NFTs on
+ * reload WITHOUT a wallet popup. It is NOT a live signing session (that needs
+ * a real connect); it only remembers who you are for viewing.
+ */
+export function rememberedAccount(): string | null {
+  try { return typeof window !== 'undefined' ? window.localStorage.getItem(REMEMBER_KEY) : null } catch { return null }
+}
+
 export async function connectWax(): Promise<string | null> {
   // If the instance is already built (the normal case, thanks to preload),
   // `wax ?? ...` short-circuits so there is NO await before login() — the popup
@@ -73,6 +89,7 @@ export async function connectWax(): Promise<string | null> {
   const w = wax ?? (await preloadWax())
   const a = await w.login()
   account = a || (w.user?.account ?? null)
+  remember(account)
   return account
 }
 
@@ -88,6 +105,7 @@ export async function autoLoginWax(): Promise<string | null> {
     const w = wax ?? (await preloadWax())
     if (await w.isAutoLoginAvailable()) {
       account = w.user?.account ?? account
+      remember(account)
       return account
     }
   } catch { /* no live session — user will connect manually */ }

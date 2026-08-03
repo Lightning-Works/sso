@@ -14,7 +14,7 @@ import { Icon } from './ui/Icon'
 import { LoginGate } from './ui/LoginGate'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 import { useSessionWax } from './lib/aw/useSessionWax'
-import { connectWax, autoLoginWax } from './lib/wax/session'
+import { connectWax, autoLoginWax, rememberedAccount } from './lib/wax/session'
 
 const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
@@ -68,10 +68,14 @@ export default function AwwApp() {
   // popup) so the user stays connected and can sign without reconnecting.
   useEffect(() => {
     autoLoginWax().then(a => {
-      if (a && !autoLoaded.current) {
+      if (autoLoaded.current) return
+      // Live session if available; otherwise the remembered account for
+      // read-only viewing (balances/NFTs) without a wallet popup.
+      const acct = a || rememberedAccount()
+      if (acct) {
         autoLoaded.current = true
-        setAccount(a); setLoaded(a)
-        fetchHoldings(a).then(setHoldings).catch(() => {})
+        setAccount(acct); setLoaded(acct)
+        fetchHoldings(acct).then(setHoldings).catch(() => {})
       }
     }).catch(() => {})
   }, [])
