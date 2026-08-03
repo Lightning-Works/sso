@@ -1,127 +1,93 @@
 /**
- * WAX signing session for AWW.
+ * WAX signing session for AWW — built on WharfKit SessionKit.
  *
- * Wraps the WAX Cloud Wallet (@waxio/waxjs — already a dependency of the SSO)
- * as a small singleton so features can connect once and submit signed
- * transactions. No new package is added. Dynamic import keeps it out of SSR.
+ * Why WharfKit instead of raw waxjs: waxjs keeps the session only in memory, so
+ * every page reload needs a fresh login (or a third-party cookie to
+ * mycloudwallet.com that Safari/Brave block). SessionKit PERSISTS the session in
+ * our own localStorage and restores it silently on reload — so you log in once
+ * and stay logged in, no popup, no cookie dependency.
  *
- * CRITICAL — popup / user-gesture timing:
- *   waxjs `login()` calls `window.open()` synchronously at the start of its
- *   async body. Browsers only allow that popup (and let it post the session
- *   back to us) if `login()` runs in the SAME synchronous tick as the user's
- *   click — i.e. with NO `await` before it. So we must NOT `await import(...)`
- *   inside the click handler. Instead we PRELOAD the module + construct the
- *   WaxJS instance ahead of time (on module load); then `connectWax()` calls
- *   `login()` immediately. Without this the wallet opens but AWW never receives
- *   the account — the "logged in but not connected" symptom.
- *
- * Action data is built by the feature modules from ABIs verified on-chain
- * (eosio::delegatebw/voteproducer, token.worlds::stake, dao.worlds::votecust).
- * Signing happens in the user's WAX Cloud Wallet — this module never sees a key.
+ * SSR + popup-gesture safety: the WharfKit modules touch `window`/`document`, so
+ * they are dynamically imported and the kit is PRELOADED on mount. connectWax()
+ * then calls login() with no preceding await, keeping the popup inside the
+ * user's click gesture.
  */
+import type { Session, SessionKit } from '@wharfkit/session'
 
 export type AwAuth = { actor: string; permission: string }
 export type AwAction = { account: string; name: string; authorization: AwAuth[]; data: Record<string, unknown> }
 
-interface WaxLike {
-  user?: { account?: string } | null
-  login(): Promise<string>
-  isAutoLoginAvailable(): Promise<boolean>
-  api: {
-    transact(
-      tx: { actions: AwAction[] },
-      opts: { blocksBehind: number; expireSeconds: number },
-    ): Promise<{ transaction_id?: string }>
-  }
+const RPC = 'https://wax.greymass.com'
+const WAX_CHAIN_ID = '1064487b3cd1a897ce03ae5b6a865651747e2e152090f99c1d19d44e01aea5a4'
+
+let kit: SessionKit | null = null
+let kitPromise: Promise<SessionKit> | null = null
+let session: Session | null = null
+
+async function buildKit(): Promise<SessionKit> {
+  const [{ SessionKit }, { WalletPluginCloudWallet }, wr] = await Promise.all([
+    import('@wharfkit/session'),
+    import('@wharfkit/wallet-plugin-cloudwallet'),
+    import('@wharfkit/web-renderer'),
+  ])
+  const WebRenderer = (wr as unknown as { default: new () => unknown }).default
+  kit = new SessionKit({
+    appName: 'Alien Worlds Wallet',
+    chains: [{ id: WAX_CHAIN_ID, url: RPC }],
+    ui: new WebRenderer() as never,
+    walletPlugins: [new WalletPluginCloudWallet()],
+  })
+  return kit
 }
 
-const WAX_RPC = 'https://wax.greymass.com'
-
-let wax: WaxLike | null = null
-let waxPromise: Promise<WaxLike> | null = null
-let account: string | null = null
-
-// Import + construct the WaxJS instance exactly once. Cached as a promise so
-// concurrent callers share one build.
-async function build(): Promise<WaxLike> {
-  const mod = await import('@waxio/waxjs/dist')
-  const WaxJS = (mod as unknown as { WaxJS: new (o: { rpcEndpoint: string; tryAutoLogin?: boolean }) => WaxLike }).WaxJS
-  const instance = new WaxJS({ rpcEndpoint: WAX_RPC, tryAutoLogin: true })
-  wax = instance
-  return instance
+/** Warm up SessionKit so the connect click doesn't await an import (popup safety). */
+export function preloadWax(): Promise<SessionKit> {
+  if (!kitPromise) kitPromise = buildKit()
+  return kitPromise
 }
-
-/**
- * Warm up the wallet library so the connect click doesn't have to await an
- * import (which would break the popup). Safe to call repeatedly.
- */
-export function preloadWax(): Promise<WaxLike> {
-  if (!waxPromise) waxPromise = build()
-  return waxPromise
-}
-
-// Eagerly preload the moment this module is imported in the browser, so the
-// instance is ready long before the user clicks Connect.
-if (typeof window !== 'undefined') {
-  preloadWax().catch(() => { /* retried on demand in connectWax */ })
-}
+if (typeof window !== 'undefined') { preloadWax().catch(() => { /* retried on demand */ }) }
 
 const REMEMBER_KEY = 'aww:wax'
-
-/** Remember the connected account for read-only display across reloads. */
 function remember(a: string | null) {
   try { if (typeof window !== 'undefined' && a) window.localStorage.setItem(REMEMBER_KEY, a) } catch { /* ignore */ }
 }
-
-/**
- * The last account this browser connected — used to show balances/NFTs on
- * reload WITHOUT a wallet popup. It is NOT a live signing session (that needs
- * a real connect); it only remembers who you are for viewing.
- */
+/** Last connected account, for read-only display before a session restores. */
 export function rememberedAccount(): string | null {
   try { return typeof window !== 'undefined' ? window.localStorage.getItem(REMEMBER_KEY) : null } catch { return null }
 }
 
 export async function connectWax(): Promise<string | null> {
-  // If the instance is already built (the normal case, thanks to preload),
-  // `wax ?? ...` short-circuits so there is NO await before login() — the popup
-  // opens inside the user gesture. Only the (rare) cold path awaits the build.
-  const w = wax ?? (await preloadWax())
-  const a = await w.login()
-  account = a || (w.user?.account ?? null)
-  remember(account)
-  return account
+  // If preloaded, `kit ?? ...` short-circuits so login() runs with no prior await.
+  const k = kit ?? (await preloadWax())
+  const res = await k.login()
+  session = res.session
+  const acct = session.actor.toString()
+  remember(acct)
+  return acct
 }
 
-/**
- * Silently restore a previous WAX Cloud Wallet session on load — NO popup.
- * MyCloudWallet keeps the user logged in for a while; isAutoLoginAvailable()
- * reconnects using that existing session so the user doesn't have to click
- * Connect again after a refresh. Returns the account, or null if there's no
- * live session (in which case the user connects normally).
- */
+/** Silently restore a persisted session on load — no popup. */
 export async function autoLoginWax(): Promise<string | null> {
   try {
-    const w = wax ?? (await preloadWax())
-    if (await w.isAutoLoginAvailable()) {
-      account = w.user?.account ?? account
-      remember(account)
-      return account
-    }
-  } catch { /* no live session — user will connect manually */ }
+    const k = kit ?? (await preloadWax())
+    const s = await k.restore()
+    if (s) { session = s; const a = s.actor.toString(); remember(a); return a }
+  } catch { /* no stored session — user connects manually */ }
   return null
 }
 
 export function currentAccount(): string | null {
-  return account
+  return session ? session.actor.toString() : null
 }
 
 /** Authorization array for the connected account's active permission. */
 export function auth(): AwAuth[] {
-  return account ? [{ actor: account, permission: 'active' }] : []
+  return session ? [{ actor: session.actor.toString(), permission: session.permission.toString() }] : []
 }
 
 export async function transact(actions: AwAction[]): Promise<{ transaction_id?: string }> {
-  if (!wax || !account) throw new Error('WAX wallet not connected')
-  return wax.api.transact({ actions }, { blocksBehind: 3, expireSeconds: 120 })
+  if (!session) throw new Error('WAX wallet not connected')
+  const result = await session.transact({ actions })
+  const resp = result.response as { transaction_id?: string } | undefined
+  return { transaction_id: resp?.transaction_id }
 }
