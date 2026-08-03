@@ -7,7 +7,11 @@ import { NftGrid, type NftItem } from '@/components/NftGrid'
 import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import { NftDetailModal } from '../ui/NftDetailModal'
 import { fetchTools, bestForTlm, bestForNft, type Tool, type Loadout } from '../lib/aw/tools'
+import { fetchToolOffers } from '../lib/aw/market'
+import { bestValueUpgrades, type Upgrade } from '../lib/aw/advisor'
 import { fetchNftItems, type AwNft } from '../lib/aw/nftItems'
+import { usePrices } from '../lib/aw/usePrices'
+import { fmtUsd } from '../lib/aw/prices'
 import type { FeatureProps } from './ctx'
 
 function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
@@ -41,26 +45,32 @@ export default function ToolAdvisor({ account }: FeatureProps) {
   const [tools, setTools] = useState<Tool[]>([])
   const [toolNfts, setToolNfts] = useState<AwNft[]>([])
   const [landNfts, setLandNfts] = useState<AwNft[]>([])
+  const [upgrades, setUpgrades] = useState<Upgrade[]>([])
   const [selected, setSelected] = useState<AwNft | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { fetchThumbs, applyThumbs } = useThumbnails()
+  const prices = usePrices()
 
   useEffect(() => {
-    if (!account) { setTools([]); setToolNfts([]); setLandNfts([]); return }
+    if (!account) { setTools([]); setToolNfts([]); setLandNfts([]); setUpgrades([]); return }
     setLoading(true); setError('')
     Promise.all([
       fetchTools(account),
       fetchNftItems(account, 'tool.worlds').catch(() => [] as AwNft[]),
       fetchNftItems(account, 'land.worlds').catch(() => [] as AwNft[]),
+      fetchToolOffers(200).catch(() => []),
     ])
-      .then(([t, tn, ln]) => {
+      .then(([t, tn, ln, offers]) => {
         setTools(t); setToolNfts(tn); setLandNfts(ln)
+        setUpgrades(bestValueUpgrades(t, offers))
         fetchThumbs([...tn, ...ln], account)
       })
       .catch(e => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false))
   }, [account, fetchThumbs])
+
+  const usd = (wax: number) => (prices ? ` · ${fmtUsd(wax * prices.wax)}` : '')
 
   return (
     <>
@@ -83,10 +93,31 @@ export default function ToolAdvisor({ account }: FeatureProps) {
           <>
             {tools.length === 0 ? <Card><Empty text="No mining tools found on this account." /></Card> : (
               <>
-                <LoadoutCard title="Best for Trilium (luck ÷ delay)" lo={bestForTlm(tools)} />
+                <LoadoutCard title="① Use these — best loadout from your tools" lo={bestForTlm(tools)} />
                 <LoadoutCard title="Best for NFT drops (max luck)" lo={bestForNft(tools)} />
               </>
             )}
+
+            {/* Buy recommendations — best value upgrades */}
+            <Card title="② Best-value tools to buy" tag="live market">
+              {upgrades.length === 0
+                ? <Empty text="No upgrade found that beats your current tools for the price. You're well-equipped, or the market has no better-value tool right now." />
+                : (
+                  <>
+                    <p className={s.empty} style={{ marginBottom: 10 }}>Ranked by improvement per $WAX spent — buying one of these and equipping it would raise your mining rate the most for the money.</p>
+                    <div className={s.list}>
+                      {upgrades.map((u, i) => (
+                        <div key={u.offer.saleId || i} className={s.listRow}>
+                          <span>{i + 1}</span>
+                          <b>{u.offer.name}{u.offer.shine ? ` · ${u.offer.shine}` : ''}</b>
+                          <span className={s.listMeta}>+{u.gainPct.toFixed(0)}% rate · {u.offer.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} $WAX{usd(u.offer.price)} · luck {u.offer.luck} · delay {u.offer.delay}s</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className={s.empty} style={{ marginTop: 10 }}>&ldquo;% rate&rdquo; is the projected lift to your luck ÷ delay (a TLM/hr proxy) after equipping it. Buy on AtomicHub/NeftyBlocks, then it&apos;ll appear in your tools.</p>
+                  </>
+                )}
+            </Card>
 
             {/* Owned land grid — only when you have some */}
             {landNfts.length > 0 && (
