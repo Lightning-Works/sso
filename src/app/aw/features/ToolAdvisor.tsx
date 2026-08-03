@@ -9,10 +9,14 @@ import { NftDetailModal } from '../ui/NftDetailModal'
 import { fetchTools, bestForTlm, bestForNft, type Tool, type Loadout } from '../lib/aw/tools'
 import { fetchToolOffers } from '../lib/aw/market'
 import { bestValueUpgrades, type Upgrade } from '../lib/aw/advisor'
+import { buildBuyActions } from '../lib/aw/buyTool'
+import { useWax } from '../lib/aw/useWax'
 import { fetchNftItems, type AwNft } from '../lib/aw/nftItems'
 import { usePrices } from '../lib/aw/usePrices'
 import { fmtUsd } from '../lib/aw/prices'
 import type { FeatureProps } from './ctx'
+
+const toolImg = (h?: string) => (h ? `https://ipfs.io/ipfs/${h}` : null)
 
 function LoadoutCard({ title, lo }: { title: string; lo: Loadout }) {
   return (
@@ -51,6 +55,20 @@ export default function ToolAdvisor({ account }: FeatureProps) {
   const [error, setError] = useState('')
   const { fetchThumbs, applyThumbs } = useThumbnails()
   const prices = usePrices()
+  const wax = useWax()
+  const [buyBusy, setBuyBusy] = useState('')
+  const [buyMsg, setBuyMsg] = useState<{ ok?: string; err?: string }>({})
+
+  const doBuy = async (u: Upgrade) => {
+    if (!wax.signer) { wax.connect(); return }
+    setBuyBusy(u.offer.saleId); setBuyMsg({})
+    try {
+      const r = await wax.submit(buildBuyActions(wax.signer, u.offer.saleId, u.offer.price))
+      setBuyMsg({ ok: `Bought ${u.offer.name} — tx ${r.transaction_id?.slice(0, 10) ?? 'sent'}… It will appear in your tools shortly.` })
+    } catch (e) {
+      setBuyMsg({ err: e instanceof Error ? e.message : 'purchase failed' })
+    } finally { setBuyBusy('') }
+  }
 
   useEffect(() => {
     if (!account) { setTools([]); setToolNfts([]); setLandNfts([]); setUpgrades([]); return }
@@ -104,17 +122,31 @@ export default function ToolAdvisor({ account }: FeatureProps) {
                 ? <Empty text="No upgrade found that beats your current tools for the price. You're well-equipped, or the market has no better-value tool right now." />
                 : (
                   <>
-                    <p className={s.empty} style={{ marginBottom: 10 }}>Ranked by improvement per $WAX spent — buying one of these and equipping it would raise your mining rate the most for the money.</p>
-                    <div className={s.list}>
+                    <p className={s.empty} style={{ marginBottom: 12 }}>Ranked by improvement per $WAX spent. Buy in one tap — your wallet approves the purchase, then the tool appears in your inventory.</p>
+                    {buyMsg.err && <p className={s.err} style={{ marginBottom: 10 }}>⚠ {buyMsg.err}</p>}
+                    {buyMsg.ok && <p className={s.ok} style={{ marginBottom: 10 }}>{buyMsg.ok}</p>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 14 }}>
                       {upgrades.map((u, i) => (
-                        <div key={u.offer.saleId || i} className={s.listRow}>
-                          <span>{i + 1}</span>
-                          <b>{u.offer.name}{u.offer.shine ? ` · ${u.offer.shine}` : ''}</b>
-                          <span className={s.listMeta}>+{u.gainPct.toFixed(0)}% rate · {u.offer.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} $WAX{usd(u.offer.price)} · luck {u.offer.luck} · delay {u.offer.delay}s</span>
+                        <div key={u.offer.saleId || i} style={{ border: '1px solid var(--aww-border)', borderRadius: 10, overflow: 'hidden', background: 'color-mix(in srgb, var(--aww-surface-2, var(--aww-surface)) 80%, transparent)', display: 'flex', flexDirection: 'column' }}>
+                          <div style={{ position: 'relative', aspectRatio: '1', background: '#0b0b12' }}>
+                            {toolImg(u.offer.img)
+                              ? <img src={toolImg(u.offer.img)!} alt={u.offer.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }} />
+                              : null}
+                            <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'color-mix(in srgb, var(--aww-primary) 80%, transparent)', borderRadius: 5, padding: '1px 6px' }}>+{u.gainPct.toFixed(0)}% rate</span>
+                          </div>
+                          <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                            <b style={{ fontSize: 12.5, color: 'var(--aww-text)', lineHeight: 1.2 }}>{u.offer.name}{u.offer.shine ? ` · ${u.offer.shine}` : ''}</b>
+                            <span style={{ fontSize: 11, color: 'var(--aww-text-dim)' }}>luck {u.offer.luck} · delay {u.offer.delay}s</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--aww-text)', marginTop: 2 }}>{u.offer.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} $WAX</span>
+                            <span style={{ fontSize: 10.5, color: 'var(--aww-text-dim)', marginTop: -3 }}>{usd(u.offer.price).replace(' · ', '')}</span>
+                            <button className={`${s.btn} ${s.btnPrimary}`} style={{ marginTop: 6, width: '100%', fontSize: 12 }} onClick={() => doBuy(u)} disabled={buyBusy === u.offer.saleId}>
+                              {buyBusy === u.offer.saleId ? 'Buying…' : wax.signer ? 'Buy now' : 'Connect to buy'}
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                    <p className={s.empty} style={{ marginTop: 10 }}>&ldquo;% rate&rdquo; is the projected lift to your luck ÷ delay (a TLM/hr proxy) after equipping it. Buy on AtomicHub/NeftyBlocks, then it&apos;ll appear in your tools.</p>
+                    <p className={s.empty} style={{ marginTop: 12 }}>&ldquo;% rate&rdquo; is the projected lift to your luck ÷ delay (a TLM/hr proxy) after equipping it. Purchases go through the on-chain AtomicMarket, approved in your wallet.</p>
                   </>
                 )}
             </Card>

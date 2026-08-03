@@ -55,6 +55,7 @@ export async function fetchToolOffers(limit = 100): Promise<ToolOffer[]> {
       rarity: String(im.rarity || ''),
       shine: String(im.shine || ''),
       delay: num(im.delay), ease: num(im.ease), luck: num(im.luck), difficulty: num(im.difficulty),
+      img: im.img ? String(im.img) : undefined,
       price: num(price.amount) / 10 ** (num(price.token_precision) || 8),
       symbol: String(price.token_symbol || 'WAX'),
       saleId: String(s.sale_id || ''),
