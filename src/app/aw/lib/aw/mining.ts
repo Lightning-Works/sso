@@ -24,13 +24,15 @@ export type MineState = {
   ratePerHr: number
   status: string
   message: string
+  lastReward: number      // TLM from the most recent mine
+  nextMineAt: number | null // epoch ms when the next mine is allowed (for the countdown)
   events: MineEvent[]
   powOk: boolean
 }
 
 let state: MineState = {
   running: false, account: null, mines: 0, sessionTlm: 0, ratePerHr: 0,
-  status: 'idle', message: '', events: [], powOk: POW_OK,
+  status: 'idle', message: '', lastReward: 0, nextMineAt: null, events: [], powOk: POW_OK,
 }
 let sessionStart = 0
 let startTlm = 0
@@ -82,7 +84,7 @@ const mineAction = (account: string, nonce: string): AwAction => ({
  */
 export async function solveMine(account: string): Promise<{ nonce: string; cooldown: number }> {
   if (!POW_OK) throw new Error('PoW self-test failed in this browser')
-  set({ status: 'solving', message: 'Solving proof-of-work…' })
+  set({ status: 'mining', message: 'Mining now…' })
   let seed = '', cooldown = 60
   try {
     const r = await readSeedAndCooldown(account); seed = r.seed; cooldown = r.cooldown
@@ -91,16 +93,16 @@ export async function solveMine(account: string): Promise<{ nonce: string; coold
   }
   if (!seed) throw new Error('No last-mine seed found — has this account ever mined?')
   const nonce = await solvePow(account, seed, 20)
-  set({ status: 'ready', message: 'Proof-of-work solved — confirm to sign the mine.' })
+  set({ status: 'ready', message: 'Ready — press Confirm to mine.' })
   return { nonce, cooldown }
 }
 
 /** Step 2: sign + broadcast the mine (call this inside a click gesture). */
 export async function submitMine(account: string, nonce: string, submit: Submit): Promise<string> {
-  set({ status: 'submitting', message: 'Submitting mine…' })
+  set({ status: 'mining', message: 'Mining now…' })
   try {
     const r = await submit([mineAction(account, nonce)])
-    set({ status: 'idle', message: `Mine submitted — tx ${(r.transaction_id || 'sent').slice(0, 10)}…` })
+    set({ status: 'idle', message: '' })
     return r.transaction_id || 'sent'
   } catch (e) {
     throw new Error(`Signing/broadcast failed: ${e instanceof Error ? e.message : 'error'}`)
@@ -140,10 +142,10 @@ export async function startReal(account: string) {
     try {
       const { seed, cooldown } = await readSeedAndCooldown(account)
       if (!seed) throw new Error('no seed')
-      set({ status: 'solving', message: 'Solving proof-of-work…' })
+      set({ status: 'mining', message: 'Mining now…' })
       const nonce = await solvePow(account, seed, 20)
       if (stopFlag) break
-      set({ status: 'submitting', message: 'Signing + broadcasting mine…' })
+      set({ status: 'mining', message: 'Mining now…' })
       const tx = await signMineWithKey(account, nonce)
       await wait(3000) // let the reward transfer land
       const bal = await readTlm(account).catch(() => startTlm + state.sessionTlm)
@@ -153,7 +155,7 @@ export async function startReal(account: string) {
       const hrs = Math.max((Date.now() - sessionStart) / 3_600_000, 1 / 3600)
       set({
         mines, sessionTlm, ratePerHr: sessionTlm / hrs, status: 'cooldown',
-        message: `Mined (tx ${tx.slice(0, 8)}…). Next in ${cooldown}s.`,
+        lastReward: reward, nextMineAt: Date.now() + cooldown * 1000, message: '',
         events: [...state.events, { ts: Date.now(), tx, reward }].slice(-50),
       })
       persist()

@@ -40,6 +40,61 @@ export function ColumnChart({ data }: { data: { label: string; value: number }[]
   )
 }
 
+// ---- Mining chart: TLM earned per time bucket, scaled to fill the width ----
+export type Bucket = 'hour' | 'day' | 'week'
+const BUCKET_MS: Record<Bucket, number> = { hour: 3600000, day: 86400000, week: 604800000 }
+
+/** Pick a bucket that fits all the data nicely (the "all time" default). */
+export function autoBucket(events: { ts: number }[]): Bucket {
+  if (!events.length) return 'hour'
+  const span = Date.now() - Math.min(...events.map(e => e.ts))
+  if (span < 2 * 86400000) return 'hour'
+  if (span < 45 * 86400000) return 'day'
+  return 'week'
+}
+
+export function MiningChart({ events, bucket }: { events: { ts: number; reward: number }[]; bucket: Bucket }) {
+  const size = BUCKET_MS[bucket]
+  const now = Date.now()
+  let start = events.length ? Math.min(...events.map(e => e.ts)) : now
+  // Few mines: spread them across a wider window so they aren't jammed on one edge.
+  if (events.length < 10) start = Math.min(start, now - (bucket === 'hour' ? 86400000 : bucket === 'day' ? 7 * 86400000 : 8 * 604800000))
+  start = Math.floor(start / size) * size
+  const MAX_BARS = 72
+  if ((now - start) / size > MAX_BARS) start = Math.floor((now - MAX_BARS * size) / size) * size
+
+  const map = new Map<number, number>()
+  for (const e of events) { const b = Math.floor(e.ts / size) * size; if (b >= start) map.set(b, (map.get(b) || 0) + e.reward) }
+  const bars: { t: number; v: number }[] = []
+  for (let t = start; t <= now; t += size) bars.push({ t, v: map.get(t) || 0 })
+
+  const max = Math.max(0.00001, ...bars.map(b => b.v))
+  const n = bars.length
+  const gap = n > 40 ? 1 : n > 20 ? 2 : 4
+  const labelEvery = Math.max(1, Math.ceil(n / 8))
+  const fmt = (t: number) => bucket === 'hour'
+    ? new Date(t).toLocaleTimeString([], { hour: 'numeric' })
+    : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' })
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: DIM, marginBottom: 6 }}>Peak {max.toFixed(4)} $TLM per {bucket}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 160 }}>
+        {bars.map((b, i) => (
+          <div key={i} title={`${new Date(b.t).toLocaleString()} — ${b.v.toFixed(4)} TLM`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{ width: '100%', height: `${(b.v / max) * 100}%`, minHeight: b.v > 0 ? 3 : 0, background: b.v > 0 ? PURPLE : 'transparent', borderRadius: '3px 3px 0 0', transition: 'height .3s' }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap, marginTop: 4 }}>
+        {bars.map((b, i) => (
+          <div key={i} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 9, color: DIM, whiteSpace: 'nowrap', overflow: 'hidden' }}>{i % labelEvery === 0 ? fmt(b.t) : ''}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function Scatter({ points, xLabel, yLabel }: { points: { x: number; y: number; c?: number; n?: number }[]; xLabel: string; yLabel: string }) {
   const W = 640, H = 320, pad = 40
   const xMax = Math.max(1, ...points.map(p => p.x)), yMax = Math.max(1, ...points.map(p => p.y))
