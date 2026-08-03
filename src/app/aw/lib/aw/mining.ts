@@ -9,6 +9,7 @@
  * delta, so the numbers shown are actual, verifiable rewards (not simulated).
  */
 import { solvePow, POW_OK } from './pow'
+import { signMineWithKey } from './miningKey'
 import type { AwAction } from '../wax/session'
 
 const RPC = 'https://wax.greymass.com'
@@ -124,8 +125,11 @@ async function waitStoppable(ms: number) {
   while (Date.now() < end && !stopFlag) await wait(500)
 }
 
-/** Start the continuous real mining loop. */
-export async function startReal(account: string, submit: Submit) {
+/**
+ * Start the continuous hands-free mining loop, signing each mine with the LOCAL
+ * mining key (no wallet popup). Requires the mine permission to be set up first.
+ */
+export async function startReal(account: string) {
   if (state.running) return
   stopFlag = false
   sessionStart = Date.now()
@@ -139,9 +143,8 @@ export async function startReal(account: string, submit: Submit) {
       set({ status: 'solving', message: 'Solving proof-of-work…' })
       const nonce = await solvePow(account, seed, 20)
       if (stopFlag) break
-      set({ status: 'submitting', message: 'Submitting mine…' })
-      const r = await submit([mineAction(account, nonce)])
-      const tx = r.transaction_id || 'sent'
+      set({ status: 'submitting', message: 'Signing + broadcasting mine…' })
+      const tx = await signMineWithKey(account, nonce)
       await wait(3000) // let the reward transfer land
       const bal = await readTlm(account).catch(() => startTlm + state.sessionTlm)
       const sessionTlm = Math.max(0, bal - startTlm)
