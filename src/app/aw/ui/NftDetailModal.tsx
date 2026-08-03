@@ -51,16 +51,17 @@ export function NftDetailModal({ nft, onClose }: { nft: AwNft; onClose: () => vo
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 4000, isolation: 'isolate', background: 'rgba(3,4,12,.86)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4vh 3vw', overflowY: 'auto' }}
     >
-      {/* moving starfield over the darkening layer, behind the card */}
-      <div className={s.stars1} aria-hidden />
-      <div className={s.stars2} aria-hidden />
-      <div className={s.stars3} aria-hidden />
+      {/* light moving starfield over the darkening layer, behind the card */}
+      <div className={s.modalStars} aria-hidden />
 
       <div style={{
         position: 'relative', zIndex: 1,
         display: 'flex', flexWrap: 'wrap', gap: 24,
         width: 'min(1200px, 85vw)', maxHeight: '85vh', overflowY: 'auto',
-        background: 'var(--aww-surface, #14141c)', border: '1px solid var(--aww-border, rgba(255,255,255,.14))', borderRadius: 14, padding: 24,
+        // Opaque base under the (possibly translucent) surface so stars never bleed through.
+        backgroundColor: '#0b0b12',
+        backgroundImage: 'linear-gradient(var(--aww-surface, #14141c), var(--aww-surface, #14141c))',
+        border: '1px solid var(--aww-border, rgba(255,255,255,.14))', borderRadius: 14, padding: 24,
         boxShadow: '0 0 60px color-mix(in srgb, var(--aww-primary, #8b5cf6) 55%, transparent), 0 0 140px color-mix(in srgb, var(--aww-primary, #8b5cf6) 30%, transparent)',
       }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 16, right: 18, zIndex: 2, background: 'rgba(0,0,0,.45)', border: '1px solid var(--aww-border,rgba(255,255,255,.15))', color: 'var(--aww-text)', width: 34, height: 34, borderRadius: 9, cursor: 'pointer', fontSize: 17 }}>×</button>

@@ -1096,3 +1096,25 @@
 /* Mining Data: paired chart panels — two equal columns, one per row on phones. */
 .chartRow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 640px) { .chartRow { grid-template-columns: 1fr; } }
+
+/* Lightweight starfield for the NFT modal — tiled gradients (cheap), not the
+   1400-shadow page field, so it drifts smoothly over the dark backdrop without
+   flicker. Sits above the darkening layer, below the (opaque) modal card. */
+.modalStars {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .5;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 22%, #fff, transparent 60%),
+    radial-gradient(1.2px 1.2px at 47% 8%,  #fff, transparent 60%),
+    radial-gradient(1.8px 1.8px at 78% 34%, #cfe0ff, transparent 60%),
+    radial-gradient(1.1px 1.1px at 63% 71%, #fff, transparent 60%),
+    radial-gradient(1.4px 1.4px at 27% 84%, #ffe0f0, transparent 60%),
+    radial-gradient(1.1px 1.1px at 90% 62%, #fff, transparent 60%),
+    radial-gradient(1.3px 1.3px at 5% 55%,  #fff, transparent 60%),
+    radial-gradient(1.6px 1.6px at 36% 44%, #fff, transparent 60%);
+  background-size: 340px 340px, 220px 220px, 480px 480px, 300px 300px, 260px 260px, 420px 420px, 190px 190px, 360px 360px;
+  animation: modalStarDrift 140s linear infinite;
+}
+@keyframes modalStarDrift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 340px 0, 220px 0, 480px 0, 300px 0, 260px 0, 420px 0, 190px 0, 360px 0; }
+}
