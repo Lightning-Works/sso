@@ -20,7 +20,7 @@ type Analytics = {
   rarity?: { k: string; c: number }[]
   top_tools?: { k: string; c: number }[]
   top_miners?: { miner: string; luck: number; delay: number; score: number; tools: number }[]
-  scatter?: { l: number; d: number; n: number }[]
+  scatter?: { l: number; d: number; c: number; n: number }[]
   over_time?: { day: string; c: number }[]
 }
 
@@ -76,25 +76,25 @@ export default function MiningData() {
 
           {an?.ready && (an.overview?.miners ?? 0) > 0 ? (
             <>
-              <Card title="Loadout efficiency — luck vs delay" tag="each dot = a miner">
-                <p className={s.empty} style={{ marginBottom: 8 }}>Up-and-left is more efficient (more luck per second). Color = tools equipped (bright = 3).</p>
-                <Scatter points={(an.scatter || []).map(p => ({ x: p.d, y: p.l, n: p.n }))} xLabel="total delay (s)" yLabel="total luck" />
+              <Card title="Loadout efficiency — luck vs delay" tag="bubble = # of miners">
+                <p className={s.empty} style={{ marginBottom: 8 }}>Up-and-left is more efficient (more luck per second). Bubble size = how many miners run that exact build; color = tools equipped (bright = 3). Only ~{(an.scatter || []).length} distinct builds exist — the active population clusters hard on a few meta loadouts.</p>
+                <Scatter points={(an.scatter || []).map(p => ({ x: p.d, y: p.l, c: p.c, n: p.n }))} xLabel="total delay (s)" yLabel="total luck" />
               </Card>
 
-              <Grid>
+              <div className={s.chartRow}>
                 <Card title="Total luck distribution" tag="miners"><ColumnChart data={(an.luck_hist || []).map(d => ({ label: String(d.b), value: d.c }))} /></Card>
                 <Card title="Total delay distribution (s)" tag="miners"><ColumnChart data={(an.delay_hist || []).map(d => ({ label: String(d.b), value: d.c }))} /></Card>
-              </Grid>
+              </div>
 
-              <Grid>
+              <div className={s.chartRow}>
                 <Card title="Tools equipped" tag="miners"><BarList data={(an.tool_count || []).map(d => ({ label: `${d.n} tool${d.n === 1 ? '' : 's'}`, value: d.c }))} /></Card>
                 <Card title="Shine tiers" tag="tools"><BarList data={(an.shine || []).map(d => ({ label: d.k, value: d.c }))} /></Card>
-              </Grid>
+              </div>
 
-              <Grid>
+              <div className={s.chartRow}>
                 <Card title="Rarity mix" tag="tools"><BarList data={(an.rarity || []).map(d => ({ label: d.k, value: d.c }))} /></Card>
                 <Card title="Most popular tools" tag="top 15"><BarList data={(an.top_tools || []).map(d => ({ label: d.k, value: d.c }))} /></Card>
-              </Grid>
+              </div>
 
               <Card title="Snapshots collected per day" tag="14 days">
                 <ColumnChart data={(an.over_time || []).map(d => ({ label: dayShort(d.day), value: d.c }))} />

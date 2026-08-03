@@ -40,20 +40,23 @@ export function ColumnChart({ data }: { data: { label: string; value: number }[]
   )
 }
 
-export function Scatter({ points, xLabel, yLabel }: { points: { x: number; y: number; n?: number }[]; xLabel: string; yLabel: string }) {
-  const W = 480, H = 260, pad = 34
-  const xs = points.map(p => p.x), ys = points.map(p => p.y)
-  const xMax = Math.max(1, ...xs), yMax = Math.max(1, ...ys)
-  const px = (x: number) => pad + (x / xMax) * (W - pad - 8)
-  const py = (y: number) => H - pad - (y / yMax) * (H - pad - 8)
+export function Scatter({ points, xLabel, yLabel }: { points: { x: number; y: number; c?: number; n?: number }[]; xLabel: string; yLabel: string }) {
+  const W = 640, H = 320, pad = 40
+  const xMax = Math.max(1, ...points.map(p => p.x)), yMax = Math.max(1, ...points.map(p => p.y))
+  const cMax = Math.max(1, ...points.map(p => p.c ?? 1))
+  const px = (x: number) => pad + (x / xMax) * (W - pad - 10)
+  const py = (y: number) => H - pad - (y / yMax) * (H - pad - 10)
+  const r = (c?: number) => 3 + Math.sqrt((c ?? 1) / cMax) * 20
   const dot = (n?: number) => (n === 3 ? PURPLE : n === 1 ? 'color-mix(in srgb, var(--aww-primary) 45%, #fff)' : DIM)
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }} preserveAspectRatio="xMidYMid meet">
-      <line x1={pad} y1={H - pad} x2={W - 8} y2={H - pad} stroke="var(--aww-border,#333)" />
+      <line x1={pad} y1={H - pad} x2={W - 10} y2={H - pad} stroke="var(--aww-border,#333)" />
       <line x1={pad} y1={8} x2={pad} y2={H - pad} stroke="var(--aww-border,#333)" />
-      {points.map((p, i) => <circle key={i} cx={px(p.x)} cy={py(p.y)} r={2.5} fill={dot(p.n)} opacity={0.7} />)}
-      <text x={(W) / 2} y={H - 4} fill={DIM} fontSize="10" textAnchor="middle">{xLabel} →</text>
-      <text x={12} y={H / 2} fill={DIM} fontSize="10" textAnchor="middle" transform={`rotate(-90 12 ${H / 2})`}>{yLabel} →</text>
+      {points.map((p, i) => (
+        <circle key={i} cx={px(p.x)} cy={py(p.y)} r={r(p.c)} fill={dot(p.n)} opacity={0.55} stroke={PURPLE} strokeOpacity={0.5} strokeWidth={0.5} />
+      ))}
+      <text x={W / 2} y={H - 6} fill={DIM} fontSize="11" textAnchor="middle">{xLabel} →</text>
+      <text x={13} y={H / 2} fill={DIM} fontSize="11" textAnchor="middle" transform={`rotate(-90 13 ${H / 2})`}>{yLabel} →</text>
     </svg>
   )
 }

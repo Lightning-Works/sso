@@ -1092,3 +1092,7 @@
 @keyframes starDrift { from { transform: translateX(0); } to { transform: translateX(1920px); } }
 @keyframes twk1 { 0%,100% { opacity: .35; } 45% { opacity: 1; } 70% { opacity: .55; } }
 @keyframes twk2 { 0%,100% { opacity: .55; } 35% { opacity: .2; } 60% { opacity: 1; } }
+
+/* Mining Data: paired chart panels — two equal columns, one per row on phones. */
+.chartRow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .chartRow { grid-template-columns: 1fr; } }
