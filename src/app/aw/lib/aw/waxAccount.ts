@@ -37,7 +37,7 @@ const num = (asset: unknown): number => parseFloat(String(asset ?? '').split(' '
 export async function fetchWaxResources(account: string): Promise<WaxResources> {
   const r = await fetch(`${RPC}/v1/chain/get_account`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify({ account_name: account }),
   })
   if (!r.ok) throw new Error(`account read failed (${r.status})`)

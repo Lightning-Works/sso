@@ -56,7 +56,7 @@ export function buildRevokeActions(account: string): AwAction[] {
 /** Does the account currently have the `mine` permission on-chain? */
 export async function checkMinePermission(account: string): Promise<boolean> {
   try {
-    const r = await fetch(`${RPC}/v1/chain/get_account`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: account }) })
+    const r = await fetch(`${RPC}/v1/chain/get_account`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ account_name: account }) })
     const d = await r.json()
     return (d.permissions || []).some((p: { perm_name?: string }) => p.perm_name === 'mine')
   } catch { return false }

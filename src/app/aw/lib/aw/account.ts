@@ -31,7 +31,7 @@ export function getAccountProfile(account: string): Promise<AccountProfile> {
 async function load(account: string): Promise<AccountProfile> {
   const [acct, holdings, sold] = await Promise.all([
     fetch(`${WAX_RPC}/v1/chain/get_account`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ account_name: account }),
     }).then(r => (r.ok ? r.json() : null)).catch(() => null),
     fetch(`/api/wax-holdings?account=${encodeURIComponent(account)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),

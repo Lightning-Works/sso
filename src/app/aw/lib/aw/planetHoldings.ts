@@ -10,7 +10,7 @@ async function rows(code: string, table: string, scope: string, bound?: string):
   const body: Record<string, unknown> = { code, table, scope, limit: 50, json: true }
   if (bound) { body.lower_bound = bound; body.upper_bound = bound }
   const r = await fetch(`${RPC}/v1/chain/get_table_rows`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body),
   })
   const d = await r.json()
   return d.rows || []
