@@ -74,17 +74,36 @@ const mineAction = (account: string, nonce: string): AwAction => ({
   account: 'm.federation', name: 'mine', authorization: [{ actor: account, permission: 'active' }], data: { miner: account, nonce },
 })
 
-/** Solve + submit a single mine (used by the "Mine once" verify button). */
-export async function mineOnce(account: string, submit: Submit): Promise<string> {
-  if (!POW_OK) throw new Error('PoW self-test failed')
+/**
+ * Step 1: read the seed and solve the PoW (async — no signing yet). Returned so
+ * the caller can sign in a FRESH user gesture, otherwise the Cloud Wallet popup
+ * is blocked.
+ */
+export async function solveMine(account: string): Promise<{ nonce: string; cooldown: number }> {
+  if (!POW_OK) throw new Error('PoW self-test failed in this browser')
   set({ status: 'solving', message: 'Solving proof-of-work…' })
-  const { seed } = await readSeedAndCooldown(account)
-  if (!seed) throw new Error('No last-mine seed found for this account')
+  let seed = '', cooldown = 60
+  try {
+    const r = await readSeedAndCooldown(account); seed = r.seed; cooldown = r.cooldown
+  } catch (e) {
+    throw new Error(`Could not read your account from the chain (network/CORS): ${e instanceof Error ? e.message : 'fetch failed'}`)
+  }
+  if (!seed) throw new Error('No last-mine seed found — has this account ever mined?')
   const nonce = await solvePow(account, seed, 20)
+  set({ status: 'ready', message: 'Proof-of-work solved — confirm to sign the mine.' })
+  return { nonce, cooldown }
+}
+
+/** Step 2: sign + broadcast the mine (call this inside a click gesture). */
+export async function submitMine(account: string, nonce: string, submit: Submit): Promise<string> {
   set({ status: 'submitting', message: 'Submitting mine…' })
-  const r = await submit([mineAction(account, nonce)])
-  set({ status: 'idle', message: `Mine submitted — tx ${(r.transaction_id || 'sent').slice(0, 10)}…` })
-  return r.transaction_id || 'sent'
+  try {
+    const r = await submit([mineAction(account, nonce)])
+    set({ status: 'idle', message: `Mine submitted — tx ${(r.transaction_id || 'sent').slice(0, 10)}…` })
+    return r.transaction_id || 'sent'
+  } catch (e) {
+    throw new Error(`Signing/broadcast failed: ${e instanceof Error ? e.message : 'error'}`)
+  }
 }
 
 const key = (a: string) => `aww-mining-${a}`
