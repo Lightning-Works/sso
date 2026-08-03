@@ -92,7 +92,7 @@ export async function runSnapshotPage(): Promise<SnapshotResult> {
   }
 
   // Resolve tool stats (incl. shine) from AtomicAssets.
-  const stat: Record<string, { template_id: string; shine: string; delay: number; luck: number; ease: number; rarity: string }> = {}
+  const stat: Record<string, { template_id: string; name: string; shine: string; delay: number; luck: number; ease: number; rarity: string }> = {}
   const ids = [...allToolIds]
   for (let i = 0; i < ids.length; i += BATCH) {
     const chunk = ids.slice(i, i + BATCH)
@@ -104,6 +104,7 @@ export async function runSnapshotPage(): Promise<SnapshotResult> {
       const im = { ...(tpl.immutable_data || {}), ...(a.data || {}) }
       stat[String(a.asset_id)] = {
         template_id: tpl.template_id ? String(tpl.template_id) : '',
+        name: String(im.name || ''),
         shine: String(im.shine || ''), delay: num(im.delay), luck: num(im.luck), ease: num(im.ease), rarity: String(im.rarity || ''),
       }
     }
