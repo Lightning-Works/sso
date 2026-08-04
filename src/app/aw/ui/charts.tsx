@@ -63,12 +63,17 @@ export function MiningChart({ events, bucket }: { events: { ts: number; reward: 
   const MAX_BARS = 72
   if ((now - start) / size > MAX_BARS) start = Math.floor((now - MAX_BARS * size) / size) * size
 
-  const map = new Map<number, number>()
-  for (const e of events) { const b = Math.floor(e.ts / size) * size; if (b >= start) map.set(b, (map.get(b) || 0) + e.reward) }
-  const bars: { t: number; v: number }[] = []
-  for (let t = start; t <= now; t += size) bars.push({ t, v: map.get(t) || 0 })
+  // Count mines per bucket (AW pays TLM in batches, so per-mine reward is usually
+  // 0 — mine COUNT is the reliable activity signal). Also sum any reward that did
+  // land, for the tooltip.
+  const cnt = new Map<number, number>()
+  const rew = new Map<number, number>()
+  for (const e of events) { const b = Math.floor(e.ts / size) * size; if (b >= start) { cnt.set(b, (cnt.get(b) || 0) + 1); rew.set(b, (rew.get(b) || 0) + e.reward) } }
+  const bars: { t: number; v: number; r: number }[] = []
+  for (let t = start; t <= now; t += size) bars.push({ t, v: cnt.get(t) || 0, r: rew.get(t) || 0 })
 
-  const max = Math.max(0.00001, ...bars.map(b => b.v))
+  const max = Math.max(1, ...bars.map(b => b.v))
+  const total = events.length
   const n = bars.length
   const gap = n > 40 ? 1 : n > 20 ? 2 : 4
   const labelEvery = Math.max(1, Math.ceil(n / 8))
@@ -78,10 +83,10 @@ export function MiningChart({ events, bucket }: { events: { ts: number; reward: 
 
   return (
     <div>
-      <div style={{ fontSize: 11, color: DIM, marginBottom: 6 }}>Peak {max.toFixed(4)} $TLM per {bucket}</div>
+      <div style={{ fontSize: 11, color: DIM, marginBottom: 6 }}>{total} mines total · peak {max} per {bucket}</div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 160 }}>
         {bars.map((b, i) => (
-          <div key={i} title={`${new Date(b.t).toLocaleString()} — ${b.v.toFixed(4)} TLM`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
+          <div key={i} title={`${new Date(b.t).toLocaleString()} — ${b.v} mine${b.v === 1 ? '' : 's'}${b.r > 0 ? `, +${b.r.toFixed(4)} TLM` : ''}`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
             <div style={{ width: '100%', height: `${(b.v / max) * 100}%`, minHeight: b.v > 0 ? 3 : 0, background: b.v > 0 ? PURPLE : 'transparent', borderRadius: '3px 3px 0 0', transition: 'height .3s' }} />
           </div>
         ))}

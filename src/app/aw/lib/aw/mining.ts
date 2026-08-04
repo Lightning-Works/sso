@@ -142,10 +142,10 @@ export async function startReal(account: string) {
     try {
       const { seed, cooldown } = await readSeedAndCooldown(account)
       if (!seed) throw new Error('no seed')
-      set({ status: 'mining', message: 'Mining now…' })
+      set({ status: 'solving', message: 'Finding a valid mine…' })
       const nonce = await solvePow(account, seed, 20)
       if (stopFlag) break
-      set({ status: 'mining', message: 'Mining now…' })
+      set({ status: 'submitting', message: 'Sending your mine to the chain…' })
       const tx = await signMineWithKey(account, nonce)
       await wait(3000) // let the reward transfer land
       const bal = await readTlm(account).catch(() => startTlm + state.sessionTlm)
@@ -159,9 +159,9 @@ export async function startReal(account: string) {
         events: [...state.events, { ts: Date.now(), tx, reward }].slice(-50),
       })
       persist()
-      await waitStoppable(cooldown * 1000)
+      await waitStoppable(cooldown * 1000 + 8000) // small buffer past the cooldown
     } catch (e) {
-      set({ status: 'error', message: `Mine failed: ${e instanceof Error ? e.message : 'error'} — retrying in 30s` })
+      set({ status: 'error', message: `Last mine failed: ${e instanceof Error ? e.message : 'error'}. Retrying in 30s…` })
       await waitStoppable(30000)
     }
   }

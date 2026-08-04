@@ -48,7 +48,17 @@ export default function AutoMine({ account }: FeatureProps) {
     const s = Math.max(0, Math.floor(secs)), h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60
     return `${h}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s`
   }
-  const Pick = () => <span style={{ display: 'inline-block', transform: 'scaleY(1.3)', marginRight: 5 }}>⛏️</span>
+  const MiningIcon = ({ animate = false }: { animate?: boolean }) => (
+    <span className={`${s.miningIcon} ${animate ? s.miningIconAnim : ''}`} style={{ marginRight: 7 }}>
+      <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+        <path d="M3 8 Q12 1.5 21 8" />
+        <path d="M12 6 L12 22" />
+      </svg>
+    </span>
+  )
+
+  // Load this account's saved mining history on open, so the chart shows it.
+  useEffect(() => { if (signer && !getState().running) loadFor(signer) }, [signer])
 
   useEffect(() => {
     if (!signer) { setLocalKey(false); setOnchain(false); return }
@@ -115,9 +125,11 @@ export default function AutoMine({ account }: FeatureProps) {
               <>
                 {(() => {
                   const remaining = m.nextMineAt ? Math.max(0, (m.nextMineAt - now) / 1000) : 0
-                  if (m.running && m.status === 'mining') return <div className={s.msg}><Pick /> Mining now…</div>
-                  if (m.running && m.nextMineAt && remaining > 0) return <div className={s.msg}><Pick /> Mined {m.lastReward.toFixed(4)} $TLM{usdTxt(m.lastReward)}. Next mine in {hms(remaining)}</div>
-                  if (m.running) return <div className={s.msg}><Pick /> Mining now…</div>
+                  const active = m.status === 'solving' || m.status === 'submitting'
+                  if (m.status === 'error') return <div className={s.msg} style={{ color: 'var(--aww-danger, #ff6b6b)' }}><MiningIcon /> {m.message}</div>
+                  if (m.running && active) return <div className={s.msg}><MiningIcon animate /> {m.message || 'Mining now…'}{m.mines > 0 ? ` · ${m.mines} mine${m.mines === 1 ? '' : 's'} so far` : ''}</div>
+                  if (m.running && m.nextMineAt && remaining > 0) return <div className={s.msg}><MiningIcon /> Waiting · {m.mines} mine{m.mines === 1 ? '' : 's'} this session{m.sessionTlm > 0 ? ` · ${m.sessionTlm.toFixed(4)} $TLM` : ''}. Next mine in {hms(remaining)}</div>
+                  if (m.running) return <div className={s.msg}><MiningIcon animate /> Starting…</div>
                   return m.message ? <div className={s.msg}>{m.message}</div> : null
                 })()}
                 <div className={s.stubActions} style={{ marginTop: 8, gap: 12 }}>
@@ -164,23 +176,29 @@ export default function AutoMine({ account }: FeatureProps) {
           </Card>
 
           <Card title="Your mining" tag="on-chain">
-            {/* Chart | List tabs */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {(['chart', 'list'] as const).map(t => (
-                <button key={t} onClick={() => setMineTab(t)} className={`${s.btn} ${mineTab === t ? s.btnPrimary : ''}`} style={{ fontSize: 12, textTransform: 'capitalize' }}>{t === 'chart' ? 'Chart' : 'List'}</button>
-              ))}
-            </div>
-
-            {m.events.length === 0 ? <Empty text="No mines yet — start mining and your earnings will chart here." /> : mineTab === 'chart' ? (
-              <>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                  {(['hour', 'day', 'week'] as Bucket[]).map(b => (
-                    <button key={b} onClick={() => setUserBucket(b)} className={`${s.btn} ${bucket === b ? s.btnPrimary : ''}`} style={{ fontSize: 11 }}>{b === 'hour' ? 'Hourly' : b === 'day' ? 'Daily' : 'Weekly'}</button>
-                  ))}
-                  <button onClick={() => setUserBucket(null)} className={`${s.btn} ${userBucket === null ? s.btnPrimary : ''}`} style={{ fontSize: 11 }}>All-time</button>
+            {/* One row: [Chart List]  gap  [Hourly Daily Weekly All-time] — compact */}
+            {(() => {
+              const tb = (active: boolean) => `${s.btn} ${active ? s.btnPrimary : ''}`
+              const st = { padding: '5px 12px', fontSize: 11 } as const
+              return (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button onClick={() => setMineTab('chart')} className={tb(mineTab === 'chart')} style={st}>Chart</button>
+                  <button onClick={() => setMineTab('list')} className={tb(mineTab === 'list')} style={st}>List</button>
+                  {mineTab === 'chart' && (
+                    <>
+                      <span style={{ width: 34, display: 'inline-block' }} />
+                      <button onClick={() => setUserBucket('hour')} className={tb(bucket === 'hour')} style={st}>Hourly</button>
+                      <button onClick={() => setUserBucket('day')} className={tb(bucket === 'day')} style={st}>Daily</button>
+                      <button onClick={() => setUserBucket('week')} className={tb(bucket === 'week')} style={st}>Weekly</button>
+                      <button onClick={() => setUserBucket(null)} className={tb(userBucket === null)} style={st}>All-time</button>
+                    </>
+                  )}
                 </div>
-                <MiningChart events={m.events} bucket={bucket} />
-              </>
+              )
+            })()}
+
+            {m.events.length === 0 ? <Empty text="No mines yet — start mining and it'll chart here." /> : mineTab === 'chart' ? (
+              <MiningChart events={m.events} bucket={bucket} />
             ) : (
               <div className={s.list}>
                 {[...m.events].reverse().slice(0, 30).map((e, i) => (
