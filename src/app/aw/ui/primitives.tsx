@@ -4,7 +4,7 @@
  * Shared presentational primitives. Every AWW feature composes these, so the
  * look stays consistent and one edit here propagates everywhere.
  */
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import s from '../aw.module.css'
 
 export function PageHead({ title, desc }: { title: string; desc?: ReactNode }) {
@@ -16,10 +16,10 @@ export function PageHead({ title, desc }: { title: string; desc?: ReactNode }) {
   )
 }
 
-export function Card({ title, tag, children }: { title?: string; tag?: string; children: ReactNode }) {
+export function Card({ title, tag, children, style }: { title?: string; tag?: string; children: ReactNode; style?: CSSProperties }) {
   const live = !!tag && tag.toLowerCase().includes('read')
   return (
-    <section className={s.card}>
+    <section className={s.card} style={style}>
       {(title || tag) && (
         <div className={s.cardHead}>
           {title && <h2 className={s.cardTitle}>{title}</h2>}

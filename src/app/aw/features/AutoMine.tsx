@@ -99,50 +99,62 @@ export default function AutoMine({ account }: FeatureProps) {
       {!m.powOk && <p className={s.err}>⚠ Proof-of-work self-test failed in this browser — mining is disabled.</p>}
 
       {/* Hands-free */}
-      <Card title="Hands-free auto-mining" tag={keyReady ? (m.running ? 'running' : 'ready') : 'setup'}>
-        {!account ? <Empty text="Load or connect a WAX account to begin." /> : !keyReady ? (
-          <>
-            <p className={s.empty} style={{ marginBottom: 10 }}>
-              One-time setup adds a <b>mine-only key</b> to your account (a custom permission linked to just <b>m.federation::mine</b>). It <b>cannot move your funds</b> — only mine. Stored on this device so it signs in the background. You approve the setup once in your wallet, then mining runs with no popups. Remove it anytime.
-            </p>
-            <div className={s.stubActions}>
-              <button className={`${s.btn} ${s.btnPrimary}`} onClick={setup} disabled={setupBusy || !m.powOk}>{setupBusy ? 'Setting up…' : canSign ? 'Set up hands-free mining' : 'Connect wallet'}</button>
+      <div className={s.chartRow}>
+        <Card title="Hands-free auto-mining" tag={keyReady ? (m.running ? 'running' : 'ready') : 'setup'} style={{ minHeight: 400, height: '100%' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+              {!account ? <Empty text="Load or connect a WAX account to begin." /> : !keyReady ? (
+                <>
+                  <p className={s.empty} style={{ marginBottom: 10 }}>
+                    One-time setup adds a <b>mine-only key</b> to your account (a custom permission linked to just <b>m.federation::mine</b>). It <b>cannot move your funds</b>, only mine. Stored on this device so it signs in the background. You approve the setup once in your wallet, then mining runs with no popups. Remove it anytime.
+                  </p>
+                  <div className={s.stubActions}>
+                    <button className={`${s.btn} ${s.btnPrimary}`} onClick={setup} disabled={setupBusy || !m.powOk}>{setupBusy ? 'Setting up…' : canSign ? 'Set up hands-free mining' : 'Connect wallet'}</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {(() => {
+                    const remaining = m.nextMineAt ? Math.max(0, (m.nextMineAt - now) / 1000) : 0
+                    if (m.running && m.status === 'mining') return <div className={s.msg}><Pick /> Mining now…</div>
+                    if (m.running && m.nextMineAt && remaining > 0) return <div className={s.msg}><Pick /> Mined {m.lastReward.toFixed(4)} $TLM{usdTxt(m.lastReward)}. Next mine in {hms(remaining)}</div>
+                    if (m.running) return <div className={s.msg}><Pick /> Mining now…</div>
+                    return m.message ? <div className={s.msg}>{m.message}</div> : null
+                  })()}
+                  <div className={s.stubActions} style={{ marginTop: 8, gap: 12 }}>
+                    {!m.running
+                      ? <button className={`${s.btn} ${s.btnPrimary}`} onClick={startAuto} disabled={!m.powOk}>Start auto-mining</button>
+                      : <button className={`${s.btn} ${s.btnGhost}`} onClick={stop}>Stop</button>}
+                    {!m.running && <button className={s.btn} onClick={remove} disabled={setupBusy}>{setupBusy ? '…' : 'Remove mining key'}</button>}
+                  </div>
+                </>
+              )}
+              {setupMsg.ok && <p className={s.ok} style={{ marginTop: 10 }}>{setupMsg.ok}</p>}
+              {setupMsg.err && <p className={s.err} style={{ marginTop: 10 }}>⚠ {setupMsg.err}</p>}
             </div>
-          </>
-        ) : (
-          <>
-            {(() => {
-              const remaining = m.nextMineAt ? Math.max(0, (m.nextMineAt - now) / 1000) : 0
-              if (m.running && m.status === 'mining') return <div className={s.msg}><Pick /> Mining now…</div>
-              if (m.running && m.nextMineAt && remaining > 0) return <div className={s.msg}><Pick /> Mined {m.lastReward.toFixed(4)} $TLM{usdTxt(m.lastReward)}. Next mine in {hms(remaining)}</div>
-              if (m.running) return <div className={s.msg}><Pick /> Mining now…</div>
-              return m.message ? <div className={s.msg}>{m.message}</div> : null
-            })()}
-            <div className={s.stubActions} style={{ marginTop: 8, gap: 12 }}>
-              {!m.running
-                ? <button className={`${s.btn} ${s.btnPrimary}`} onClick={startAuto} disabled={!m.powOk}>Start auto-mining</button>
-                : <button className={`${s.btn} ${s.btnGhost}`} onClick={stop}>Stop</button>}
-              {!m.running && <button className={s.btn} onClick={remove} disabled={setupBusy}>{setupBusy ? '…' : 'Remove mining key'}</button>}
+            {/* 300x300 image placeholder — send me the image and I'll drop it in here */}
+            <div style={{ flex: '0 0 auto', width: 300, height: 300, maxWidth: '100%', border: '1px dashed var(--aww-border)', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--aww-text-dim)', fontSize: 12, textAlign: 'center', background: 'color-mix(in srgb, var(--aww-surface) 50%, transparent)' }}>
+              <span style={{ fontSize: 22, opacity: 0.5 }}>🖼️</span>
+              <span>Image placeholder</span>
+              <span style={{ opacity: 0.7 }}>300 × 300</span>
             </div>
-          </>
-        )}
-        {setupMsg.ok && <p className={s.ok} style={{ marginTop: 10 }}>{setupMsg.ok}</p>}
-        {setupMsg.err && <p className={s.err} style={{ marginTop: 10 }}>⚠ {setupMsg.err}</p>}
-      </Card>
-
-      {/* Manual single mine (wallet) */}
-      {account && (
-        <Card title="Mine once (wallet-signed)" tag="manual">
-          <p className={s.empty} style={{ marginBottom: 10 }}>Prefer to approve each mine yourself? Solve, then Confirm to sign one mine in your wallet.</p>
-          <div className={s.stubActions}>
-            {!pending
-              ? <button className={`${s.btn} ${s.btnPrimary}`} onClick={solve} disabled={busy || !m.powOk}>{busy && m.status === 'solving' ? 'Solving…' : canSign ? 'Solve proof-of-work' : 'Connect wallet'}</button>
-              : <button className={`${s.btn} ${s.btnPrimary}`} onClick={confirm} disabled={busy}>{busy ? 'Signing…' : 'Confirm & sign mine ⛏️'}</button>}
           </div>
-          {msg.ok && <p className={s.ok} style={{ marginTop: 10 }}>{msg.ok}</p>}
-          {msg.err && <p className={s.err} style={{ marginTop: 10 }}>⚠ {msg.err}</p>}
         </Card>
-      )}
+
+        {/* Manual single mine (wallet) */}
+        {account && (
+          <Card title="Mine once (wallet-signed)" tag="manual" style={{ minHeight: 400, height: '100%' }}>
+            <p className={s.empty} style={{ marginBottom: 10 }}>Prefer to approve each mine yourself? Press Mine, then Confirm to sign one mine in your wallet.</p>
+            <div className={s.stubActions}>
+              {!pending
+                ? <button className={`${s.btn} ${s.btnPrimary}`} onClick={solve} disabled={busy || !m.powOk}>{busy && m.status === 'mining' ? 'Mining…' : canSign ? 'Mine' : 'Connect wallet'}</button>
+                : <button className={`${s.btn} ${s.btnPrimary}`} onClick={confirm} disabled={busy}>{busy ? 'Signing…' : 'Confirm & sign mine ⛏️'}</button>}
+            </div>
+            {msg.ok && <p className={s.ok} style={{ marginTop: 10 }}>{msg.ok}</p>}
+            {msg.err && <p className={s.err} style={{ marginTop: 10 }}>⚠ {msg.err}</p>}
+          </Card>
+        )}
+      </div>
 
       {account && (
         <>
