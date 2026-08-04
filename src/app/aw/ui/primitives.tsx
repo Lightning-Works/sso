@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react'
 import s from '../aw.module.css'
 
-export function PageHead({ title, desc }: { title: string; desc?: string }) {
+export function PageHead({ title, desc }: { title: string; desc?: ReactNode }) {
   return (
     <div className={s.pageHead}>
       <h1 className={s.pageTitle}>{title}</h1>

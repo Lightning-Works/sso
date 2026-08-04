@@ -94,7 +94,7 @@ export default function AutoMine({ account }: FeatureProps) {
 
   return (
     <>
-      <PageHead title="Auto-Mine" desc="Real, hands-free mining: set up a mine-only key once, then it solves the proof-of-work and mines on its own — no popups." />
+      <PageHead title="Auto-Mine" desc={<>Set up a <b style={{ color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 45%, #fff)', fontWeight: 700 }}>mine-only key</b> once and it mines automatically for you.</>} />
 
       {!m.powOk && <p className={s.err}>⚠ Proof-of-work self-test failed in this browser — mining is disabled.</p>}
 
