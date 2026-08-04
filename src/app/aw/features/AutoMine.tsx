@@ -49,10 +49,10 @@ export default function AutoMine({ account }: FeatureProps) {
     return `${h}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s`
   }
   const MiningIcon = ({ animate = false }: { animate?: boolean }) => (
-    <span className={`${s.miningIcon} ${animate ? s.miningIconAnim : ''}`} style={{ marginRight: 7 }}>
-      <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', transform: 'rotate(-90deg)' }}>
-        <path d="M3 8 Q12 1.5 21 8" />
-        <path d="M12 6 L12 22" />
+    <span className={s.miningIcon} style={{ marginRight: 7 }}>
+      <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${s.miningPick} ${animate ? s.miningPickAnim : ''}`}>
+        <path d="M9 5 Q3 12 9 19" />
+        <path d="M9 12 L21 12" />
       </svg>
     </span>
   )
@@ -126,6 +126,7 @@ export default function AutoMine({ account }: FeatureProps) {
                 {(() => {
                   const remaining = m.nextMineAt ? Math.max(0, (m.nextMineAt - now) / 1000) : 0
                   const active = m.status === 'solving' || m.status === 'submitting'
+                  if (m.status === 'flagged') return <div className={s.msg} style={{ color: 'var(--aww-danger, #ff6b6b)' }}><MiningIcon /> {m.message} <a href="https://play.alienworlds.io" target="_blank" rel="noreferrer" style={{ color: 'var(--aww-primary)' }}>Open Alien Worlds ↗</a></div>
                   if (m.status === 'error') return <div className={s.msg} style={{ color: 'var(--aww-danger, #ff6b6b)' }}><MiningIcon /> {m.message}</div>
                   if (m.running && active) return <div className={s.msg}><MiningIcon animate /> {m.message || 'Mining now…'}{m.mines > 0 ? ` · ${m.mines} mine${m.mines === 1 ? '' : 's'} so far` : ''}</div>
                   if (m.running && m.nextMineAt && remaining > 0) return <div className={s.msg}><MiningIcon /> Waiting · {m.mines} mine{m.mines === 1 ? '' : 's'} this session{m.sessionTlm > 0 ? ` · ${m.sessionTlm.toFixed(4)} $TLM` : ''}. Next mine in {hms(remaining)}</div>

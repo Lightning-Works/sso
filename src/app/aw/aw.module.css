@@ -1119,7 +1119,9 @@
   to   { background-position: 340px 0, 220px 0, 480px 0, 300px 0, 260px 0, 420px 0, 190px 0, 360px 0; }
 }
 
-/* Animated pickaxe icon (SVG uses currentColor so it matches the text). */
-.miningIcon { display: inline-block; vertical-align: middle; transform-origin: 50% 82%; }
-.miningIconAnim { animation: pickSwing .7s ease-in-out infinite; }
-@keyframes pickSwing { 0%, 100% { transform: rotate(-22deg); } 50% { transform: rotate(14deg); } }
+/* Animated pickaxe (drawn horizontal, grip on the right). The SWING pivots at
+   the grip so the end of the handle stays fixed and the head swings. */
+.miningIcon { display: inline-block; vertical-align: middle; }
+.miningPick { display: block; transform-origin: 88% 50%; }
+.miningPickAnim { animation: pickSwing .7s ease-in-out infinite; }
+@keyframes pickSwing { 0%, 100% { transform: rotate(-16deg); } 50% { transform: rotate(16deg); } }

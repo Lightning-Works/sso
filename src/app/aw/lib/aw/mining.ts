@@ -172,11 +172,19 @@ export async function startReal(account: string) {
       persist()
       await wait(2500) // brief pause; next loop re-reads last_mine and waits the cooldown
     } catch (e) {
-      set({ status: 'error', message: `Last mine failed: ${e instanceof Error ? e.message : 'error'}. Retrying in 30s…` })
+      const msg = e instanceof Error ? e.message : 'error'
+      // Alien Worlds anti-bot flag: retrying won't help and just wastes CPU/NET.
+      if (/flagged/i.test(msg)) {
+        stopFlag = true
+        set({ status: 'flagged', message: 'Alien Worlds has flagged this account as a suspected bot, so mining is blocked. Auto-mining stopped. To restore it you must verify the account on the official Alien Worlds site (human check) or appeal on their Discord — this is on their side, not something the wallet can change.' })
+        break
+      }
+      set({ status: 'error', message: `Last mine failed: ${msg}. Retrying in 30s…` })
       await waitStoppable(30000)
     }
   }
-  set({ running: false, status: 'idle', message: 'Auto-mining stopped' })
+  if (state.status === 'flagged') set({ running: false })      // keep the flag message
+  else set({ running: false, status: 'idle', message: 'Auto-mining stopped' })
 }
 
 export function stop() { stopFlag = true }
