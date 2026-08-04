@@ -50,7 +50,7 @@ export default function AutoMine({ account }: FeatureProps) {
   }
   const MiningIcon = ({ animate = false }: { animate?: boolean }) => (
     <span className={`${s.miningIcon} ${animate ? s.miningIconAnim : ''}`} style={{ marginRight: 7 }}>
-      <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+      <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', transform: 'rotate(-90deg)' }}>
         <path d="M3 8 Q12 1.5 21 8" />
         <path d="M12 6 L12 22" />
       </svg>

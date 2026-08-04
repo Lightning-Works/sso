@@ -51,20 +51,22 @@ async function rows(code: string, table: string, scope: string, bound?: string) 
   return d.rows || []
 }
 
-/** Seed (current last-mine tx) + the loadout cooldown in seconds. */
-async function readSeedAndCooldown(account: string): Promise<{ seed: string; cooldown: number }> {
+/** Seed (last-mine tx), loadout cooldown (s), and the on-chain last-mine time (ms). */
+async function readSeedAndCooldown(account: string): Promise<{ seed: string; cooldown: number; lastMine: number }> {
   const [miner, bag] = await Promise.all([
     rows('m.federation', 'miners', 'm.federation', account),
     rows('m.federation', 'bags', 'm.federation', account),
   ])
   const seed = String(miner[0]?.last_mine_tx || '')
+  const lm = miner[0]?.last_mine as string | undefined
+  const lastMine = lm ? Date.parse(`${lm}Z`) : 0
   const items: string[] = (bag[0]?.items as string[]) || []
   let totalDelay = 0
   if (items.length) {
     const r = await fetch(`https://wax.api.atomicassets.io/atomicassets/v1/assets?ids=${items.join(',')}&limit=10`)
     if (r.ok) { const d = await r.json(); for (const a of d.data || []) { const im = { ...(a.template?.immutable_data || {}), ...(a.data || {}) }; totalDelay += Number(im.delay) || 0 } }
   }
-  return { seed, cooldown: Math.max(Math.round(totalDelay * 0.8), 30) }
+  return { seed, cooldown: Math.max(Math.round(totalDelay * 0.8), 30), lastMine }
 }
 
 async function readTlm(account: string): Promise<number> {
@@ -140,8 +142,17 @@ export async function startReal(account: string) {
 
   while (!stopFlag) {
     try {
-      const { seed, cooldown } = await readSeedAndCooldown(account)
+      const { seed, cooldown, lastMine } = await readSeedAndCooldown(account)
       if (!seed) throw new Error('no seed')
+      // Respect the on-chain cooldown: don't mine until it has elapsed since the
+      // last mine (block time), or the contract rejects with an assert.
+      const elapsed = lastMine ? (Date.now() - lastMine) / 1000 : cooldown
+      if (elapsed < cooldown) {
+        const waitS = Math.ceil(cooldown - elapsed) + 8
+        set({ status: 'cooldown', nextMineAt: Date.now() + waitS * 1000, message: '' })
+        await waitStoppable(waitS * 1000)
+        continue // re-read a fresh seed after waiting
+      }
       set({ status: 'solving', message: 'Finding a valid mine…' })
       const nonce = await solvePow(account, seed, 20)
       if (stopFlag) break
@@ -159,7 +170,7 @@ export async function startReal(account: string) {
         events: [...state.events, { ts: Date.now(), tx, reward }].slice(-50),
       })
       persist()
-      await waitStoppable(cooldown * 1000 + 8000) // small buffer past the cooldown
+      await wait(2500) // brief pause; next loop re-reads last_mine and waits the cooldown
     } catch (e) {
       set({ status: 'error', message: `Last mine failed: ${e instanceof Error ? e.message : 'error'}. Retrying in 30s…` })
       await waitStoppable(30000)

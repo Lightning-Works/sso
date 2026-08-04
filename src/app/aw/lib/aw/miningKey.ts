@@ -75,6 +75,14 @@ export async function signMineWithKey(account: string, nonce: string): Promise<s
   const tx = Transaction.from({ ...info.getTransactionHeader(120), actions: [action] })
   const sig = priv.signDigest(tx.signingDigest(info.chain_id))
   const signed = SignedTransaction.from({ ...tx, signatures: [sig] })
-  const res = await client.v1.chain.push_transaction(signed) as { transaction_id?: string }
-  return String(res.transaction_id || 'sent')
+  try {
+    const res = await client.v1.chain.push_transaction(signed) as { transaction_id?: string }
+    return String(res.transaction_id || 'sent')
+  } catch (err) {
+    // Surface the real on-chain assert message (e.g. "mine is on cooldown").
+    const e = err as { message?: string; details?: { message?: string }[]; response?: { json?: { error?: { details?: { message?: string }[]; what?: string } } } }
+    const det = e.details || e.response?.json?.error?.details
+    const assertMsg = Array.isArray(det) ? det.map(d => d.message).filter(Boolean).join(' | ') : ''
+    throw new Error(assertMsg || e.response?.json?.error?.what || e.message || 'transaction rejected')
+  }
 }
