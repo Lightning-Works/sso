@@ -22,7 +22,7 @@ function service() {
   )
 }
 
-const SAFE = { linked: false, diviBalance: 0, ownsPortalNft: false, hasActiveSubscription: false, ageVerified: false }
+const SAFE = { linked: false, ssoUserId: null as string | null, diviBalance: 0, ownsPortalNft: false, hasActiveSubscription: false, ageVerified: false }
 
 export async function POST(request: Request) {
   if ((request.headers.get('x-agent-secret') || '') !== process.env.AGENT_FACTS_SECRET) {
@@ -52,7 +52,9 @@ export async function POST(request: Request) {
   const addrs = (wallets || []) as Array<{ chain_type: string; wallet_address: string }>
   const byChain = (chain: string) => addrs.filter((w) => (w.chain_type || '').toLowerCase() === chain).map((w) => w.wallet_address)
 
-  const facts = { ...SAFE, linked: true }
+  // ssoUserId is the stable CROSS-APP identity: passed to Kinetink as end_user_id so
+  // Shi Yang knows the SAME person across Telegram / Discord / games / SSO.
+  const facts = { ...SAFE, linked: true, ssoUserId: userId }
 
   // --- fact: DIVI balance (sum across the user's DIVI addresses) ---
   try {
