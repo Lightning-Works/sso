@@ -124,6 +124,42 @@ const DATA_CATEGORIES = {
     erasable: true,
     stores: ['sso.supabase.marketing_prefs'],
     sensitivity: 'low'
+  },
+  ai_personalization: {
+    id: 'ai_personalization',
+    label: 'Let the AI remember you',
+    description: "Use your OWN past chats with the assistant to personalize how it helps you. Only your interactions with the bot — never other people's messages.",
+    lawfulBasis: 'consent',
+    essential: false,
+    retentionDays: 365,
+    retentionReason: 'Personalization while you use the assistant',
+    erasable: true,
+    stores: ['kinetink.supabase.user_knowledge'],
+    sensitivity: 'high'
+  },
+  product_improvement: {
+    id: 'product_improvement',
+    label: 'Help improve the product',
+    description: 'Let us use your data in ANONYMIZED, aggregated form to make the assistant better. Anonymized = aggregated so it can never be traced back to you (not just your name removed).',
+    lawfulBasis: 'consent',
+    essential: false,
+    retentionDays: 730,
+    retentionReason: 'Model/product improvement',
+    erasable: true, // the personal source data is erasable; truly-anonymous aggregates are out of scope
+    stores: ['sso.supabase.improvement_optin'],
+    sensitivity: 'high'
+  },
+  anonymized_sale: {
+    id: 'anonymized_sale',
+    label: 'Share anonymized insights with others',
+    description: 'Let us sell ANONYMIZED, aggregated insights to other companies. Never anything that identifies you. Separate choice; off by default.',
+    lawfulBasis: 'consent',
+    essential: false,
+    retentionDays: null,
+    retentionReason: 'Active while you allow it',
+    erasable: true,
+    stores: ['sso.supabase.datasale_optin'],
+    sensitivity: 'high'
   }
 }
 
