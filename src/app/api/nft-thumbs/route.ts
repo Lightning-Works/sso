@@ -10,10 +10,15 @@ import sharp from 'sharp'
 // raw external image gateway, which is what actually breaks in-browser).
 const supabaseAdmin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
+// All downloads for a batch request run concurrently (see below), capped
+// individually by DOWNLOAD_TIMEOUT — give the function enough wall-clock
+// room for a slow gateway response to still land instead of getting killed
+// mid-request.
+export const maxDuration = 60
+
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
 const WEBP_QUALITY = 80
-const BATCH_SIZE = 10
 const DOWNLOAD_TIMEOUT = 20000
 
 interface ThumbRequest {
@@ -143,32 +148,33 @@ export async function POST(request: Request) {
     }
   }
 
-  // Generate missing thumbnails in batches
-  for (let i = 0; i < toGenerate.length; i += BATCH_SIZE) {
-    const batch = toGenerate.slice(i, i + BATCH_SIZE)
-    await Promise.all(batch.map(async (nft) => {
-      try {
-        const imageBuffer = await downloadImage(nft.imageUrl!)
-        if (!imageBuffer) return
+  // Generate missing thumbnails — all in flight together, not sequential
+  // batches. Each download is capped at DOWNLOAD_TIMEOUT individually, so a
+  // single slow gateway response can't stall everything behind it; running
+  // batches one after another turned that per-image cap into a per-batch one
+  // (BATCH_SIZE stragglers away from blowing Vercel's function time limit).
+  await Promise.all(toGenerate.map(async (nft) => {
+    try {
+      const imageBuffer = await downloadImage(nft.imageUrl!)
+      if (!imageBuffer) return
 
-        const thumb = await generateThumb(imageBuffer)
-        if (!thumb) return
+      const thumb = await generateThumb(imageBuffer)
+      if (!thumb) return
 
-        const path = thumbPath(nft.chain, nft.id)
-        const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, {
-          contentType: 'image/webp',
-          upsert: true,
-        })
+      const path = thumbPath(nft.chain, nft.id)
+      const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, {
+        contentType: 'image/webp',
+        upsert: true,
+      })
 
-        if (!error) {
-          const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
-          thumbs[nft.id] = urlData.publicUrl
-        }
-      } catch {
-        // Skip failed thumbnails silently
+      if (!error) {
+        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+        thumbs[nft.id] = urlData.publicUrl
       }
-    }))
-  }
+    } catch {
+      // Skip failed thumbnails silently
+    }
+  }))
 
   // No cleanup here — cleanup should be a separate admin action,
   // not per-request, to avoid deleting valid thumbs from other views/pages
