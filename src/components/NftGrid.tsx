@@ -880,11 +880,11 @@ export function NftGrid({
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb" style={{ position: 'relative' }}>
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
-                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
+                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
-                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={handleImgError()} />
+                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError()} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
                 )}
@@ -1055,7 +1055,7 @@ export function NftGrid({
                 <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
               ) : selectedNft.imageUrl ? (
                 <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)' }}>
-                  <img src={selectedNft.imageUrl} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} onError={handleImgError()} />
+                  <img src={selectedNft.imageUrl} alt={selectedNft.name} crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} onError={handleImgError()} />
                   <button
                     onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
                     style={{
@@ -1252,6 +1252,7 @@ export function NftGrid({
           <img
             src={selectedNft.imageUrl}
             alt={selectedNft.name}
+            crossOrigin="anonymous"
             style={{
               maxWidth: '90vw',
               maxHeight: '90vh',
