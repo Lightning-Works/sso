@@ -34,13 +34,16 @@ function isVideoUrl(url: string | null | undefined): boolean {
 }
 
 // Public IPFS gateways come and go under load (ipfs.io in particular has
-// gotten unreliable — see wax-nfts.ts). If an <img> pointed at one of these
-// gateways fails to load, retry it against the next gateway in line before
-// giving up, so a single gateway outage doesn't blank out the whole grid.
-const IPFS_GATEWAYS = ['nftstorage.link', 'dweb.link', 'w3s.link', 'ipfs.io']
+// gotten unreliable — see wax-nfts.ts). nftstorage.link and w3s.link aren't
+// listed here because they just redirect through dweb.link/ipfs.io anyway —
+// no point retrying through a middleman pointed at the gateway that just
+// failed. If an <img> pointed at one of these gateways fails to load, retry
+// it against the next gateway in line before giving up, so a single gateway
+// outage doesn't blank out the whole grid.
+const IPFS_GATEWAYS = ['dweb.link', 'ipfs.io']
 
-/** onError handler: walks an ipfs.io/nftstorage.link/etc image through the
- *  gateway list, then (once) tries `fallbackUrl`, then gives up and hides it. */
+/** onError handler: walks an ipfs.io/dweb.link image through the gateway
+ *  list, then (once) tries `fallbackUrl`, then gives up and hides it. */
 function handleImgError(fallbackUrl?: string | null) {
   return (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
