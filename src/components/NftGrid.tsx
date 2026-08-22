@@ -1060,10 +1060,10 @@ export function NftGrid({
 
             <div className="nft-lightbox-media">
               {selectedNft.videoUrl && isVideoUrl(selectedNft.videoUrl) ? (
-                <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
-              ) : selectedNft.imageUrl ? (
+                <video src={selectedNft.videoUrl} poster={selectedNft.thumbUrl || selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
+              ) : (selectedNft.thumbUrl || selectedNft.imageUrl) ? (
                 <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)' }}>
-                  <img src={selectedNft.imageUrl} alt={selectedNft.name} crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} onError={handleImgError()} />
+                  <img src={selectedNft.thumbUrl || selectedNft.imageUrl!} alt={selectedNft.name} crossOrigin="anonymous" style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} onError={handleImgError(selectedNft.thumbUrl ? selectedNft.imageUrl : null)} />
                   <button
                     onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
                     style={{
@@ -1198,7 +1198,7 @@ export function NftGrid({
       )}
 
       {/* Fullscreen Image Viewer */}
-      {fullscreen && selectedNft?.imageUrl && typeof document !== 'undefined' && createPortal(
+      {fullscreen && (selectedNft?.thumbUrl || selectedNft?.imageUrl) && typeof document !== 'undefined' && createPortal(
         <div
           style={{
             position: 'fixed', inset: 0, zIndex: 99999,
@@ -1258,7 +1258,7 @@ export function NftGrid({
 
           {/* Image */}
           <img
-            src={selectedNft.imageUrl}
+            src={selectedNft.thumbUrl || selectedNft.imageUrl || ''}
             alt={selectedNft.name}
             crossOrigin="anonymous"
             style={{
@@ -1272,7 +1272,7 @@ export function NftGrid({
               userSelect: 'none',
             }}
             draggable={false}
-            onError={handleImgError()}
+            onError={handleImgError(selectedNft.thumbUrl ? selectedNft.imageUrl : null)}
           />
 
           {/* Controls */}

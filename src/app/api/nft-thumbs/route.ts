@@ -1,12 +1,20 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import sharp from 'sharp'
+
+// Public-data image cache — no per-user data, so the service role (bypasses
+// RLS) is correct here, same as gates/loans/comics. The cookie-bound anon
+// client used before couldn't write to storage for anonymous visitors,
+// which silently broke thumbnail generation for everyone (upload always
+// failed → every NFT card and modal fell back to hotlinking the wallet's
+// raw external image gateway, which is what actually breaks in-browser).
+const supabaseAdmin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
 const WEBP_QUALITY = 80
 const BATCH_SIZE = 10
-const DOWNLOAD_TIMEOUT = 8000
+const DOWNLOAD_TIMEOUT = 20000
 
 interface ThumbRequest {
   id: string
@@ -56,7 +64,7 @@ async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
+  const supabase = supabaseAdmin
 
   let body: Record<string, unknown>
   try {
