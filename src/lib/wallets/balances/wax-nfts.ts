@@ -24,11 +24,16 @@ export interface WaxNft {
   data: Record<string, unknown>
 }
 
+// ipfs.io's free public gateway has gotten increasingly overloaded — under
+// the kind of concurrent load a wallet page throws at it (dozens of NFT
+// images at once) it now times out or drops connections outright. nftstorage.link
+// holds up reliably under the same load (see ComicReader's GATEWAYS list, which
+// already deprioritizes ipfs.io for the same reason). NftGrid also retries
+// through a short gateway list on image load failure as a second layer of defense.
 function resolveMediaUrl(hash: string | null | undefined): string | null {
   if (!hash) return null
   if (hash.startsWith('http')) return hash
-  if (hash.startsWith('Qm') || hash.startsWith('bafy')) return `https://ipfs.io/ipfs/${hash}`
-  return `https://ipfs.io/ipfs/${hash}`
+  return `https://nftstorage.link/ipfs/${hash}`
 }
 
 export async function getWaxNfts(account: string, page = 1, limit = 100, collection?: string): Promise<{ nfts: WaxNft[]; total: number }> {

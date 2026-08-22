@@ -33,6 +33,36 @@ function isVideoUrl(url: string | null | undefined): boolean {
   return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogv') || lower.endsWith('.mov')
 }
 
+// Public IPFS gateways come and go under load (ipfs.io in particular has
+// gotten unreliable — see wax-nfts.ts). If an <img> pointed at one of these
+// gateways fails to load, retry it against the next gateway in line before
+// giving up, so a single gateway outage doesn't blank out the whole grid.
+const IPFS_GATEWAYS = ['nftstorage.link', 'dweb.link', 'w3s.link', 'ipfs.io']
+
+/** onError handler: walks an ipfs.io/nftstorage.link/etc image through the
+ *  gateway list, then (once) tries `fallbackUrl`, then gives up and hides it. */
+function handleImgError(fallbackUrl?: string | null) {
+  return (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    const m = img.src.match(/^https:\/\/([^/]+)\/ipfs\/(.+)$/)
+    if (m) {
+      const [, host, rest] = m
+      const idx = IPFS_GATEWAYS.indexOf(host)
+      const nextGateway = IPFS_GATEWAYS[idx + 1]
+      if (nextGateway) {
+        img.src = `https://${nextGateway}/ipfs/${rest}`
+        return
+      }
+    }
+    if (fallbackUrl && img.src !== fallbackUrl && !img.dataset.triedFallback) {
+      img.dataset.triedFallback = '1'
+      img.src = fallbackUrl
+      return
+    }
+    img.style.display = 'none'
+  }
+}
+
 function getRarityStyle(rarity: string): { color: string; border?: string; glow?: string } {
   const r = rarity.toLowerCase().trim()
   if (r === 'common') return { color: '#c4a84a', border: '1px solid rgba(196,168,74,0.4)' }
@@ -855,11 +885,11 @@ export function NftGrid({
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb" style={{ position: 'relative' }}>
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
-                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).src = nft.imageUrl || ''; }} />
+                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
-                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" data-pin-nopin="true" onError={handleImgError()} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
                 )}
@@ -1030,7 +1060,7 @@ export function NftGrid({
                 <video src={selectedNft.videoUrl} poster={selectedNft.imageUrl || undefined} autoPlay loop muted playsInline controls />
               ) : selectedNft.imageUrl ? (
                 <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)' }}>
-                  <img src={selectedNft.imageUrl} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} />
+                  <img src={selectedNft.imageUrl} alt={selectedNft.name} style={{ maxWidth: '100%', maxHeight: 'var(--nft-lightbox-media-h, 450px)', objectFit: 'contain', display: 'block' }} onError={handleImgError()} />
                   <button
                     onClick={() => { setFullscreen(true); setFsZoom(1); setFsPan({ x: 0, y: 0 }) }}
                     style={{
@@ -1238,6 +1268,7 @@ export function NftGrid({
               userSelect: 'none',
             }}
             draggable={false}
+            onError={handleImgError()}
           />
 
           {/* Controls */}
