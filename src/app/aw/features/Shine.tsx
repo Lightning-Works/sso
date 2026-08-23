@@ -8,21 +8,47 @@
  * Needed" plus a buy link that opens the AtomicHub market for that exact tool,
  * cheapest first, in a new tab.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { SyntheticEvent } from 'react'
 import { PageHead, Card, Empty } from '../ui/primitives'
 import { fetchShineCandidates, fetchForgeAssetIds, buildForgeActions, type ShineCandidate } from '../lib/aw/shine'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
+import type { NftItem } from '@/components/NftGrid'
 import type { FeatureProps } from './ctx'
 
 type Status = { msg: string; kind: 'working' | 'ok' | 'err' }
 const PRIMARY = 'var(--aww-primary, #b06cff)'
 const MUTED = 'var(--aww-text-muted, #9aa)'
+const THUMB_BG = 'var(--nft-thumb-bg, #1a1a1c)'
+// 50% lighter than the theme purple so link text stays readable on the dark card.
+const LINK = 'color-mix(in srgb, var(--aww-primary, #b06cff) 50%, #fff)'
 
-export default function Shine({ account }: FeatureProps) {
+// Each shine tier drawn in its own colour (Gold reads gold, not purple).
+const SHINE_COLORS: Record<string, string> = {
+  stone: '#cfcfcf', gold: '#ffd24a', stardust: '#7fe0ff', antimatter: '#d59bff', xdimension: '#5affc8',
+}
+const shineColor = (name: string) => SHINE_COLORS[(name || '').toLowerCase()] || LINK
+
+// Same gateway-fallback the SSO NftGrid uses: an ipfs image that fails on one
+// gateway retries the next before giving up (then the placeholder shows).
+const GATEWAYS = ['dweb.link', 'ipfs.io']
+function onSlotImgError(e: SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget
+  const m = img.src.match(/^https:\/\/([^/]+)\/ipfs\/(.+)$/)
+  if (m) {
+    const next = GATEWAYS[GATEWAYS.indexOf(m[1]) + 1]
+    if (next) { img.src = `https://${next}/ipfs/${m[2]}`; return }
+  }
+  img.style.display = 'none' // reveal the neutral placeholder behind it
+}
+
+export default function Shine({ account, navigate }: FeatureProps) {
   const [cands, setCands] = useState<ShineCandidate[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<Record<number, Status>>({})
   const [busy, setBusy] = useState<number | null>(null)
+  const { fetchThumbs, applyThumbs } = useThumbnails()
 
   const load = useCallback(() => {
     if (!account) { setCands(null); return }
@@ -31,6 +57,19 @@ export default function Shine({ account }: FeatureProps) {
   }, [account])
 
   useEffect(load, [load])
+
+  // Pull cached webp thumbnails via the SSO proxy (same as the NFT inventory),
+  // so slot art loads reliably instead of hammering a public gateway.
+  const items = useMemo<NftItem[]>(
+    () => (cands || []).map(c => ({ id: String(c.templateId), name: c.name, imageUrl: c.img, chain: 'WAX', collection: 'Alien Worlds' })),
+    [cands],
+  )
+  useEffect(() => { if (account && items.length) fetchThumbs(items, account) }, [account, items, fetchThumbs])
+  const imgByTid = useMemo(() => {
+    const map: Record<number, string | null> = {}
+    for (const it of applyThumbs(items)) map[Number(it.id)] = it.thumbUrl || it.imageUrl
+    return map
+  }, [items, applyThumbs])
 
   const setStat = (tid: number, s: Status | null) =>
     setStatus(p => { const n = { ...p }; if (s) n[tid] = s; else delete n[tid]; return n })
@@ -56,6 +95,13 @@ export default function Shine({ account }: FeatureProps) {
     }
   }
 
+  // Open OUR Market, pre-filtered to the tool they still need — SPA switch, then
+  // stamp the ?template smart URL so Market shows just that tool, cheapest first.
+  const goBuy = (c: ShineCandidate) => {
+    navigate('mkt.tools')
+    try { window.history.replaceState(null, '', c.marketUrl) } catch { /* ignore */ }
+  }
+
   return (
     <>
       <PageHead
@@ -72,7 +118,15 @@ export default function Shine({ account }: FeatureProps) {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14 }}>
           {cands.map(c => (
-            <Column key={c.templateId} c={c} status={status[c.templateId]} disabled={busy != null && busy !== c.templateId} onForge={() => forge(c)} />
+            <Column
+              key={c.templateId}
+              c={c}
+              imgUrl={imgByTid[c.templateId] ?? c.img}
+              status={status[c.templateId]}
+              disabled={busy != null && busy !== c.templateId}
+              onForge={() => forge(c)}
+              onBuy={() => goBuy(c)}
+            />
           ))}
         </div>
       )}
@@ -80,7 +134,7 @@ export default function Shine({ account }: FeatureProps) {
   )
 }
 
-function Column({ c, status, disabled, onForge }: { c: ShineCandidate; status?: Status; disabled: boolean; onForge: () => void }) {
+function Column({ c, imgUrl, status, disabled, onForge, onBuy }: { c: ShineCandidate; imgUrl: string | null; status?: Status; disabled: boolean; onForge: () => void; onBuy: () => void }) {
   const filled = Math.min(c.count, 4)
   const working = status?.kind === 'working'
   return (
@@ -88,25 +142,35 @@ function Column({ c, status, disabled, onForge }: { c: ShineCandidate; status?: 
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--aww-text)', lineHeight: 1.2 }} title={c.name}>{c.name}</div>
         <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>
-          {c.rarity ? `${c.rarity} · ` : ''}{c.shine || 'Stone'} <span style={{ color: PRIMARY }}>→ {c.toShine}</span>
+          {c.rarity ? `${c.rarity} · ` : ''}
+          <span style={{ color: shineColor(c.shine || 'Stone') }}>{c.shine || 'Stone'}</span>
+          {' → '}
+          <span style={{ color: shineColor(c.toShine), fontWeight: 700 }}>{c.toShine}</span>
         </div>
       </div>
 
-      {/* four slots — filled left, missing on the right */}
+      {/* four equal slots — owned copies fill from the left, needed ones on the
+          right. Same neutral dark tile as the NFT inventory when art is absent. */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '12px 0' }}>
         {[0, 1, 2, 3].map(i => {
           const has = i < filled
           return (
             <div key={i} style={{
-              width: 50, height: 50, borderRadius: 8, overflow: 'hidden',
+              flex: 1, aspectRatio: '1', borderRadius: 8, overflow: 'hidden', position: 'relative',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: THUMB_BG,
               border: has ? `1px solid ${PRIMARY}` : '1px dashed color-mix(in srgb, var(--aww-text-muted) 45%, transparent)',
-              background: has ? 'transparent' : 'color-mix(in srgb, var(--aww-text-muted) 8%, transparent)',
-              boxShadow: has ? `0 0 8px color-mix(in srgb, ${PRIMARY} 40%, transparent)` : 'none',
+              boxShadow: has ? `0 0 8px color-mix(in srgb, ${PRIMARY} 35%, transparent)` : 'none',
             }}>
-              {has && c.img
-                ? <img src={c.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <span style={{ fontSize: 20, color: 'color-mix(in srgb, var(--aww-text-muted) 55%, transparent)' }}>{has ? '' : '+'}</span>}
+              {/* neutral placeholder sits behind; a loaded image covers it, a
+                  broken one hides (onError) and reveals this. */}
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'color-mix(in srgb, var(--aww-text-muted) 60%, transparent)' }}>
+                {has ? 'No image' : '+'}
+              </span>
+              {has && imgUrl && (
+                <img src={imgUrl} alt="" loading="lazy" onError={onSlotImgError}
+                  style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', objectFit: 'contain' }} />
+              )}
             </div>
           )
         })}
@@ -139,9 +203,10 @@ function Column({ c, status, disabled, onForge }: { c: ShineCandidate; status?: 
             }}>
               {c.needed} More Needed
             </div>
-            <a href={c.marketUrl} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 600, color: PRIMARY, textDecoration: 'none' }}>
-              Buy more — cheapest first ↗
+            <a href={c.marketUrl}
+              onClick={(e) => { e.preventDefault(); onBuy() }}
+              style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 700, color: LINK, textDecoration: 'none' }}>
+              Buy more — cheapest first →
             </a>
           </>
         )}

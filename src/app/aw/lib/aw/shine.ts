@@ -42,16 +42,14 @@ type Meta = { name: string; img: string | null; shine: string; rarity: string }
 function resolveImg(hash?: unknown): string | null {
   const h = typeof hash === 'string' ? hash : ''
   if (!h) return null
-  return h.startsWith('http') ? h : `https://ipfs.io/ipfs/${h}`
+  // dweb.link first (matches the SSO wallet — ipfs.io is unreliable under load);
+  // the slot <img> walks to the next gateway on error.
+  return h.startsWith('http') ? h : `https://dweb.link/ipfs/${h}`
 }
 
-/** Deep-link to the AtomicHub market for one template, cheapest listing first. */
+/** In-app deep link to OUR Market, pre-filtered to one tool (cheapest first). */
 export function marketUrl(templateId: number): string {
-  const p = new URLSearchParams({
-    collection_name: 'alien.worlds', order: 'asc', sort: 'price',
-    symbol: 'WAX', template_id: String(templateId),
-  })
-  return `https://wax.atomichub.io/market?${p.toString()}`
+  return `/aw/market/tools?template=${templateId}`
 }
 
 /** Read the full s.federation shine recipe table (from -> to, qty, cost). */

@@ -64,7 +64,7 @@ export async function fetchToolOffers(limit = 100): Promise<ToolOffer[]> {
   return offers
 }
 
-export async function fetchListings(opts: { schema?: string; limit?: number } = {}): Promise<Listing[]> {
+export async function fetchListings(opts: { schema?: string; limit?: number; templateId?: number } = {}): Promise<Listing[]> {
   const p = new URLSearchParams({
     collection_name: 'alien.worlds',
     state: '1', // listed
@@ -73,6 +73,7 @@ export async function fetchListings(opts: { schema?: string; limit?: number } = 
     limit: String(opts.limit || 40),
   })
   if (opts.schema) p.set('schema_name', opts.schema)
+  if (opts.templateId) p.set('template_id', String(opts.templateId))
 
   const r = await fetch(`https://wax.api.atomicassets.io/atomicmarket/v1/sales?${p.toString()}`)
   if (!r.ok) throw new Error('failed to load listings')
