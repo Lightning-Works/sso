@@ -15,6 +15,7 @@ import DiviGoConnect from './features/DiviGoConnect'
 import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
+import Shine from './features/Shine'
 import BuyTrilium from './features/BuyTrilium'
 import Teleporter from './features/Teleporter'
 import AutoMine from './features/AutoMine'
@@ -87,7 +88,7 @@ export const NAV: NavGroup[] = [
       { id: 'inv.avatars', label: 'Avatars', slug: 'avatars', render: p => <Inventory {...p} schema="face.worlds" label="Avatars" /> },
       { id: 'inv.weapons', label: 'Weapons', slug: 'weapons', render: p => <Inventory {...p} schema="arms.worlds" label="Weapons" /> },
       { id: 'inv.crew', label: 'Crew', slug: 'crew', render: p => <Inventory {...p} schema="crew.worlds" label="Crew" /> },
-      { id: 'inv.shine', label: 'Shine (Forge)', slug: 'shine', render: stub('Phase 4', 'Shine — Forge NFTs', ['Forge 4 identical NFTs into one of higher shine: Stone → Gold → Stardust → Antimatter.', 'Higher shine boosts attributes and value.'], ['Shine']) },
+      { id: 'inv.shine', label: 'Shine (Forge)', slug: 'shine', render: p => <Shine {...p} /> },
       { id: 'inv.shards', label: 'Shards / Outpost', slug: 'shards', render: stub('Phase 4', 'Shards & NFT Outpost', ['Shards (NFT points) are earned by mining.', 'Fuse shards at the NFT Outpost to craft new tools.'], ['Fuse shards']) },
     ],
   },
