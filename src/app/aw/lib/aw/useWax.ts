@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { connectWax, autoLoginWax, transact, auth, currentAccount, type AwAction } from '../wax/session'
+import { connectWax, autoLoginWax, transact, auth, currentAccount, type WaxAction as AwAction } from '@/lib/wallets/waxSession'
 
 /** React wrapper over the WAX signing session (connect + submit transactions). */
 export function useWax() {

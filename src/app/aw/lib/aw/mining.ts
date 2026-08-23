@@ -10,7 +10,7 @@
  */
 import { solvePow, POW_OK } from './pow'
 import { signMineWithKey } from './miningKey'
-import type { AwAction } from '../wax/session'
+import type { WaxAction as AwAction } from '@/lib/wallets/waxSession'
 
 const RPC = 'https://wax.greymass.com'
 type Submit = (actions: AwAction[]) => Promise<{ transaction_id?: string }>

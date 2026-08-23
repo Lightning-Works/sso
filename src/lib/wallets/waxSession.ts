@@ -1,5 +1,9 @@
 /**
- * WAX signing session for AWW — built on WharfKit SessionKit.
+ * WAX signing session — built on WharfKit SessionKit.
+ *
+ * Shared by the Alien Worlds Wallet (src/app/aw/**) and the WAX Send feature
+ * on /wallet/wax. Originally lived only under src/app/aw/lib/wax/session.ts;
+ * promoted here since it has no Alien-Worlds-specific logic.
  *
  * Why WharfKit instead of raw waxjs: waxjs keeps the session only in memory, so
  * every page reload needs a fresh login (or a third-party cookie to
@@ -14,8 +18,8 @@
  */
 import type { Session, SessionKit } from '@wharfkit/session'
 
-export type AwAuth = { actor: string; permission: string }
-export type AwAction = { account: string; name: string; authorization: AwAuth[]; data: Record<string, unknown> }
+export type WaxAuth = { actor: string; permission: string }
+export type WaxAction = { account: string; name: string; authorization: WaxAuth[]; data: Record<string, unknown> }
 
 const RPC = 'https://wax.greymass.com'
 const WAX_CHAIN_ID = '1064487b3cd1a897ce03ae5b6a865651747e2e152090f99c1d19d44e01aea5a4'
@@ -32,7 +36,7 @@ async function buildKit(): Promise<SessionKit> {
   ])
   const WebRenderer = (wr as unknown as { default: new () => unknown }).default
   kit = new SessionKit({
-    appName: 'Alien Worlds Wallet',
+    appName: 'LightningWorks',
     chains: [{ id: WAX_CHAIN_ID, url: RPC }],
     ui: new WebRenderer() as never,
     walletPlugins: [new WalletPluginCloudWallet()],
@@ -47,7 +51,7 @@ export function preloadWax(): Promise<SessionKit> {
 }
 if (typeof window !== 'undefined') { preloadWax().catch(() => { /* retried on demand */ }) }
 
-const REMEMBER_KEY = 'aww:wax'
+const REMEMBER_KEY = 'lw:wax-session'
 function remember(a: string | null) {
   try { if (typeof window !== 'undefined' && a) window.localStorage.setItem(REMEMBER_KEY, a) } catch { /* ignore */ }
 }
@@ -81,11 +85,11 @@ export function currentAccount(): string | null {
 }
 
 /** Authorization array for the connected account's active permission. */
-export function auth(): AwAuth[] {
+export function auth(): WaxAuth[] {
   return session ? [{ actor: session.actor.toString(), permission: session.permission.toString() }] : []
 }
 
-export async function transact(actions: AwAction[]): Promise<{ transaction_id?: string }> {
+export async function transact(actions: WaxAction[]): Promise<{ transaction_id?: string }> {
   if (!session) throw new Error('WAX wallet not connected')
   const result = await session.transact({ actions })
   const resp = result.response as { transaction_id?: string } | undefined

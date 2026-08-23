@@ -10,7 +10,7 @@
  * intended_delphi_median, taker_marketplace). intended_delphi_median = 0 for
  * WAX-priced sales; taker_marketplace = "" for the default.
  */
-import type { AwAction } from '../wax/session'
+import type { WaxAction as AwAction } from '@/lib/wallets/waxSession'
 
 const waxAsset = (amount: number) => `${amount.toFixed(8)} WAX`
 

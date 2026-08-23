@@ -14,6 +14,8 @@ import { getWaxNfts, type WaxNft } from '@/lib/wallets/balances/wax-nfts'
 import { NftGrid, type NftItem } from '@/components/NftGrid'
 import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import type { WalletToken } from '@/lib/wallets/types'
+import { WaxCloudSendPanel } from '@/components/WaxCloudSendPanel'
+import { DiviGoWalletPanel } from '@/components/DiviGoWalletPanel'
 
 const STORAGE_BASE = 'https://wemmrhypldubdplaohli.supabase.co/storage/v1/object/public'
 
@@ -355,6 +357,20 @@ function WaxPortfolioContent() {
                 )}
               </div>
             </div>
+
+            {/* Send — two independent paths: your own Cloud Wallet (direct, non-custodial),
+                or DiviGo's custodial balance (approve-by-text, WAX/TLM only). */}
+            {!embed && (
+              <div className="lw-section">
+                <h2 className="lw-section-title">Send</h2>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <WaxCloudSendPanel account={account} tokens={tokens} syndicateTokens={syndicateTokens} />
+                  <div style={{ flex: 1, minWidth: '300px' }}>
+                    <DiviGoWalletPanel userId={userId || null} diviPrice={0} coins={['wax', 'tlm']} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Collection Tabs — hidden in the Alien Worlds wallet (only Alien Worlds NFTs show) */}
             {false && (

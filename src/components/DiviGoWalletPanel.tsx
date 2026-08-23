@@ -99,7 +99,8 @@ function qrUrl(data: string, size = 220): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
 }
 
-export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null; diviPrice: number }) {
+export function DiviGoWalletPanel({ userId, diviPrice, coins }: { userId: string | null; diviPrice: number; coins?: readonly string[] }) {
+  const sendableCoins = coins ?? SUPPORTED_COINS
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [balances, setBalances] = useState<Record<string, number> | null>(null)
   const [balanceError, setBalanceError] = useState<string | null>(null)
@@ -122,7 +123,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
   const linkPollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Send flow
-  const [sendCoin, setSendCoin] = useState('divi')
+  const [sendCoin, setSendCoin] = useState(coins?.[0] ?? 'divi')
   const [sendAmount, setSendAmount] = useState('')
   const [sendDest, setSendDest] = useState('')
   const [sendSubject, setSendSubject] = useState('')
@@ -554,7 +555,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
               </p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.6rem', marginTop: '0.25rem' }}>
-                {Object.entries(balances).map(([coin, amt]) => (
+                {Object.entries(balances).filter(([coin]) => !coins || coins.includes(coin)).map(([coin, amt]) => (
                   <div key={coin}>
                     <div style={{ color: 'var(--lw-text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {COIN_LABEL[coin] || coin.toUpperCase()}
@@ -584,7 +585,7 @@ export function DiviGoWalletPanel({ userId, diviPrice }: { userId: string | null
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <select value={sendCoin} onChange={e => setSendCoin(e.target.value)} disabled={!canSend || sendBusy} style={inputStyle}>
-                    {SUPPORTED_COINS.map(c => <option key={c} value={c}>{COIN_LABEL[c]}</option>)}
+                    {sendableCoins.map(c => <option key={c} value={c}>{COIN_LABEL[c] || c.toUpperCase()}</option>)}
                   </select>
                   <input type="text" inputMode="decimal" value={sendAmount} onChange={e => setSendAmount(e.target.value)}
                     placeholder="Amount" disabled={!canSend || sendBusy} style={inputStyle} />

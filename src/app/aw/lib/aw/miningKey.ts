@@ -15,7 +15,7 @@
  * Security: the key is powerless beyond mining, so a leaked local key only lets
  * someone mine on your behalf. We still keep it client-only and revocable.
  */
-import type { AwAction } from '../wax/session'
+import type { WaxAction as AwAction } from '@/lib/wallets/waxSession'
 
 const RPC = 'https://wax.greymass.com'
 const keyOf = (a: string) => `aww-minekey-${a}`

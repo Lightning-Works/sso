@@ -14,7 +14,7 @@ import { Icon } from './ui/Icon'
 import { LoginGate } from './ui/LoginGate'
 import { fetchHoldings, fetchPlanets, type Holdings, type Planet } from './lib/waxData'
 import { useSessionWax } from './lib/aw/useSessionWax'
-import { connectWax, autoLoginWax, rememberedAccount } from './lib/wax/session'
+import { connectWax, autoLoginWax, rememberedAccount } from '@/lib/wallets/waxSession'
 
 const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
