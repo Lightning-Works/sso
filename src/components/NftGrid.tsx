@@ -888,11 +888,16 @@ export function NftGrid({
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb" style={{ position: 'relative' }}>
                 {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
-                  <img src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
+                  // key on the src: when the source changes (e.g. the cached
+                  // thumbnail resolves in after the raw IPFS url), React mounts a
+                  // FRESH <img> instead of swapping src on the old one. A lazy
+                  // <img> that already stalled won't re-fire on a src swap, which
+                  // left tiles permanently black; a fresh element loads normally.
+                  <img key={`t-${refreshedThumbs[nft.id] || nft.thumbUrl}`} src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
-                  <img src={nft.imageUrl} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError()} />
+                  <img key={`i-${nft.imageUrl}`} src={nft.imageUrl} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError()} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
                 )}
