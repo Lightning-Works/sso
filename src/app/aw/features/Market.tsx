@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
 import { NftThumb } from '../ui/NftThumb'
 import { fetchListings, type Listing } from '../lib/aw/market'
 import { buildBuyActions } from '../lib/aw/buyTool'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
+import type { NftItem } from '@/components/NftGrid'
 
 const price = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 
@@ -23,6 +25,26 @@ export default function Market({ schema, label }: { schema?: string; label?: str
   const [error, setError] = useState('')
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [buy, setBuy] = useState<BuyState | null>(null)
+  const { fetchThumbs, applyThumbs } = useThumbnails()
+
+  // Route art through the SSO thumbnail proxy (cached same-origin webp) instead
+  // of the flaky public IPFS gateways — the raw gateways frequently 503.
+  const thumbItems = useMemo<NftItem[]>(() => {
+    const seen = new Set<number>()
+    const out: NftItem[] = []
+    for (const r of rows) {
+      if (!r.templateId || seen.has(r.templateId) || !r.imageUrl) continue
+      seen.add(r.templateId)
+      out.push({ id: String(r.templateId), name: r.name, imageUrl: r.imageUrl, chain: 'WAX', collection: 'Alien Worlds' })
+    }
+    return out
+  }, [rows])
+  useEffect(() => { if (thumbItems.length) fetchThumbs(thumbItems, 'aww-market') }, [thumbItems, fetchThumbs])
+  const imgByTid = useMemo(() => {
+    const map: Record<number, string | null> = {}
+    for (const it of applyThumbs(thumbItems)) map[Number(it.id)] = it.thumbUrl || it.imageUrl
+    return map
+  }, [thumbItems, applyThumbs])
 
   // Click once to arm ("Confirm • N $WAX"), click again to sign the on-chain
   // purchase (deposit WAX + atomicmarket::purchasesale) via the wallet popup.
@@ -88,7 +110,7 @@ export default function Market({ schema, label }: { schema?: string; label?: str
                   background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden',
                   border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column',
                 }}>
-                  <NftThumb src={r.imageUrl} alt={r.name} radius={0} />
+                  <NftThumb src={imgByTid[r.templateId] ?? r.imageUrl} alt={r.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</div>
                     <div style={{ fontSize: 14, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</div>
