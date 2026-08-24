@@ -9,6 +9,7 @@ import { fetchListings, type Listing } from '../lib/aw/market'
 import { buildBuyActions } from '../lib/aw/buyTool'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
 import { useThumbnails } from '@/lib/wallets/useThumbnails'
+import { usePrices } from '../lib/aw/usePrices'
 import type { NftItem } from '@/components/NftGrid'
 
 const price = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
@@ -27,6 +28,13 @@ export default function Market({ schema, label }: { schema?: string; label?: str
   const [templateId, setTemplateId] = useState<number | null>(null)
   const [buy, setBuy] = useState<BuyState | null>(null)
   const { fetchThumbs, applyThumbs } = useThumbnails()
+  const prices = usePrices() // live WAX→USD (CoinGecko), for the sub-price
+
+  const usd = (waxAmt: number) => (prices?.wax ? waxAmt * prices.wax : null)
+  const usdText = (waxAmt: number) => {
+    const v = usd(waxAmt)
+    return v == null ? '' : `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 
   // Route art through the SSO thumbnail proxy (cached same-origin webp) instead
   // of the flaky public IPFS gateways — the raw gateways frequently 503.
@@ -116,11 +124,13 @@ export default function Market({ schema, label }: { schema?: string; label?: str
                   <NftThumb src={imgByTid[r.templateId] ?? r.imageUrl} alt={r.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</span>
-                      <ShineBadge shine={r.shine} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+                        <span style={{ fontSize: 10, color: '#7fc8ff' }}>{usd(r.price) != null ? usdText(r.price) : ''}</span>
+                        <ShineBadge shine={r.shine} />
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--aww-text-muted, #9aa)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.schema.replace('.worlds', '')} · {r.seller}</div>
                     {(() => {
                       const b = buy?.saleId === r.saleId ? buy : null
                       const label = b?.stage === 'working' ? 'Buying…'
