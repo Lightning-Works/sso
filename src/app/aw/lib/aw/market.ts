@@ -19,6 +19,14 @@ export type Listing = {
   templateId: number
   seller: string
   assetId: string
+  imageUrl: string | null
+}
+
+/** IPFS hash → dweb.link URL (matches the wallet's NFT image handling). */
+function imgUrl(hash?: unknown): string | null {
+  const h = typeof hash === 'string' ? hash : ''
+  if (!h) return null
+  return h.startsWith('http') ? h : `https://dweb.link/ipfs/${h}`
 }
 
 /** A buyable tool: full stat block + its cheapest WAX listing price. */
@@ -81,17 +89,20 @@ export async function fetchListings(opts: { schema?: string; limit?: number; tem
 
   return (d.data || []).map((s: Record<string, unknown>) => {
     const asset = ((s.assets as Record<string, unknown>[]) || [{}])[0] || {}
+    const tpl = (asset.template as Record<string, unknown>) || {}
+    const im = { ...((tpl.immutable_data as Record<string, unknown>) || {}), ...((asset.data as Record<string, unknown>) || {}) }
     const price = (s.price as Record<string, unknown>) || {}
     const precision = Number(price.token_precision) || 8
     return {
       saleId: String(s.sale_id || ''),
       price: Number(price.amount || 0) / 10 ** precision,
       symbol: String(price.token_symbol || 'WAX'),
-      name: String(asset.name || 'NFT'),
+      name: String(asset.name || im.name || 'NFT'),
       schema: String(((asset.schema as Record<string, unknown>) || {}).schema_name || ''),
-      templateId: Number(((asset.template as Record<string, unknown>) || {}).template_id || 0),
+      templateId: Number(tpl.template_id || 0),
       seller: String(s.seller || ''),
       assetId: String(asset.asset_id || ''),
+      imageUrl: imgUrl(im.img ?? im.image),
     } as Listing
   })
 }

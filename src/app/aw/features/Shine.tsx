@@ -9,8 +9,8 @@
  * cheapest first, in a new tab.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { SyntheticEvent } from 'react'
 import { PageHead, Card, Empty } from '../ui/primitives'
+import { NftThumb } from '../ui/NftThumb'
 import { fetchShineCandidates, fetchForgeAssetIds, buildForgeActions, type ShineCandidate } from '../lib/aw/shine'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
 import { useThumbnails } from '@/lib/wallets/useThumbnails'
@@ -20,7 +20,6 @@ import type { FeatureProps } from './ctx'
 type Status = { msg: string; kind: 'working' | 'ok' | 'err' }
 const PRIMARY = 'var(--aww-primary, #b06cff)'
 const MUTED = 'var(--aww-text-muted, #9aa)'
-const THUMB_BG = 'var(--nft-thumb-bg, #1a1a1c)'
 // 50% lighter than the theme purple so link text stays readable on the dark card.
 const LINK = 'color-mix(in srgb, var(--aww-primary, #b06cff) 50%, #fff)'
 
@@ -29,19 +28,6 @@ const SHINE_COLORS: Record<string, string> = {
   stone: '#cfcfcf', gold: '#ffd24a', stardust: '#7fe0ff', antimatter: '#d59bff', xdimension: '#5affc8',
 }
 const shineColor = (name: string) => SHINE_COLORS[(name || '').toLowerCase()] || LINK
-
-// Same gateway-fallback the SSO NftGrid uses: an ipfs image that fails on one
-// gateway retries the next before giving up (then the placeholder shows).
-const GATEWAYS = ['dweb.link', 'ipfs.io']
-function onSlotImgError(e: SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget
-  const m = img.src.match(/^https:\/\/([^/]+)\/ipfs\/(.+)$/)
-  if (m) {
-    const next = GATEWAYS[GATEWAYS.indexOf(m[1]) + 1]
-    if (next) { img.src = `https://${next}/ipfs/${m[2]}`; return }
-  }
-  img.style.display = 'none' // reveal the neutral placeholder behind it
-}
 
 export default function Shine({ account, navigate }: FeatureProps) {
   const [cands, setCands] = useState<ShineCandidate[] | null>(null)
@@ -116,7 +102,7 @@ export default function Shine({ account, navigate }: FeatureProps) {
       ) : !cands || cands.length === 0 ? (
         <Card tag="live read"><Empty text="No forgeable sets yet — you need 2 or more identical tools that can be shined up." /></Card>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 520px), 1fr))', gap: 16 }}>
           {cands.map(c => (
             <Column
               key={c.templateId}
@@ -149,29 +135,19 @@ function Column({ c, imgUrl, status, disabled, onForge, onBuy }: { c: ShineCandi
         </div>
       </div>
 
-      {/* four equal slots — owned copies fill from the left, needed ones on the
-          right. Same neutral dark tile as the NFT inventory when art is absent. */}
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '12px 0' }}>
+      {/* four large card-shaped slots — owned copies fill from the left, needed
+          ones (dashed) sit on the right. Same tile as the SSO NFT inventory. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, margin: '12px 0' }}>
         {[0, 1, 2, 3].map(i => {
           const has = i < filled
           return (
-            <div key={i} style={{
-              flex: 1, aspectRatio: '1', borderRadius: 8, overflow: 'hidden', position: 'relative',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: THUMB_BG,
-              border: has ? `1px solid ${PRIMARY}` : '1px dashed color-mix(in srgb, var(--aww-text-muted) 45%, transparent)',
-              boxShadow: has ? `0 0 8px color-mix(in srgb, ${PRIMARY} 35%, transparent)` : 'none',
-            }}>
-              {/* neutral placeholder sits behind; a loaded image covers it, a
-                  broken one hides (onError) and reveals this. */}
-              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'color-mix(in srgb, var(--aww-text-muted) 60%, transparent)' }}>
-                {has ? 'No image' : '+'}
-              </span>
-              {has && imgUrl && (
-                <img src={imgUrl} alt="" loading="lazy" onError={onSlotImgError}
-                  style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', objectFit: 'contain' }} />
-              )}
-            </div>
+            <NftThumb
+              key={i}
+              src={has ? imgUrl : null}
+              alt={c.name}
+              placeholder={has ? 'No image' : 'Need'}
+              border={has ? `1px solid ${PRIMARY}` : '1px dashed color-mix(in srgb, var(--aww-text-muted) 45%, transparent)'}
+            />
           )
         })}
       </div>
@@ -206,7 +182,7 @@ function Column({ c, imgUrl, status, disabled, onForge, onBuy }: { c: ShineCandi
             <a href={c.marketUrl}
               onClick={(e) => { e.preventDefault(); onBuy() }}
               style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 700, color: LINK, textDecoration: 'none' }}>
-              Buy more — cheapest first →
+              Buy More Here →
             </a>
           </>
         )}
