@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { usePrices } from '../lib/aw/usePrices'
 import { fmtUsd } from '../lib/aw/prices'
 import { fmt } from '../lib/waxData'
+import { AwMedia } from '@/components/AwMedia'
 import type { AwNft } from '../lib/aw/nftItems'
 import s from '../aw.module.css'
 
@@ -42,8 +43,18 @@ export function NftDetailModal({ nft, onClose }: { nft: AwNft; onClose: () => vo
 
   const media = isVideo(nft.videoUrl)
     ? <video src={nft.videoUrl!} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline style={{ width: '100%', maxHeight: '78vh', borderRadius: 10, background: '#000', objectFit: 'contain' }} />
-    : nft.imageUrl
-      ? <img src={nft.imageUrl} alt={nft.name} style={{ width: '100%', maxHeight: '78vh', borderRadius: 10, background: '#000', objectFit: 'contain' }} />
+    : (nft.thumbUrl || nft.imageUrl)
+      ? <AwMedia
+          staticSrc={nft.thumbUrl || nft.imageUrl}
+          animatedSrc={nft.imageUrl}
+          cacheKey={nft.tokenId || nft.id}
+          alt={nft.name}
+          fit="contain"
+          fill={false}
+          maxHeight="78vh"
+          radius={10}
+          style={{ width: '100%' }}
+        />
       : <div style={{ width: '100%', aspectRatio: '1', borderRadius: 10, background: '#111' }} />
 
   const body = (

@@ -7,6 +7,7 @@ import { Card, Empty, PageHead } from '../ui/primitives'
 import { NftDetailModal } from '../ui/NftDetailModal'
 import { fetchNftItems, type AwNft } from '../lib/aw/nftItems'
 import { fetchFloorWax } from '../lib/aw/nftPrices'
+import { purgeExcept } from '@/lib/aw/mediaCache'
 import { usePrices } from '../lib/aw/usePrices'
 import { fmtUsd } from '../lib/aw/prices'
 import type { FeatureProps } from './ctx'
@@ -38,6 +39,16 @@ export default function Inventory({ account, schema, label }: FeatureProps & { s
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }, [account, schema, fetchThumbs])
+
+  // Drop cached media for NFTs no longer owned (sold / transferred out). Only on
+  // the unfiltered "All" view AND only when it's the complete holdings (a full
+  // page could be missing items, so purging then could wrongly delete a category
+  // the user still owns).
+  useEffect(() => {
+    if (!schema && items && items.length > 0 && items.length < 100) {
+      purgeExcept(items.map(i => i.id)).catch(() => {})
+    }
+  }, [schema, items])
 
   // Merge live floor prices onto items.
   const priced = useMemo(
@@ -92,6 +103,7 @@ export default function Inventory({ account, schema, label }: FeatureProps & { s
                 columns={5}
                 mobileColumns={2}
                 showViewTabs={false}
+                animate
                 onCardClick={(n) => setSelected(n as AwNft)}
               />
             </Card>

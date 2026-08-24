@@ -36,7 +36,8 @@ const PAGE = 100
 function resolve(hash: unknown): string | null {
   const s = typeof hash === 'string' ? hash : ''
   if (!s) return null
-  return s.startsWith('http') ? s : `https://ipfs.io/ipfs/${s}`
+  // dweb.link first (ipfs.io is unreliable under load); AwMedia gateway-walks on error.
+  return s.startsWith('http') ? s : `https://dweb.link/ipfs/${s}`
 }
 
 export async function fetchNftItems(account: string, schema?: string): Promise<AwNft[]> {

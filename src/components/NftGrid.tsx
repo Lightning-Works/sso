@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { ComicReaderDispatch } from './ComicReaderDispatch'
 import { ShineBadge } from './ShineBadge'
+import { AwMedia } from './AwMedia'
 
 /** A readable comic = a comic marker + a way to resolve its pages. */
 function isComic(n: NftItem): boolean {
@@ -174,6 +175,10 @@ interface NftGridProps {
    *  single curated collection — there's no spam there and everything is an
    *  NFT, so the toggle is just noise. */
   showViewTabs?: boolean
+  /** Animate tiles: show the static thumbnail, then fade in the animated original
+   *  (Alien Worlds animated webp) and cache it to IndexedDB. Opt-in — off for the
+   *  main wallet so its NFTs render exactly as before. */
+  animate?: boolean
   /** Optional: intercept a normal tile click to render a custom detail view
    *  instead of the built-in lightbox. When omitted, the built-in lightbox is
    *  used (default behaviour — the SSO wallet relies on this). */
@@ -194,6 +199,7 @@ export function NftGrid({
   isSuperadmin = false,
   onLoansChanged,
   showViewTabs = true,
+  animate = false,
   onCardClick,
 }: NftGridProps) {
   // Loan action under user confirmation. null when no action pending.
@@ -891,7 +897,24 @@ export function NftGrid({
             >
               {tags.favorite.has(nft.id) && <span className="nft-card-heart" style={{ color: '#ff3355' }}>&#9829;</span>}
               <div className="nft-card-thumb" style={{ position: 'relative' }}>
-                {(refreshedThumbs[nft.id] || nft.thumbUrl) ? (
+                {animate ? (
+                  nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
+                    <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
+                  ) : (refreshedThumbs[nft.id] || nft.thumbUrl || nft.imageUrl) ? (
+                    <AwMedia
+                      staticSrc={refreshedThumbs[nft.id] || nft.thumbUrl || nft.imageUrl}
+                      animatedSrc={nft.imageUrl || undefined}
+                      cacheKey={nft.id}
+                      alt={nft.name}
+                      fit="contain"
+                      fill
+                      placeholder="No image"
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  ) : (
+                    <span className="nft-card-placeholder">No image</span>
+                  )
+                ) : (refreshedThumbs[nft.id] || nft.thumbUrl) ? (
                   // key on the src: when the source changes (e.g. the cached
                   // thumbnail resolves in after the raw IPFS url), React mounts a
                   // FRESH <img> instead of swapping src on the old one. A lazy

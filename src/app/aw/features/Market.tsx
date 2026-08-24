@@ -125,7 +125,7 @@ export default function Market({ schema, label }: { schema?: string; label?: str
                   background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden',
                   border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column',
                 }}>
-                  <NftThumb src={imgByTid[r.templateId] ?? r.imageUrl} alt={r.name} radius={0} />
+                  <NftThumb src={imgByTid[r.templateId] ?? r.imageUrl} animatedSrc={r.imageUrl} alt={r.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</div>
                     <div>
