@@ -893,11 +893,11 @@ export function NftGrid({
                   // FRESH <img> instead of swapping src on the old one. A lazy
                   // <img> that already stalled won't re-fire on a src swap, which
                   // left tiles permanently black; a fresh element loads normally.
-                  <img key={`t-${refreshedThumbs[nft.id] || nft.thumbUrl}`} src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
+                  <img key={`t-${refreshedThumbs[nft.id] || nft.thumbUrl}`} src={refreshedThumbs[nft.id] || nft.thumbUrl!} alt={nft.name} crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError(nft.imageUrl)} />
                 ) : nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                   <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
                 ) : nft.imageUrl ? (
-                  <img key={`i-${nft.imageUrl}`} src={nft.imageUrl} alt={nft.name} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError()} />
+                  <img key={`i-${nft.imageUrl}`} src={nft.imageUrl} alt={nft.name} crossOrigin="anonymous" data-pin-nopin="true" onError={handleImgError()} />
                 ) : (
                   <span className="nft-card-placeholder">No image</span>
                 )}
