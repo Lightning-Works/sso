@@ -20,6 +20,7 @@ export type Listing = {
   seller: string
   assetId: string
   imageUrl: string | null
+  shine: string | null
 }
 
 /** IPFS hash → dweb.link URL (matches the wallet's NFT image handling). */
@@ -103,6 +104,7 @@ export async function fetchListings(opts: { schema?: string; limit?: number; tem
       seller: String(s.seller || ''),
       assetId: String(asset.asset_id || ''),
       imageUrl: imgUrl(im.img ?? im.image),
+      shine: im.shine ? String(im.shine) : null,
     } as Listing
   })
 }

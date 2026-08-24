@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
 import { NftThumb } from '../ui/NftThumb'
+import { ShineBadge } from '@/components/ShineBadge'
 import { fetchListings, type Listing } from '../lib/aw/market'
 import { buildBuyActions } from '../lib/aw/buyTool'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
@@ -115,7 +116,10 @@ export default function Market({ schema, label }: { schema?: string; label?: str
                   <NftThumb src={imgByTid[r.templateId] ?? r.imageUrl} alt={r.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</span>
+                      <ShineBadge shine={r.shine} />
+                    </div>
                     <div style={{ fontSize: 10, color: 'var(--aww-text-muted, #9aa)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.schema.replace('.worlds', '')} · {r.seller}</div>
                     {(() => {
                       const b = buy?.saleId === r.saleId ? buy : null

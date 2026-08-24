@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { ComicReaderDispatch } from './ComicReaderDispatch'
+import { ShineBadge } from './ShineBadge'
 
 /** A readable comic = a comic marker + a way to resolve its pages. */
 function isComic(n: NftItem): boolean {
@@ -90,6 +91,9 @@ export interface NftItem {
   description?: string | null
   chain?: string
   rarity?: string | null
+  /** Alien Worlds shine tier (Stone/Gold/Stardust/Antimatter/XDimension). Drives
+   *  the corner ShineBadge; unset on non-AW NFTs so no badge renders. */
+  shine?: string | null
   mintNumber?: string | null
   maxSupply?: string | null
   tokenType?: string
@@ -932,12 +936,15 @@ export function NftGrid({
                 {nft.mintNumber && nft.maxSupply && nft.maxSupply !== '0' && (
                   <p className="nft-card-mint">Mint #{nft.mintNumber} / {nft.maxSupply}</p>
                 )}
-                {(nft.chain || nft.floorPrice != null) && (
+                {(nft.chain || nft.floorPrice != null || nft.shine) && (
                   <div className="nft-card-footer">
-                    {nft.chain && <span className="nft-card-chain">{nft.chain}</span>}
-                    {nft.floorPrice != null && (
-                      <span className="nft-card-floor">Floor: {nft.floorPrice.toFixed(3)} {nft.floorPriceSymbol || 'ETH'}</span>
-                    )}
+                    {nft.chain ? <span className="nft-card-chain">{nft.chain}</span> : <span />}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      {nft.floorPrice != null && (
+                        <span className="nft-card-floor">Floor: {nft.floorPrice.toFixed(3)} {nft.floorPriceSymbol || 'ETH'}</span>
+                      )}
+                      <ShineBadge shine={nft.shine} />
+                    </span>
                   </div>
                 )}
               </div>

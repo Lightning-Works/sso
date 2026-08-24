@@ -65,6 +65,7 @@ export async function fetchNftItems(account: string, schema?: string): Promise<A
       collection: String(coll.name || coll.collection_name || 'Alien Worlds'),
       description: im.description ? String(im.description) : null,
       rarity: (im.rarity as string) || (im.shine as string) || null,
+      shine: (im.shine as string) || null,
       mintNumber: (a.template_mint as string) || null,
       maxSupply: tpl.max_supply ? String(tpl.max_supply) : null,
       chain: 'WAX',
