@@ -5,8 +5,12 @@ import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
 import { NftThumb } from '../ui/NftThumb'
 import { fetchListings, type Listing } from '../lib/aw/market'
+import { buildBuyActions } from '../lib/aw/buyTool'
+import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
 
 const price = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+
+type BuyState = { saleId: string; stage: 'confirm' | 'working' | 'done' | 'err'; msg?: string }
 
 /** Read ?template=<id> from the current URL (set by the Shine "Buy More Here" link). */
 function templateFromUrl(): number | null {
@@ -18,6 +22,25 @@ export default function Market({ schema, label }: { schema?: string; label?: str
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [templateId, setTemplateId] = useState<number | null>(null)
+  const [buy, setBuy] = useState<BuyState | null>(null)
+
+  // Click once to arm ("Confirm • N $WAX"), click again to sign the on-chain
+  // purchase (deposit WAX + atomicmarket::purchasesale) via the wallet popup.
+  const onBuy = async (r: Listing) => {
+    const armed = buy?.saleId === r.saleId && buy.stage === 'confirm'
+    if (!armed) { setBuy({ saleId: r.saleId, stage: 'confirm' }); return }
+    setBuy({ saleId: r.saleId, stage: 'working' })
+    try {
+      if (!currentAccount()) await connectWax()      // keep inside the click gesture
+      const acct = currentAccount()
+      if (!acct) throw new Error('Connect your WAX wallet to buy')
+      await transact(buildBuyActions(acct, r.saleId, r.price))
+      setBuy({ saleId: r.saleId, stage: 'done' })
+      setTimeout(() => { setRows(prev => prev.filter(x => x.saleId !== r.saleId)); setBuy(null) }, 1600)
+    } catch (e) {
+      setBuy({ saleId: r.saleId, stage: 'err', msg: e instanceof Error ? e.message : 'Buy failed' })
+    }
+  }
 
   // Pick up the ?template filter on mount and on back/forward navigation.
   useEffect(() => {
@@ -70,14 +93,33 @@ export default function Market({ schema, label }: { schema?: string; label?: str
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</div>
                     <div style={{ fontSize: 14, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.price)} $WAX</div>
                     <div style={{ fontSize: 10, color: 'var(--aww-text-muted, #9aa)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.schema.replace('.worlds', '')} · {r.seller}</div>
-                    <button className={`${s.btn} ${s.btnGhost}`} style={{ marginTop: 2 }} disabled title="Buy on-chain via atomicmarket::purchasesale — Phase 2">Buy</button>
+                    {(() => {
+                      const b = buy?.saleId === r.saleId ? buy : null
+                      const label = b?.stage === 'working' ? 'Buying…'
+                        : b?.stage === 'done' ? 'Bought ✓'
+                        : b?.stage === 'confirm' ? `Confirm • ${price(r.price)} $WAX`
+                        : 'Buy'
+                      return (
+                        <>
+                          <button
+                            className={`${s.btn} ${b?.stage === 'confirm' ? s.btnPrimary : s.btnGhost}`}
+                            style={{ marginTop: 2 }}
+                            disabled={b?.stage === 'working' || b?.stage === 'done'}
+                            onClick={() => onBuy(r)}
+                          >
+                            {label}
+                          </button>
+                          {b?.stage === 'err' && <div style={{ fontSize: 10, color: '#ff6b6b', marginTop: 4, lineHeight: 1.3 }}>{b.msg}</div>}
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               ))}
             </div>
           )}
         <p className={s.empty} style={{ marginTop: 12 }}>
-          Buy / list / cancel run natively on-chain (atomicmarket::purchasesale / announcesale / cancelsale) once signing is wired — no separate marketplace needed.
+          Purchases run natively on-chain (atomicmarket::purchasesale), approved in your WAX wallet — the same listings as AtomicHub, bought right here. Selling/cancelling can be added the same way.
         </p>
       </Card>
     </>
