@@ -33,7 +33,11 @@ export default function Market({ schema, label }: { schema?: string; label?: str
   const usd = (waxAmt: number) => (prices?.wax ? waxAmt * prices.wax : null)
   const usdText = (waxAmt: number) => {
     const v = usd(waxAmt)
-    return v == null ? '' : `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    if (v == null) return ''
+    // Sub-cent items (cheap tools) get extra precision so USD isn't a flat "$0.00".
+    return v >= 0.01
+      ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : `$${v.toFixed(4)}`
   }
 
   // Route art through the SSO thumbnail proxy (cached same-origin webp) instead
