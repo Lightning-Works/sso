@@ -64,13 +64,15 @@ export default function Market({ schema, label }: { schema?: string; label?: str
     }
   }
 
-  // Pick up the ?template filter on mount and on back/forward navigation.
+  // The ?template deep-link (from Shine's "Buy More Here") only applies to the
+  // Tools view. Re-read it whenever the sub-view (schema) changes or on back/
+  // forward, so switching to Land/Weapons/All clears the tool filter.
   useEffect(() => {
-    setTemplateId(templateFromUrl())
-    const onPop = () => setTemplateId(templateFromUrl())
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [])
+    const read = () => setTemplateId(schema === 'tool.worlds' ? templateFromUrl() : null)
+    read()
+    window.addEventListener('popstate', read)
+    return () => window.removeEventListener('popstate', read)
+  }, [schema])
 
   useEffect(() => {
     setLoading(true); setError('')
@@ -90,8 +92,8 @@ export default function Market({ schema, label }: { schema?: string; label?: str
 
   return (
     <>
-      <PageHead title={`Marketplace${label ? ` · ${label}` : ''}`} desc="Live on-chain listings from AtomicMarket — the same listings as AtomicHub, right in your wallet." />
-      <Card title={templateId ? `Cheapest: ${filteredName || 'selected tool'}` : 'Cheapest listings'} tag="live · AtomicMarket">
+      <PageHead title={`Marketplace${label ? ` · ${label}` : ''}`} />
+      <Card title={templateId ? `Cheapest: ${filteredName || 'selected item'}` : 'Cheapest listings'}>
         {templateId && (
           <div className={s.msg} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span>Showing only the tool you need for forging, cheapest first.</span>
@@ -140,9 +142,6 @@ export default function Market({ schema, label }: { schema?: string; label?: str
               ))}
             </div>
           )}
-        <p className={s.empty} style={{ marginTop: 12 }}>
-          Purchases run natively on-chain (atomicmarket::purchasesale), approved in your WAX wallet — the same listings as AtomicHub, bought right here. Selling/cancelling can be added the same way.
-        </p>
       </Card>
     </>
   )
