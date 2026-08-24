@@ -39,7 +39,10 @@ export function NftThumb({ src, alt = '', border, placeholder = 'No image', radi
         {placeholder}
       </span>
       {src && (
-        <img src={src} alt={alt} loading="lazy" onError={onImgError}
+        // crossOrigin="anonymous" is REQUIRED: Chrome blocks no-cors cross-origin
+        // gateway images (they send ACAO:* but no CORP header), so without this
+        // the image is blocked and only the placeholder shows.
+        <img src={src} alt={alt} loading="lazy" crossOrigin="anonymous" data-pin-nopin="true" onError={onImgError}
           style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', objectFit: 'contain' }} />
       )}
     </div>
