@@ -94,15 +94,16 @@ export async function POST(request: Request) {
     const buf = await downloadImage(url)
     if (!buf) return NextResponse.json({ err: 'download failed' })
     const out: Record<string, unknown> = { downloaded: buf.length }
-    try { out.meta = await sharp(buf, { animated: true, limitInputPixels: false }).metadata() } catch (e) { out.metaErr = String(e) }
-    for (const size of [600, 300, 160]) {
+    const meta = await sharp(buf, { animated: true, limitInputPixels: false }).metadata().catch(() => null)
+    out.pages = meta?.pages
+    for (const pages of [60, 40, 30, 20, 12]) {
       try {
-        const b = await sharp(buf, { animated: true, limitInputPixels: false })
-          .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+        const b = await sharp(buf, { animated: true, pages, limitInputPixels: false })
+          .resize({ width: 500, height: 500, fit: 'inside', withoutEnlargement: true })
           .webp({ quality: WEBP_QUALITY }).toBuffer()
-        out[`animated_${size}`] = `ok ${b.length}`
+        out[`ok_pages_${pages}`] = `${Math.round(b.length / 1024)}KB`
         break
-      } catch (e) { out[`animated_${size}_err`] = String(e).slice(0, 300) }
+      } catch (e) { out[`err_pages_${pages}`] = String(e).slice(0, 120) }
     }
     return NextResponse.json(out)
   }
