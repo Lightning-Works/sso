@@ -21,8 +21,10 @@ const MAX_STATIC_SIZE = 800
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
 // Bump when the thumbnail encoding changes so existing cached thumbs are
-// regenerated under a new key. 'a1' = animation-preserving webp (was static).
-const THUMB_VERSION = 'a1'
+// regenerated under a new key. a1 = animation-preserving webp; a2 = also handle
+// large multi-frame sources (lift sharp's input-pixel cap) so big animated cards
+// (e.g. 12MB Elgem/Magori) animate instead of falling back to a static frame.
+const THUMB_VERSION = 'a2'
 
 interface ThumbRequest {
   id: string
@@ -48,7 +50,7 @@ async function downloadImage(url: string): Promise<Buffer | null> {
     const contentType = res.headers.get('content-type') || ''
     if (contentType.startsWith('video/')) return null
     const buffer = Buffer.from(await res.arrayBuffer())
-    if (buffer.length < 100 || buffer.length > 20_000_000) return null
+    if (buffer.length < 100 || buffer.length > 35_000_000) return null
     return buffer
   } catch {
     return null
@@ -61,13 +63,12 @@ async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
   // back to a static frame rather than producing no thumbnail at all.
   for (const animated of [true, false]) {
     try {
-      return await sharp(imageBuffer, { animated })
-        .resize({
-          width: MAX_STATIC_SIZE,
-          height: MAX_STATIC_SIZE,
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
+      // limitInputPixels:false so big multi-frame webps (12MB Elgem/Magori) don't
+      // blow sharp's default pixel cap and fall back to a static frame. Animated
+      // output is capped smaller to keep memory + file size reasonable.
+      const size = animated ? 600 : MAX_STATIC_SIZE
+      return await sharp(imageBuffer, { animated, limitInputPixels: false })
+        .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer()
     } catch { /* try static next */ }
