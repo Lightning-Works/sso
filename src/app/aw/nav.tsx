@@ -27,7 +27,7 @@ import MiningData from './features/MiningData'
 import StubView from './ui/StubView'
 
 export type NavChild = { id: string; label: string; slug: string; render: (p: FeatureProps) => ReactNode }
-export type NavGroup = { id: string; label: string; icon: string; slug: string; children: NavChild[] }
+export type NavGroup = { id: string; label: string; icon: string; slug: string; children: NavChild[]; directLink?: boolean }
 
 const stub = (phase: string, title: string, lines: string[], actions?: string[]) =>
   () => <StubView title={title} phase={phase} lines={lines} actions={actions} />
@@ -59,8 +59,8 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: 'teleporter', label: 'Teleporter', icon: 'teleport', slug: 'teleporter', children: [
-      { id: 'tp.all', label: 'All flows', slug: 'all', render: p => <Teleporter {...p} /> },
+    id: 'teleporter', label: 'Bridge (Teleporter)', icon: 'teleport', slug: 'teleporter', directLink: true, children: [
+      { id: 'tp.all', label: 'Bridge', slug: 'all', render: p => <Teleporter {...p} /> },
     ],
   },
   {

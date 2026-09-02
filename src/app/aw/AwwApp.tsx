@@ -171,6 +171,21 @@ export default function AwwApp() {
 
         {groups.map(g => {
           const open = expanded.has(g.id)
+          // Single-purpose groups (e.g. the Bridge) act as a direct link — no
+          // chevron, no redundant sub-item.
+          if (g.directLink) {
+            return (
+              <div key={g.id}>
+                <button
+                  className={`${s.navItem} ${activeGroup.id === g.id ? s.navItemActive : ''}`}
+                  onClick={() => setRoute(g.children[0].id)}
+                >
+                  <span className={s.navIcon}><Icon name={g.icon} /></span>
+                  <span className={s.navFill}>{g.label}</span>
+                </button>
+              </div>
+            )
+          }
           return (
             <div key={g.id}>
               <button

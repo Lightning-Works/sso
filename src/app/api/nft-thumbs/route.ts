@@ -20,6 +20,9 @@ const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
+// Bump when the thumbnail encoding changes so existing cached thumbs are
+// regenerated under a new key. 'a1' = animation-preserving webp (was static).
+const THUMB_VERSION = 'a1'
 
 interface ThumbRequest {
   id: string
@@ -29,7 +32,7 @@ interface ThumbRequest {
 
 function thumbPath(chain: string, id: string): string {
   const safe = id.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 200)
-  return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.webp`
+  return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.${THUMB_VERSION}.webp`
 }
 
 async function downloadImage(url: string): Promise<Buffer | null> {
@@ -53,19 +56,23 @@ async function downloadImage(url: string): Promise<Buffer | null> {
 }
 
 async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
-  try {
-    return await sharp(imageBuffer)
-      .resize({
-        width: MAX_STATIC_SIZE,
-        height: MAX_STATIC_SIZE,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .webp({ quality: WEBP_QUALITY })
-      .toBuffer()
-  } catch {
-    return null
+  // Preserve animation: read every frame ({ animated: true }) and re-encode to an
+  // animated webp. Some animated files can trip the animated pipeline, so fall
+  // back to a static frame rather than producing no thumbnail at all.
+  for (const animated of [true, false]) {
+    try {
+      return await sharp(imageBuffer, { animated })
+        .resize({
+          width: MAX_STATIC_SIZE,
+          height: MAX_STATIC_SIZE,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer()
+    } catch { /* try static next */ }
   }
+  return null
 }
 
 export async function POST(request: Request) {
