@@ -104,6 +104,28 @@ export async function POST(request: Request) {
 
   const action = (body.action as string) || 'generate'
 
+  if (action === 'debug') {
+    const buf = await downloadImage(body.url as string)
+    if (!buf) return NextResponse.json({ err: 'download failed' })
+    const out: Record<string, unknown> = { downloaded: buf.length }
+    try {
+      const m = await sharp(buf, { animated: true, limitInputPixels: false }).metadata()
+      out.meta = { width: m.width, height: m.height, pageHeight: m.pageHeight, pages: m.pages, format: m.format }
+      const total = m.pages || 1
+      const fh = m.pageHeight || Math.round((m.height || 1000) / total)
+      const byBudget = Math.max(1, Math.floor(ANIM_PIXEL_BUDGET / ((m.width || 1000) * (fh || 1000))))
+      const pages = Math.min(total, ANIM_MAX_FRAMES, byBudget)
+      out.chosenPages = pages
+      try {
+        const b = await sharp(buf, { animated: true, pages, limitInputPixels: false })
+          .resize({ width: ANIM_SIZE, height: ANIM_SIZE, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: WEBP_QUALITY }).toBuffer()
+        out.animOk = `${Math.round(b.length / 1024)}KB`
+      } catch (e) { out.animErr = String(e).slice(0, 200) }
+    } catch (e) { out.metaErr = String(e).slice(0, 200) }
+    return NextResponse.json(out)
+  }
+
   // ── Single NFT refresh ──
   if (action === 'refresh') {
     const nft = body.nft as ThumbRequest | undefined
