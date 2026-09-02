@@ -73,12 +73,73 @@ export async function fetchToolOffers(limit = 100): Promise<ToolOffer[]> {
   return offers
 }
 
-export async function fetchListings(opts: { schema?: string; limit?: number; templateId?: number } = {}): Promise<Listing[]> {
+const AMKT = 'https://wax.api.atomicassets.io/atomicmarket/v1'
+
+/** A stacked template row: floor + how many are listed (one card per design). */
+export type TemplateStack = {
+  templateId: number
+  name: string
+  img: string | null
+  rarity: string
+  shine: string
+  schema: string
+  floor: number
+  count: number
+}
+
+/**
+ * Template-grouped listings ("stacked"): one row per template with its floor
+ * price, plus the exact number listed. There are only ~700 templates, and each
+ * design's image is shared, so we key art by template_id — no duplicate image
+ * downloads across the thousands of identical mints. Paginated.
+ */
+export async function fetchTemplateStacks(opts: { schema?: string; page?: number; limit?: number } = {}): Promise<TemplateStack[]> {
+  const p = new URLSearchParams({
+    collection_name: 'alien.worlds', symbol: 'WAX', state: '1',
+    sort: 'price', order: 'asc',
+    page: String(opts.page || 1), limit: String(opts.limit || 24),
+  })
+  if (opts.schema) p.set('schema_name', opts.schema)
+  const r = await fetch(`${AMKT}/sales/templates?${p.toString()}`)
+  if (!r.ok) throw new Error('failed to load marketplace')
+  const d = await r.json()
+
+  const base: TemplateStack[] = ((d.data || []) as Record<string, unknown>[]).map(s => {
+    const asset = ((s.assets as Record<string, unknown>[]) || [{}])[0] || {}
+    const tpl = (asset.template as Record<string, unknown>) || {}
+    const sch = (asset.schema as Record<string, unknown>) || {}
+    const im = { ...((tpl.immutable_data as Record<string, unknown>) || {}), ...((asset.data as Record<string, unknown>) || {}) }
+    const price = (s.price as Record<string, unknown>) || {}
+    return {
+      templateId: Number(tpl.template_id) || 0,
+      name: String(asset.name || im.name || 'NFT'),
+      img: imgUrl(im.img ?? im.image),
+      rarity: String(im.rarity || ''),
+      shine: String(im.shine || ''),
+      schema: String(sch.schema_name || ''),
+      floor: Number(price.amount || 0) / 10 ** (Number(price.token_precision) || 8),
+      count: 0,
+    }
+  }).filter(t => t.templateId)
+
+  // Exact listed-count per template (tiny count=true calls, in parallel).
+  await Promise.all(base.map(async t => {
+    try {
+      const cr = await fetch(`${AMKT}/sales?collection_name=alien.worlds&template_id=${t.templateId}&state=1&symbol=WAX&count=true`)
+      const cd = await cr.json()
+      t.count = Number(cd.data) || 0
+    } catch { /* leave 0 */ }
+  }))
+  return base
+}
+
+export async function fetchListings(opts: { schema?: string; limit?: number; templateId?: number; page?: number } = {}): Promise<Listing[]> {
   const p = new URLSearchParams({
     collection_name: 'alien.worlds',
     state: '1', // listed
     sort: 'price', order: 'asc',
     symbol: 'WAX',
+    page: String(opts.page || 1),
     limit: String(opts.limit || 40),
   })
   if (opts.schema) p.set('schema_name', opts.schema)
