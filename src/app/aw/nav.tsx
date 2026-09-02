@@ -60,7 +60,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'teleporter', label: 'Teleporter', icon: 'teleport', slug: 'teleporter', children: [
-      { id: 'tp.all', label: 'All flows', slug: 'all', render: () => <Teleporter /> },
+      { id: 'tp.all', label: 'All flows', slug: 'all', render: p => <Teleporter {...p} /> },
     ],
   },
   {
