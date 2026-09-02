@@ -19,14 +19,16 @@ export const maxDuration = 60
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
 const ANIM_SIZE = 500          // animated frames are smaller (many frames × pixels)
-const ANIM_MAX_FRAMES = 60     // hard upper bound on frames
-const ANIM_PIXEL_BUDGET = 85_000_000 // total decoded pixels (frames × w × h) that fit serverless disk
+const ANIM_MAX_FRAMES = 48     // hard upper bound on frames
+const ANIM_PIXEL_BUDGET = 45_000_000 // decoded pixels (frames × w × h) per encode — keep small so several can run without exhausting serverless disk
+const GEN_CONCURRENCY = 2      // heavy animated encodes run at most this many at once
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
 // Bump when the thumbnail encoding changes so existing cached thumbs are
-// regenerated under a new key. a4 = ADAPTIVE frame cap (from source dimensions) so
-// large-frame animations (Magori) also fit, not just a fixed 60-frame cap.
-const THUMB_VERSION = 'a4'
+// regenerated under a new key. a5 = adaptive frame cap + limited concurrency, so
+// batches of big animations don't collectively run the disk out of space (which
+// silently dropped many cards to a static frame).
+const THUMB_VERSION = 'a5'
 
 interface ThumbRequest {
   id: string
@@ -104,28 +106,6 @@ export async function POST(request: Request) {
 
   const action = (body.action as string) || 'generate'
 
-  if (action === 'debug') {
-    const buf = await downloadImage(body.url as string)
-    if (!buf) return NextResponse.json({ err: 'download failed' })
-    const out: Record<string, unknown> = { downloaded: buf.length }
-    try {
-      const m = await sharp(buf, { animated: true, limitInputPixels: false }).metadata()
-      out.meta = { width: m.width, height: m.height, pageHeight: m.pageHeight, pages: m.pages, format: m.format }
-      const total = m.pages || 1
-      const fh = m.pageHeight || Math.round((m.height || 1000) / total)
-      const byBudget = Math.max(1, Math.floor(ANIM_PIXEL_BUDGET / ((m.width || 1000) * (fh || 1000))))
-      const pages = Math.min(total, ANIM_MAX_FRAMES, byBudget)
-      out.chosenPages = pages
-      try {
-        const b = await sharp(buf, { animated: true, pages, limitInputPixels: false })
-          .resize({ width: ANIM_SIZE, height: ANIM_SIZE, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: WEBP_QUALITY }).toBuffer()
-        out.animOk = `${Math.round(b.length / 1024)}KB`
-      } catch (e) { out.animErr = String(e).slice(0, 200) }
-    } catch (e) { out.metaErr = String(e).slice(0, 200) }
-    return NextResponse.json(out)
-  }
-
   // ── Single NFT refresh ──
   if (action === 'refresh') {
     const nft = body.nft as ThumbRequest | undefined
@@ -194,32 +174,27 @@ export async function POST(request: Request) {
     }
   }
 
-  // Generate missing thumbnails — all in flight together, not sequential
-  // batches. Each download is capped at DOWNLOAD_TIMEOUT individually, so a
-  // single slow gateway response can't stall everything behind it; running
-  // batches one after another turned that per-image cap into a per-batch one
-  // (BATCH_SIZE stragglers away from blowing Vercel's function time limit).
-  await Promise.all(toGenerate.map(async (nft) => {
+  // Generate missing thumbnails with LIMITED concurrency. Animated encodes are
+  // heavy (many frames spill to libvips temp); running them all at once exhausts
+  // the serverless disk and silently drops cards to a static frame. A small pool
+  // keeps disk/memory bounded while still overlapping downloads.
+  const genOne = async (nft: ThumbRequest) => {
     try {
       const imageBuffer = await downloadImage(nft.imageUrl!)
       if (!imageBuffer) return
-
       const thumb = await generateThumb(imageBuffer)
       if (!thumb) return
-
       const path = thumbPath(nft.chain, nft.id)
-      const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, {
-        contentType: 'image/webp',
-        upsert: true,
-      })
-
+      const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, { contentType: 'image/webp', upsert: true })
       if (!error) {
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
         thumbs[nft.id] = urlData.publicUrl
       }
-    } catch {
-      // Skip failed thumbnails silently
-    }
+    } catch { /* skip failed thumbnails silently */ }
+  }
+  const queue = [...toGenerate]
+  await Promise.all(Array.from({ length: Math.min(GEN_CONCURRENCY, queue.length) }, async () => {
+    while (queue.length) { const nft = queue.shift(); if (nft) await genOne(nft) }
   }))
 
   // No cleanup here — cleanup should be a separate admin action,
