@@ -40,8 +40,10 @@ export default function Inventory({ account, schema, label }: FeatureProps & { s
         // chunk is ready, instead of all appearing at once after one long batch.
         ;(async () => {
           setThumbsLoading(true)
-          for (let i = 0; i < list.length && !cancelled; i += 4) {
-            await fetchThumbs(list.slice(i, i + 4), account)
+          // Small chunks: heavy animated encodes are slow, so keep each request
+          // well under the serverless time limit (and let tiles stream in).
+          for (let i = 0; i < list.length && !cancelled; i += 2) {
+            await fetchThumbs(list.slice(i, i + 2), account)
           }
           if (!cancelled) setThumbsLoading(false)
         })()
