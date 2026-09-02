@@ -88,6 +88,25 @@ export async function POST(request: Request) {
 
   const action = (body.action as string) || 'generate'
 
+  // ── Temporary diagnostic: why does the animated encode fail for some sources? ──
+  if (action === 'debug') {
+    const url = body.url as string
+    const buf = await downloadImage(url)
+    if (!buf) return NextResponse.json({ err: 'download failed' })
+    const out: Record<string, unknown> = { downloaded: buf.length }
+    try { out.meta = await sharp(buf, { animated: true, limitInputPixels: false }).metadata() } catch (e) { out.metaErr = String(e) }
+    for (const size of [600, 300, 160]) {
+      try {
+        const b = await sharp(buf, { animated: true, limitInputPixels: false })
+          .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: WEBP_QUALITY }).toBuffer()
+        out[`animated_${size}`] = `ok ${b.length}`
+        break
+      } catch (e) { out[`animated_${size}_err`] = String(e).slice(0, 300) }
+    }
+    return NextResponse.json(out)
+  }
+
   // ── Single NFT refresh ──
   if (action === 'refresh') {
     const nft = body.nft as ThumbRequest | undefined
