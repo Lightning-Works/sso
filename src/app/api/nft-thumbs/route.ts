@@ -18,13 +18,15 @@ export const maxDuration = 60
 
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
+const ANIM_SIZE = 500       // animated frames are smaller (many frames × pixels)
+const ANIM_MAX_FRAMES = 60  // cap frames so libvips temp fits the serverless disk
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
 // Bump when the thumbnail encoding changes so existing cached thumbs are
-// regenerated under a new key. a1 = animation-preserving webp; a2 = also handle
-// large multi-frame sources (lift sharp's input-pixel cap) so big animated cards
-// (e.g. 12MB Elgem/Magori) animate instead of falling back to a static frame.
-const THUMB_VERSION = 'a2'
+// regenerated under a new key. a1 = animation-preserving webp; a2 = lifted sharp's
+// pixel cap; a3 = frame-capped animated encode so huge multi-frame cards (120-frame
+// 12MB Elgem/Magori) encode animated instead of erroring out to a static frame.
+const THUMB_VERSION = 'a3'
 
 interface ThumbRequest {
   id: string
@@ -61,19 +63,27 @@ async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
   // Preserve animation: read every frame ({ animated: true }) and re-encode to an
   // animated webp. Some animated files can trip the animated pipeline, so fall
   // back to a static frame rather than producing no thumbnail at all.
-  for (const animated of [true, false]) {
-    try {
-      // limitInputPixels:false so big multi-frame webps (12MB Elgem/Magori) don't
-      // blow sharp's default pixel cap and fall back to a static frame. Animated
-      // output is capped smaller to keep memory + file size reasonable.
-      const size = animated ? 600 : MAX_STATIC_SIZE
-      return await sharp(imageBuffer, { animated, limitInputPixels: false })
-        .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+  // Animated sources: cap the number of frames so libvips' temp usage fits the
+  // serverless disk (a 120-frame 1080x1440 webp otherwise fails with 'No space
+  // left on device'). Static sources / any failure fall through to a still frame.
+  try {
+    const meta = await sharp(imageBuffer, { animated: true, limitInputPixels: false }).metadata()
+    if ((meta.pages || 1) > 1) {
+      const pages = Math.min(meta.pages || 1, ANIM_MAX_FRAMES)
+      return await sharp(imageBuffer, { animated: true, pages, limitInputPixels: false })
+        .resize({ width: ANIM_SIZE, height: ANIM_SIZE, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer()
-    } catch { /* try static next */ }
+    }
+  } catch { /* fall through to a static frame */ }
+  try {
+    return await sharp(imageBuffer, { limitInputPixels: false })
+      .resize({ width: MAX_STATIC_SIZE, height: MAX_STATIC_SIZE, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: WEBP_QUALITY })
+      .toBuffer()
+  } catch {
+    return null
   }
-  return null
 }
 
 export async function POST(request: Request) {
@@ -87,26 +97,6 @@ export async function POST(request: Request) {
   }
 
   const action = (body.action as string) || 'generate'
-
-  // ── Temporary diagnostic: why does the animated encode fail for some sources? ──
-  if (action === 'debug') {
-    const url = body.url as string
-    const buf = await downloadImage(url)
-    if (!buf) return NextResponse.json({ err: 'download failed' })
-    const out: Record<string, unknown> = { downloaded: buf.length }
-    const meta = await sharp(buf, { animated: true, limitInputPixels: false }).metadata().catch(() => null)
-    out.pages = meta?.pages
-    for (const pages of [60, 40, 30, 20, 12]) {
-      try {
-        const b = await sharp(buf, { animated: true, pages, limitInputPixels: false })
-          .resize({ width: 500, height: 500, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: WEBP_QUALITY }).toBuffer()
-        out[`ok_pages_${pages}`] = `${Math.round(b.length / 1024)}KB`
-        break
-      } catch (e) { out[`err_pages_${pages}`] = String(e).slice(0, 120) }
-    }
-    return NextResponse.json(out)
-  }
 
   // ── Single NFT refresh ──
   if (action === 'refresh') {

@@ -71,7 +71,11 @@ export function AwMedia({ src, loading = false, alt = '', fit = 'cover', fill = 
         <span style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: muted }}>
           {showSpinner ? (
             <>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', border: '3px solid color-mix(in srgb, var(--aww-text-muted) 25%, transparent)', borderTopColor: 'var(--aww-primary, #b06cff)', animation: 'awspin .8s linear infinite' }} />
+              <span style={{ position: 'relative', width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* purple ring spins one way; the gold trilium counter-spins at half speed */}
+                <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid color-mix(in srgb, var(--aww-text-muted) 25%, transparent)', borderTopColor: 'var(--aww-primary, #b06cff)', animation: 'awspin .8s linear infinite' }} />
+                <img src="/aww/trilium.webp" alt="" style={{ width: 15, height: 15, animation: 'awspin 1.6s linear infinite reverse' }} />
+              </span>
               <span style={{ fontSize: '0.68rem' }}>Loading Image</span>
             </>
           ) : (
