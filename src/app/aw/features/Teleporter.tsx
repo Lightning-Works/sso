@@ -7,12 +7,15 @@
  * off to teleport.alienworlds.io (needs MetaMask + BNB). Binance→WAX and in-app
  * claiming arrive in later phases using our EVM wallet.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import s from '../aw.module.css'
 import { PageHead, Card } from '../ui/primitives'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
-import { buildTeleportActions, isEvmAddress, MIN_TLM, CLAIM_URL } from '../lib/aw/teleport'
+import { buildTeleportActions, isEvmAddress, MIN_TLM, CLAIM_URL, fetchClaimGas } from '../lib/aw/teleport'
 import type { FeatureProps } from './ctx'
+
+const fmtBnb = (n: number) => n.toFixed(n < 0.001 ? 6 : 4)
+const fmtUsd = (n: number) => (n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`)
 
 const PRIMARY = 'var(--aww-primary, #b06cff)'
 const MUTED = 'var(--aww-text-muted, #9aa)'
@@ -22,6 +25,9 @@ function WaxToBinance({ account }: { account: string }) {
   const [amount, setAmount] = useState('')
   const [status, setStatus] = useState<{ kind: 'working' | 'ok' | 'err'; msg: string } | null>(null)
   const [done, setDone] = useState(false)
+  const [gas, setGas] = useState<{ gwei: number; bnb: number; usd: number } | null>(null)
+
+  useEffect(() => { fetchClaimGas().then(setGas).catch(() => {}) }, [])
 
   const amt = parseFloat(amount)
   const addrOk = isEvmAddress(addr)
@@ -51,25 +57,31 @@ function WaxToBinance({ account }: { account: string }) {
   }
 
   return (
-    <Card title="WAX → Binance">
+    <Card title="WAX → Binance Bridge">
       <p className={s.empty} style={{ marginTop: 0 }}>
         Send Trilium from WAX to Binance Smart Chain through the Alien Worlds bridge. The WAX side is signed here; you finish by claiming on Binance (MetaMask + a little BNB for gas).
       </p>
 
-      <label style={label}>Your Binance (BSC) address</label>
-      <input style={{ ...input, borderColor: addr && !addrOk ? '#ff6b6b' : (input.border as string) }}
-        placeholder="0x…" value={addr} onChange={e => setAddr(e.target.value)} spellCheck={false} />
-      {addr && !addrOk && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 4 }}>That doesn’t look like a 0x… BSC address.</div>}
-
-      <label style={label}>Amount</label>
-      <div style={{ position: 'relative' }}>
-        <input style={input} placeholder={`Min ${MIN_TLM}`} inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} />
-        <span style={{ position: 'absolute', right: 11, top: 10, fontSize: 13, color: MUTED }}>$TLM</span>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '2 1 240px', minWidth: 0 }}>
+          <label style={label}>Your Binance (BSC) address</label>
+          <input style={{ ...input, borderColor: addr && !addrOk ? '#ff6b6b' : (input.border as string) }}
+            placeholder="0x…" value={addr} onChange={e => setAddr(e.target.value)} spellCheck={false} />
+          {addr && !addrOk && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 4 }}>That doesn’t look like a 0x… BSC address.</div>}
+        </div>
+        <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+          <label style={label}>Amount</label>
+          <div style={{ position: 'relative' }}>
+            <input style={input} placeholder={`Min ${MIN_TLM}`} inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} />
+            <span style={{ position: 'absolute', right: 11, top: 10, fontSize: 13, color: MUTED }}>$TLM</span>
+          </div>
+          {amount && !amtOk && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 4 }}>Minimum is {MIN_TLM} $TLM.</div>}
+        </div>
       </div>
-      {amount && !amtOk && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 4 }}>Minimum is {MIN_TLM} $TLM.</div>}
 
       <div style={{ fontSize: 11, color: MUTED, margin: '10px 0 12px' }}>
         A small bridge fee is deducted by the oracles on the Binance side, so the amount you claim is slightly less.
+        {gas && <> Claiming on Binance costs about <b style={{ color: 'var(--aww-text)' }}>{fmtBnb(gas.bnb)} BNB</b> ({fmtUsd(gas.usd)}) in gas at current prices.</>}
       </div>
 
       <button onClick={send} disabled={!canSend}
@@ -110,9 +122,9 @@ export default function Teleporter({ account }: FeatureProps) {
 
       {account
         ? <WaxToBinance account={account} />
-        : <Card title="WAX → Binance"><p className={s.empty} style={{ marginTop: 0 }}>Load or connect a WAX account to teleport Trilium to Binance.</p></Card>}
+        : <Card title="WAX → Binance Bridge"><p className={s.empty} style={{ marginTop: 0 }}>Load or connect a WAX account to teleport Trilium to Binance.</p></Card>}
 
-      <Card title="Binance → WAX" tag="Phase 3">
+      <Card title="Binance → WAX Bridge" tag="Phase 3">
         <ul className={s.stub}><li>Bring Trilium back from Binance to WAX. Needs the in-app Binance (EVM) wallet — coming next, reusing our existing EVM wallet code.</li></ul>
       </Card>
       <Card title="History" tag="Phase 4">

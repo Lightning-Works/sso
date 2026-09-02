@@ -34,6 +34,28 @@ export function encodeEvmAddress(a: string): string {
 
 const tlmAsset = (amount: number) => `${amount.toFixed(4)} TLM`
 
+// Rough gas for the BSC-side claim (verifies oracle signatures). Used only to
+// show the user an estimated cost — the real gas is set by MetaMask at claim time.
+export const CLAIM_GAS = 250000
+
+/** Live estimate of the Binance-side claim gas: BNB amount + USD, at current
+ *  BSC gas price and BNB price. Best-effort — returns null if either lookup fails. */
+export async function fetchClaimGas(): Promise<{ gwei: number; bnb: number; usd: number } | null> {
+  try {
+    const [gpR, pxR] = await Promise.all([
+      fetch('https://bsc-dataseed.binance.org/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }) }),
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd'),
+    ])
+    const gp = await gpR.json()
+    const px = await pxR.json()
+    const gwei = parseInt(gp.result, 16) / 1e9
+    const bnbUsd = Number(px?.binancecoin?.usd) || 0
+    const bnb = (CLAIM_GAS * gwei) / 1e9 // gas × gasPrice(gwei) ÷ 1e9 = BNB
+    if (!Number.isFinite(bnb)) return null
+    return { gwei, bnb, usd: bnb * bnbUsd }
+  } catch { return null }
+}
+
 /** The two WAX-side actions for a teleport (default destination: Binance). */
 export function buildTeleportActions(account: string, amountTlm: number, evmAddress: string, chainId: number = CHAIN_BSC): AwAction[] {
   const authorization = [{ actor: account, permission: 'active' }]
