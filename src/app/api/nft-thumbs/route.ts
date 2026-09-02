@@ -18,15 +18,15 @@ export const maxDuration = 60
 
 const BUCKET = 'nft-thumbs'
 const MAX_STATIC_SIZE = 800
-const ANIM_SIZE = 500       // animated frames are smaller (many frames × pixels)
-const ANIM_MAX_FRAMES = 60  // cap frames so libvips temp fits the serverless disk
+const ANIM_SIZE = 500          // animated frames are smaller (many frames × pixels)
+const ANIM_MAX_FRAMES = 60     // hard upper bound on frames
+const ANIM_PIXEL_BUDGET = 85_000_000 // total decoded pixels (frames × w × h) that fit serverless disk
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
 // Bump when the thumbnail encoding changes so existing cached thumbs are
-// regenerated under a new key. a1 = animation-preserving webp; a2 = lifted sharp's
-// pixel cap; a3 = frame-capped animated encode so huge multi-frame cards (120-frame
-// 12MB Elgem/Magori) encode animated instead of erroring out to a static frame.
-const THUMB_VERSION = 'a3'
+// regenerated under a new key. a4 = ADAPTIVE frame cap (from source dimensions) so
+// large-frame animations (Magori) also fit, not just a fixed 60-frame cap.
+const THUMB_VERSION = 'a4'
 
 interface ThumbRequest {
   id: string
@@ -68,8 +68,14 @@ async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
   // left on device'). Static sources / any failure fall through to a still frame.
   try {
     const meta = await sharp(imageBuffer, { animated: true, limitInputPixels: false }).metadata()
-    if ((meta.pages || 1) > 1) {
-      const pages = Math.min(meta.pages || 1, ANIM_MAX_FRAMES)
+    const total = meta.pages || 1
+    if (total > 1) {
+      // Frames that fit the disk budget for THIS source's frame size, so big-frame
+      // animations (Magori) use fewer frames rather than failing to a static frame.
+      const fw = meta.width || 1000
+      const fh = meta.pageHeight || Math.round((meta.height || 1000) / total) || 1000
+      const byBudget = Math.max(1, Math.floor(ANIM_PIXEL_BUDGET / (fw * fh)))
+      const pages = Math.min(total, ANIM_MAX_FRAMES, byBudget)
       return await sharp(imageBuffer, { animated: true, pages, limitInputPixels: false })
         .resize({ width: ANIM_SIZE, height: ANIM_SIZE, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
