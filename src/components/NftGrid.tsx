@@ -179,6 +179,9 @@ interface NftGridProps {
    *  (Alien Worlds animated webp) and cache it to IndexedDB. Opt-in — off for the
    *  main wallet so its NFTs render exactly as before. */
   animate?: boolean
+  /** When animating: thumbnails are still being fetched upstream, so tiles
+   *  without a thumbnail yet show a "Loading Image" spinner instead of "No image". */
+  thumbsLoading?: boolean
   /** Optional: intercept a normal tile click to render a custom detail view
    *  instead of the built-in lightbox. When omitted, the built-in lightbox is
    *  used (default behaviour — the SSO wallet relies on this). */
@@ -200,6 +203,7 @@ export function NftGrid({
   onLoansChanged,
   showViewTabs = true,
   animate = false,
+  thumbsLoading = false,
   onCardClick,
 }: NftGridProps) {
   // Loan action under user confirmation. null when no action pending.
@@ -900,19 +904,16 @@ export function NftGrid({
                 {animate ? (
                   nft.videoUrl && isVideoUrl(nft.videoUrl) ? (
                     <video src={nft.videoUrl} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline />
-                  ) : (refreshedThumbs[nft.id] || nft.thumbUrl || nft.imageUrl) ? (
+                  ) : (
                     <AwMedia
-                      staticSrc={refreshedThumbs[nft.id] || nft.thumbUrl || nft.imageUrl}
-                      animatedSrc={nft.imageUrl || undefined}
-                      cacheKey={nft.id}
+                      src={refreshedThumbs[nft.id] || nft.thumbUrl || null}
+                      loading={!(refreshedThumbs[nft.id] || nft.thumbUrl) && thumbsLoading}
                       alt={nft.name}
                       fit="contain"
                       fill
                       placeholder="No image"
                       style={{ width: '100%', height: '100%' }}
                     />
-                  ) : (
-                    <span className="nft-card-placeholder">No image</span>
                   )
                 ) : (refreshedThumbs[nft.id] || nft.thumbUrl) ? (
                   // key on the src: when the source changes (e.g. the cached

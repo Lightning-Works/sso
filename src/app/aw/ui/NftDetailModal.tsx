@@ -45,9 +45,7 @@ export function NftDetailModal({ nft, onClose }: { nft: AwNft; onClose: () => vo
     ? <video src={nft.videoUrl!} poster={nft.imageUrl || undefined} autoPlay loop muted playsInline style={{ width: '100%', maxHeight: '78vh', borderRadius: 10, background: '#000', objectFit: 'contain' }} />
     : (nft.thumbUrl || nft.imageUrl)
       ? <AwMedia
-          staticSrc={nft.thumbUrl || nft.imageUrl}
-          animatedSrc={nft.imageUrl}
-          cacheKey={nft.tokenId || nft.id}
+          src={nft.thumbUrl || nft.imageUrl}
           alt={nft.name}
           fit="contain"
           fill={false}

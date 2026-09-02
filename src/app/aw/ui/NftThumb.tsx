@@ -2,16 +2,14 @@
 
 /**
  * Card-shaped NFT thumbnail tile (SSO-inventory look). Thin wrapper over AwMedia:
- * shows the static thumbnail, fades in the animated original when available, and
- * (with cacheKey) caches it to IndexedDB. Falls back to a neutral placeholder,
- * never a broken-image icon.
+ * shows the (now animated) same-origin thumbnail, a "Loading Image" spinner while
+ * it loads, and a neutral placeholder on failure.
  */
 import { AwMedia } from '@/components/AwMedia'
 
-export function NftThumb({ src, animatedSrc, cacheKey, alt = '', border, placeholder = 'No image', radius = 8 }: {
+export function NftThumb({ src, loading = false, alt = '', border, placeholder = 'No image', radius = 8 }: {
   src: string | null | undefined
-  animatedSrc?: string | null
-  cacheKey?: string
+  loading?: boolean
   alt?: string
   border?: string
   placeholder?: string
@@ -19,9 +17,8 @@ export function NftThumb({ src, animatedSrc, cacheKey, alt = '', border, placeho
 }) {
   return (
     <AwMedia
-      staticSrc={src}
-      animatedSrc={animatedSrc}
-      cacheKey={cacheKey}
+      src={src}
+      loading={loading}
       alt={alt}
       fit="contain"
       fill
