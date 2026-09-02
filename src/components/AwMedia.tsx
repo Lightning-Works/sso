@@ -3,15 +3,21 @@
 /**
  * NFT media tile with animation + persistent caching.
  *
- * - Shows `staticSrc` (a fast, reliable static thumbnail) immediately.
- * - If `animatedSrc` is given (the original IPFS art, which for Alien Worlds is
- *   an animated webp the thumbnail proxy flattens), it loads in the background
- *   and fades in over the static frame once ready. On failure the static frame
- *   stays — no broken-image icon.
- * - If `cacheKey` is given (the asset id), the animated bytes are read from and
- *   written to IndexedDB, so the second view loads from the user's disk and
- *   survives a gateway outage. The inventory purges keys for sold NFTs.
- * - IPFS images retry across gateways (dweb.link → ipfs.io) before giving up.
+ * - Shows `staticSrc` (a fast, reliable static thumbnail — the same-origin proxy
+ *   webp) immediately.
+ * - If `animatedSrc` is given (the ORIGINAL IPFS art, which for Alien Worlds is
+ *   an animated webp the thumbnail proxy flattens), it is displayed the same way
+ *   the main SSO wallet does it: a PLAIN <img> pointing straight at the gateway.
+ *   Animated webps/gifs play natively in an <img>, no CORS or fetch needed, and
+ *   the browser's own HTTP cache makes repeat views instant. It fades in over the
+ *   static frame once loaded; on error we walk to the next gateway, then give up
+ *   to the static frame (never a broken-image icon).
+ * - If `cacheKey` is given, we ALSO persist the bytes to IndexedDB in the
+ *   background (best-effort fetch) and prefer that cached blob on later views, so
+ *   the art survives gateway outages. This never blocks display.
+ * - The earlier version tried to fetch()+blob the animated art for DISPLAY, which
+ *   needs CORS + a live gateway and so showed nothing during a 503 — that was the
+ *   "not animated" bug.
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { getMedia, putMedia } from '@/lib/aw/mediaCache'
@@ -39,7 +45,7 @@ export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cov
   cacheKey?: string
   alt?: string
   fit?: 'cover' | 'contain'
-  fill?: boolean       // tile mode: image fills a fixed-aspect box. false = size to image (modal).
+  fill?: boolean
   maxHeight?: string
   radius?: number
   border?: string
@@ -48,34 +54,40 @@ export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cov
 }) {
   const [cur, setCur] = useState(staticSrc)
   const [failed, setFailed] = useState(false)
-  const [animUrl, setAnimUrl] = useState<string | null>(null)
+  const [animCur, setAnimCur] = useState<string | null>(null) // displayed animated url (gateway or cached blob)
   const [animReady, setAnimReady] = useState(false)
   const objUrl = useRef<string | null>(null)
 
   useEffect(() => { setCur(staticSrc); setFailed(false) }, [staticSrc])
 
-  // Resolve the animated original: IndexedDB first, then the network (cached on success).
   useEffect(() => {
     let cancelled = false
-    setAnimReady(false); setAnimUrl(null)
+    setAnimReady(false)
     if (objUrl.current) { URL.revokeObjectURL(objUrl.current); objUrl.current = null }
-    if (!animatedSrc) return
+    // Display the original straight away via a plain <img> — animates immediately
+    // when the gateway serves it (or from the browser cache).
+    setAnimCur(animatedSrc || null)
+    if (!animatedSrc || !cacheKey) return
     ;(async () => {
-      if (cacheKey) {
-        const cached = await getMedia(cacheKey)
-        if (cached && !cancelled) { const u = URL.createObjectURL(cached); objUrl.current = u; setAnimUrl(u); return }
-      }
+      // Prefer a previously cached blob (offline, no gateway needed).
+      const cached = await getMedia(cacheKey)
+      if (cached && !cancelled) { const u = URL.createObjectURL(cached); objUrl.current = u; setAnimCur(u); return }
+      // Otherwise fetch once in the background and store for next time.
       const blob = await fetchWithFallback(animatedSrc)
-      if (!blob || cancelled) return
-      if (cacheKey) putMedia(cacheKey, blob).catch(() => {})
-      const u = URL.createObjectURL(blob); objUrl.current = u; setAnimUrl(u)
+      if (blob && !cancelled) putMedia(cacheKey, blob).catch(() => {})
     })()
     return () => { cancelled = true }
   }, [animatedSrc, cacheKey])
 
   useEffect(() => () => { if (objUrl.current) URL.revokeObjectURL(objUrl.current) }, [])
 
-  const onErr = () => { const nx = nextGateway(cur || ''); if (nx) { setCur(nx); return } setFailed(true) }
+  const onStaticErr = () => { const nx = nextGateway(cur || ''); if (nx) { setCur(nx); return } setFailed(true) }
+  const onAnimErr = () => {
+    if (animCur && animCur.startsWith('blob:')) return // cached blob shouldn't fail; ignore
+    const nx = nextGateway(animCur || '')
+    if (nx) { setAnimReady(false); setAnimCur(nx); return }
+    setAnimReady(false) // give up — the static frame stays
+  }
 
   const wrap: CSSProperties = {
     position: 'relative', overflow: 'hidden', background: 'var(--nft-thumb-bg, #1a1a1c)',
@@ -87,8 +99,8 @@ export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cov
   return (
     <div style={wrap}>
       <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'color-mix(in srgb, var(--aww-text-muted) 60%, transparent)' }}>{placeholder}</span>
-      {cur && !failed && <img src={cur} alt={alt} crossOrigin="anonymous" data-pin-nopin="true" onError={onErr} style={staticStyle} />}
-      {animUrl && <img src={animUrl} alt={alt} onLoad={() => setAnimReady(true)} onError={() => setAnimReady(false)} style={overlay} />}
+      {cur && !failed && <img src={cur} alt={alt} crossOrigin="anonymous" data-pin-nopin="true" onError={onStaticErr} style={staticStyle} />}
+      {animCur && <img src={animCur} alt={alt} data-pin-nopin="true" onLoad={() => setAnimReady(true)} onError={onAnimErr} style={overlay} />}
     </div>
   )
 }
