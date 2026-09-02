@@ -39,6 +39,14 @@ async function fetchWithFallback(url: string): Promise<Blob | null> {
   return null
 }
 
+/** Force an ipfs url onto ipfs.io — the gateway the SSO wallet uses, so the
+ *  animated original hits the same browser-cache entry and displays instantly. */
+function toIpfsIo(url: string | null | undefined): string | null {
+  if (!url) return null
+  const m = url.match(/^https:\/\/[^/]+\/ipfs\/(.+)$/)
+  return m ? `https://ipfs.io/ipfs/${m[1]}` : url
+}
+
 export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cover', fill = true, maxHeight, radius, border, placeholder = 'No image', style }: {
   staticSrc: string | null | undefined
   animatedSrc?: string | null
@@ -65,8 +73,9 @@ export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cov
     setAnimReady(false)
     if (objUrl.current) { URL.revokeObjectURL(objUrl.current); objUrl.current = null }
     // Display the original straight away via a plain <img> — animates immediately
-    // when the gateway serves it (or from the browser cache).
-    setAnimCur(animatedSrc || null)
+    // when the gateway serves it (or from the browser cache). Request ipfs.io
+    // first (matches the SSO wallet) so it reuses the same cached bytes.
+    setAnimCur(toIpfsIo(animatedSrc))
     if (!animatedSrc || !cacheKey) return
     ;(async () => {
       // Prefer a previously cached blob (offline, no gateway needed).
@@ -83,10 +92,11 @@ export function AwMedia({ staticSrc, animatedSrc, cacheKey, alt = '', fit = 'cov
 
   const onStaticErr = () => { const nx = nextGateway(cur || ''); if (nx) { setCur(nx); return } setFailed(true) }
   const onAnimErr = () => {
-    if (animCur && animCur.startsWith('blob:')) return // cached blob shouldn't fail; ignore
-    const nx = nextGateway(animCur || '')
-    if (nx) { setAnimReady(false); setAnimCur(nx); return }
-    setAnimReady(false) // give up — the static frame stays
+    if (!animCur || animCur.startsWith('blob:')) return // cached blob shouldn't fail; ignore
+    // ipfs.io first, then dweb.link, then give up (static frame stays).
+    const m = animCur.match(/^https:\/\/([^/]+)\/ipfs\/(.+)$/)
+    if (m && m[1].includes('ipfs.io')) { setAnimReady(false); setAnimCur(`https://dweb.link/ipfs/${m[2]}`); return }
+    setAnimReady(false)
   }
 
   const wrap: CSSProperties = {
