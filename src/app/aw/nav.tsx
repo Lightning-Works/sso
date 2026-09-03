@@ -17,6 +17,7 @@ import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
 import Shine from './features/Shine'
 import Shards from './features/Shards'
+import Assistant from './features/Assistant'
 import BuyTrilium from './features/BuyTrilium'
 import Teleporter from './features/Teleporter'
 import AutoMine from './features/AutoMine'
@@ -108,7 +109,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'assistant', label: 'Assistant', icon: 'robot', slug: 'assistant', children: [
-      { id: 'asst.chat', label: 'Chat', slug: 'chat', render: stub('kept', 'Assistant', ['Your built-in AI character and wallet helper.'], ['Open chat']) },
+      { id: 'asst.chat', label: 'Chat', slug: 'chat', render: () => <Assistant /> },
     ],
   },
   {
