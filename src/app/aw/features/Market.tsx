@@ -1,39 +1,36 @@
 'use client'
 
 /**
- * Marketplace — template-first ("stacked"): one card per design showing its art,
- * how many are listed, and the floor price; clicking drills into that design's
- * individual listings (paginated) where you can Buy. Images are keyed by template
- * so we never re-download the same art across thousands of identical mints.
- * A ?template deep-link (from Shine's "Buy More Here") opens a design directly.
+ * Marketplace — template-first ("stacked"): one card per design (art, how many
+ * listed, floor). Clicking a design drills into its individual listings as a card
+ * grid, each openable in the detail modal and buyable, with column control and
+ * pagination. Art is keyed by template so identical mints reuse one cached image.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import s from '../aw.module.css'
 import { Card, Empty, PageHead } from '../ui/primitives'
 import { NftThumb } from '../ui/NftThumb'
 import { ShineBadge } from '@/components/ShineBadge'
-import { fetchTemplateStacks, fetchListings, type TemplateStack, type Listing } from '../lib/aw/market'
+import { NftDetailModal } from '../ui/NftDetailModal'
+import { fetchTemplateStacks, fetchTemplateListings, type TemplateStack, type SaleNft } from '../lib/aw/market'
 import { buildBuyActions } from '../lib/aw/buyTool'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
 import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import { usePrices } from '../lib/aw/usePrices'
 import type { NftItem } from '@/components/NftGrid'
 
-const PRIMARY = 'var(--aww-primary, #b06cff)'
 const MUTED = 'var(--aww-text-muted, #9aa)'
-const PAGE = 24
+const STACK_PAGE = 24
+const DRILL_PAGE = 24
+const COL_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 15, 20]
 const price = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
-
-type BuyState = { saleId: string; stage: 'confirm' | 'working' | 'done' | 'err'; msg?: string }
 const templateFromUrl = (): number | null => { try { const v = new URLSearchParams(window.location.search).get('template'); return v ? Number(v) || null : null } catch { return null } }
 
 export default function Market({ schema, label }: { schema?: string; label?: string }) {
   const [drill, setDrill] = useState<number | null>(null)
   const prices = usePrices()
-  const usd = (wax: number) => (prices?.wax ? wax * prices.wax : null)
-  const usdText = (wax: number) => { const v = usd(wax); return v == null ? '' : (v >= 0.01 ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${v.toFixed(4)}`) }
+  const usdText = (wax: number) => { const v = prices?.wax ? wax * prices.wax : null; return v == null ? '' : (v >= 0.01 ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${v.toFixed(4)}`) }
 
-  // A ?template deep-link opens that design directly; also react to back/forward.
   useEffect(() => {
     const read = () => setDrill(templateFromUrl())
     read()
@@ -61,6 +58,19 @@ function basePath(schema?: string): string {
     : '/aw/market'
 }
 
+/** Responsive column count: honor the choice, but cap to what fits the width. */
+function useGridCols(selected: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [w, setW] = useState(0)
+  useEffect(() => {
+    const el = ref.current; if (!el) return
+    const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
+    ro.observe(el); return () => ro.disconnect()
+  }, [])
+  const cols = w > 0 ? Math.max(1, Math.min(selected, Math.floor(w / 64))) : selected
+  return { ref, cols }
+}
+
 // ─────────────────────────── Stacked view ───────────────────────────
 function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: number) => void; usdText: (n: number) => string }) {
   const [page, setPage] = useState(1)
@@ -72,8 +82,7 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
   useEffect(() => { setPage(1) }, [schema])
   useEffect(() => {
     setLoading(true); setError('')
-    fetchTemplateStacks({ schema, page, limit: PAGE })
-      .then(setStacks).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
+    fetchTemplateStacks({ schema, page, limit: STACK_PAGE }).then(setStacks).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
   }, [schema, page])
 
   const items = useMemo<NftItem[]>(() => (stacks || []).map(t => ({ id: String(t.templateId), name: t.name, imageUrl: t.img, chain: 'WAX', collection: 'Alien Worlds' })), [stacks])
@@ -106,79 +115,102 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
                 </button>
               ))}
             </div>
-            <Pager page={page} setPage={setPage} hasNext={stacks.length === PAGE} loading={loading} />
+            <Pager page={page} setPage={setPage} hasNext={stacks.length === STACK_PAGE} loading={loading} />
           </>
         )}
     </Card>
   )
 }
 
-// ─────────────────────────── Drill-down ───────────────────────────
+// ─────────────────────────── Drill-down (card grid) ───────────────────────────
 function DrillView({ templateId, onBack, usdText }: { templateId: number; onBack: () => void; usdText: (n: number) => string }) {
   const [page, setPage] = useState(1)
-  const [rows, setRows] = useState<Listing[] | null>(null)
+  const [nfts, setNfts] = useState<SaleNft[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [buy, setBuy] = useState<BuyState | null>(null)
+  const [buy, setBuy] = useState<{ saleId: string; stage: 'confirm' | 'working' | 'done' | 'err'; msg?: string } | null>(null)
+  const [selected, setSelected] = useState<SaleNft | null>(null)
+  const [cols, setCols] = useState(6)
+  const { fetchThumbs, applyThumbs, thumbsLoading } = useThumbnails()
+  const grid = useGridCols(cols)
+
+  useEffect(() => { try { const v = Number(localStorage.getItem('aww-market-cols')); if (COL_OPTIONS.includes(v)) setCols(v) } catch { /* ignore */ } }, [])
+  const chooseCols = (c: number) => { setCols(c); try { localStorage.setItem('aww-market-cols', String(c)) } catch { /* ignore */ } }
 
   useEffect(() => { setPage(1) }, [templateId])
   useEffect(() => {
     setLoading(true); setError('')
-    fetchListings({ templateId, page, limit: 20 })
-      .then(setRows).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
+    fetchTemplateListings(templateId, page, DRILL_PAGE).then(setNfts).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
   }, [templateId, page])
 
-  const onBuy = useCallback(async (r: Listing) => {
+  // All listings share ONE design image → fetch a single thumbnail for the template.
+  const one = nfts?.[0]
+  useEffect(() => { if (one?.imageUrl) fetchThumbs([{ id: String(templateId), name: one.name, imageUrl: one.imageUrl, chain: 'WAX', collection: 'Alien Worlds' }], 'aww-market') }, [templateId, one, fetchThumbs])
+  const tImg = useMemo(() => applyThumbs([{ id: String(templateId), name: one?.name || '', imageUrl: one?.imageUrl ?? null, chain: 'WAX', collection: 'Alien Worlds' }])[0]?.thumbUrl || null, [templateId, one, applyThumbs])
+
+  const onBuy = useCallback(async (r: SaleNft) => {
     const armed = buy?.saleId === r.saleId && buy.stage === 'confirm'
     if (!armed) { setBuy({ saleId: r.saleId, stage: 'confirm' }); return }
     setBuy({ saleId: r.saleId, stage: 'working' })
     try {
       if (!currentAccount()) await connectWax()
       const acct = currentAccount(); if (!acct) throw new Error('Connect your WAX wallet to buy')
-      await transact(buildBuyActions(acct, r.saleId, r.price))
+      await transact(buildBuyActions(acct, r.saleId, r.priceWax))
       setBuy({ saleId: r.saleId, stage: 'done' })
-      setTimeout(() => { setRows(prev => (prev || []).filter(x => x.saleId !== r.saleId)); setBuy(null) }, 1600)
+      setTimeout(() => { setNfts(prev => (prev || []).filter(x => x.saleId !== r.saleId)); setBuy(null) }, 1600)
     } catch (e) { setBuy({ saleId: r.saleId, stage: 'err', msg: e instanceof Error ? e.message : 'Buy failed' }) }
   }, [buy])
 
-  const name = rows?.[0]?.name || `Template ${templateId}`
-  const img = rows?.[0]?.imageUrl
+  const name = one?.name || `Template ${templateId}`
 
   return (
     <Card tag="live · AtomicMarket">
-      <button onClick={onBack} className={`${s.btn} ${s.btnGhost}`} style={{ marginBottom: 12 }}>← All designs</button>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ width: 72, flexShrink: 0 }}><NftThumb src={img} loading={loading} alt={name} radius={8} /></div>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--aww-text)' }}>{name}</div>
-          <div style={{ fontSize: 12, color: MUTED }}>Individual listings, cheapest first</div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button onClick={onBack} className={`${s.btn} ${s.btnGhost}`}>← All designs</button>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--aww-text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+        <label style={{ fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Columns
+          <select value={cols} onChange={e => chooseCols(Number(e.target.value))}
+            style={{ background: 'color-mix(in srgb, var(--aww-text-muted) 10%, transparent)', color: 'var(--aww-text)', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 25%, transparent)', borderRadius: 6, padding: '4px 6px', fontSize: 12 }}>
+            {COL_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
       </div>
 
-      {loading && !rows ? <Empty text="Loading listings…" />
+      {loading && !nfts ? <Empty text="Loading listings…" />
         : error ? <p className={s.err}>⚠ {error}</p>
-        : !rows || rows.length === 0 ? <Empty text="No listings on this page." />
+        : !nfts || nfts.length === 0 ? <Empty text="No listings on this page." />
         : (
           <>
-            <div className={s.list}>
-              {rows.map(r => {
+            <div ref={grid.ref} style={{ display: 'grid', gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`, gap: 10 }}>
+              {nfts.map(r => {
                 const b = buy?.saleId === r.saleId ? buy : null
-                const btn = b?.stage === 'working' ? 'Buying…' : b?.stage === 'done' ? 'Bought ✓' : b?.stage === 'confirm' ? `Confirm • ${price(r.price)} $WAX` : 'Buy'
+                const btn = b?.stage === 'working' ? 'Buying…' : b?.stage === 'done' ? 'Bought ✓' : b?.stage === 'confirm' ? 'Confirm' : 'Buy'
                 return (
-                  <div key={r.saleId} className={s.listRow}>
-                    <b>{price(r.price)} $WAX <span style={{ color: '#7fc8ff', fontWeight: 600, fontSize: 12 }}>{usdText(r.price)}</span></b>
-                    <span className={s.listMeta}>seller {r.seller}</span>
-                    <span>
-                      <button className={`${s.btn} ${b?.stage === 'confirm' ? s.btnPrimary : s.btnGhost}`} disabled={b?.stage === 'working' || b?.stage === 'done'} onClick={() => onBuy(r)}>{btn}</button>
-                      {b?.stage === 'err' && <span style={{ display: 'block', fontSize: 10, color: '#ff6b6b', marginTop: 3 }}>{b.msg}</span>}
-                    </span>
+                  <div key={r.saleId} onClick={() => setSelected(r)}
+                    style={{ background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+                    <NftThumb src={tImg} loading={!tImg && thumbsLoading} alt={r.name} radius={0} />
+                    <div style={{ padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {cols <= 8 && <div style={{ fontSize: 11, color: MUTED }}>Mint #{r.mintNumber || '—'}</div>}
+                      <div style={{ fontSize: 12, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.priceWax)} $WAX</div>
+                      {cols <= 10 && usdText(r.priceWax) && <div style={{ fontSize: 10, color: '#7fc8ff' }}>{usdText(r.priceWax)}</div>}
+                      <button className={`${s.btn} ${b?.stage === 'confirm' ? s.btnPrimary : s.btnGhost}`} style={{ marginTop: 2, fontSize: 11, padding: '3px 6px' }}
+                        disabled={b?.stage === 'working' || b?.stage === 'done'}
+                        onClick={(e) => { e.stopPropagation(); onBuy(r) }}
+                        title={b?.stage === 'confirm' ? `Confirm ${price(r.priceWax)} $WAX` : 'Buy'}>
+                        {btn}
+                      </button>
+                      {b?.stage === 'err' && <div style={{ fontSize: 9, color: '#ff6b6b' }}>{b.msg}</div>}
+                    </div>
                   </div>
                 )
               })}
             </div>
-            <Pager page={page} setPage={setPage} hasNext={rows.length === 20} loading={loading} />
+            <Pager page={page} setPage={setPage} hasNext={nfts.length === DRILL_PAGE} loading={loading} />
           </>
         )}
+
+      {selected && <NftDetailModal nft={selected} onClose={() => setSelected(null)} />}
     </Card>
   )
 }

@@ -9,6 +9,7 @@
  */
 
 import type { Tool } from './tools'
+import type { AwNft } from './nftItems'
 
 export type Listing = {
   saleId: string
@@ -131,6 +132,58 @@ export async function fetchTemplateStacks(opts: { schema?: string; page?: number
     } catch { /* leave 0 */ }
   }))
   return base
+}
+
+/** A for-sale NFT enriched to the full NFT shape (for the detail modal) plus its sale. */
+export type SaleNft = AwNft & { saleId: string; priceWax: number }
+
+/**
+ * Individual listings of ONE template as rich NFT cards (openable in the detail
+ * modal). All share the same design art — the caller keys the thumbnail by
+ * template so the identical image is fetched once, not per mint.
+ */
+export async function fetchTemplateListings(templateId: number, page = 1, limit = 24): Promise<SaleNft[]> {
+  const p = new URLSearchParams({
+    collection_name: 'alien.worlds', template_id: String(templateId), state: '1', symbol: 'WAX',
+    sort: 'price', order: 'asc', page: String(page), limit: String(limit),
+  })
+  const r = await fetch(`${AMKT}/sales?${p.toString()}`)
+  if (!r.ok) throw new Error('failed to load listings')
+  const d = await r.json()
+  return ((d.data || []) as Record<string, unknown>[]).map(s => {
+    const asset = ((s.assets as Record<string, unknown>[]) || [{}])[0] || {}
+    const tpl = (asset.template as Record<string, unknown>) || {}
+    const sch = (asset.schema as Record<string, unknown>) || {}
+    const coll = (asset.collection as Record<string, unknown>) || {}
+    const im = { ...((tpl.immutable_data as Record<string, unknown>) || {}), ...((asset.data as Record<string, unknown>) || {}) }
+    const priceObj = (s.price as Record<string, unknown>) || {}
+    const mintedMs = asset.minted_at_time ? Number(asset.minted_at_time) : 0
+    return {
+      id: String(asset.asset_id || s.sale_id || ''),
+      tokenId: String(asset.asset_id || ''),
+      name: String(asset.name || im.name || 'NFT'),
+      imageUrl: imgUrl(im.img ?? im.image),
+      thumbUrl: null,
+      videoUrl: imgUrl(im.video),
+      collection: String(coll.name || 'Alien Worlds'),
+      description: im.description ? String(im.description) : null,
+      rarity: (im.rarity as string) || (im.shine as string) || null,
+      shine: (im.shine as string) || null,
+      mintNumber: (asset.template_mint as string) || null,
+      maxSupply: tpl.max_supply ? String(tpl.max_supply) : null,
+      chain: 'WAX',
+      externalUrl: `https://wax.atomichub.io/explorer/asset/wax-mainnet/${asset.asset_id}`,
+      schema: String(sch.schema_name || ''),
+      templateId: tpl.template_id ? String(tpl.template_id) : null,
+      mintedAt: mintedMs ? new Date(mintedMs).toISOString() : null,
+      owner: String(asset.owner || s.seller || ''),
+      floorWax: null,
+      raw: im,
+      attributes: Object.entries(im).map(([key, value]) => ({ key, value: String(value) })),
+      saleId: String(s.sale_id || ''),
+      priceWax: Number(priceObj.amount || 0) / 10 ** (Number(priceObj.token_precision) || 8),
+    } as SaleNft
+  })
 }
 
 export async function fetchListings(opts: { schema?: string; limit?: number; templateId?: number; page?: number } = {}): Promise<Listing[]> {
