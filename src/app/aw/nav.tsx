@@ -109,7 +109,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'assistant', label: 'Assistant', icon: 'robot', slug: 'assistant', children: [
-      { id: 'asst.chat', label: 'Chat', slug: 'chat', render: () => <Assistant /> },
+      { id: 'asst.chat', label: 'Chat', slug: 'chat', render: p => <Assistant {...p} /> },
     ],
   },
   {
