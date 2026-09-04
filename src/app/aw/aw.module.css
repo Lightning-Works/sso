@@ -855,7 +855,20 @@
 .gateSub { color: var(--aww-text-dim); font-size: 13px; margin: 8px 0 18px; }
 
 /* ---------- Syndicate planet cards (video on top, details below) ---------- */
-.synGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.synGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 780px) { .synGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .synGrid { grid-template-columns: 1fr; } }
+
+/* 3-across grid for the planet tokens (two rows of three). */
+.triGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 780px) { .triGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .triGrid { grid-template-columns: 1fr; } }
+
+/* Wide coin cards (WAX / TLM) with the coin logo on the left. */
+.coinGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.coinCard { display: flex; align-items: center; gap: 14px; }
+.coinIcon { position: relative; z-index: 1; width: 46px; height: 46px; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 0 8px var(--aww-glow)); }
+.coinText { position: relative; z-index: 1; min-width: 0; }
 .synCard {
   position: relative;
   text-align: left; padding: 1.5px; cursor: pointer;
