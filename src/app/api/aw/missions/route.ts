@@ -26,10 +26,13 @@ const ipfs = (u: unknown): string | null => {
 }
 async function fetchIpfsJson(cid: string): Promise<Record<string, unknown> | null> {
   for (const g of GATEWAYS) {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 9000)
     try {
-      const r = await fetch(g + cid, { signal: AbortSignal.timeout(8000) })
+      const r = await fetch(g + cid, { signal: ctrl.signal, headers: { accept: 'application/json' } })
+      clearTimeout(t)
       if (r.ok) return await r.json()
-    } catch { /* next gateway */ }
+    } catch { clearTimeout(t) /* next gateway */ }
   }
   return null
 }
