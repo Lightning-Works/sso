@@ -22,7 +22,11 @@ const groupOf = (childId: string): NavGroup =>
 // Starblind Metaverse game (in build by a separate agent). Embedded as a
 // fullscreen iframe. Set the real URL here (or via NEXT_PUBLIC_METAVERSE_URL)
 // once the game's host is ready — see docs/METAVERSE_EMBED_SPEC.md.
-const METAVERSE_URL = process.env.NEXT_PUBLIC_METAVERSE_URL || 'https://starblind.io'
+// Starblink, the hex land world. Its own app on its own origin (repo: geoff/starblink), which
+// serves `Content-Security-Policy: frame-ancestors https://sso.lightningworks.io http://localhost:3000`
+// and no X-Frame-Options, so it may be framed from here.
+// NOTE the spelling: Starblink, not Starblind. Starblind is a different Lightning Works site.
+const METAVERSE_URL = process.env.NEXT_PUBLIC_METAVERSE_URL || 'https://starblink.pages.dev'
 const METAVERSE_ORIGIN = (() => { try { return new URL(METAVERSE_URL).origin } catch { return '' } })()
 
 export default function AwwApp() {
