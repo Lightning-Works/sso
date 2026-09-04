@@ -12,6 +12,7 @@ import { PLANETS } from './lib/waxData'
 import Balances from './features/Balances'
 import Staking from './features/Staking'
 import DiviGoConnect from './features/DiviGoConnect'
+import MetaMaskConnect from './features/MetaMaskConnect'
 import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
@@ -43,6 +44,7 @@ export const NAV: NavGroup[] = [
       { id: 'wallet.receive', label: 'Receive', slug: 'receive', render: stub('Phase 1', 'Receive', ['Show your account name and a QR code to receive tokens.']) },
       { id: 'wallet.activity', label: 'Activity', slug: 'activity', render: stub('Phase 1', 'Activity', ['Recent transactions on your account.']) },
       { id: 'wallet.divigo', label: 'DiviGo (Telegram)', slug: 'divigo', render: () => <DiviGoConnect /> },
+      { id: 'wallet.metamask', label: 'Binance (MetaMask)', slug: 'metamask', render: () => <MetaMaskConnect /> },
     ],
   },
   {
