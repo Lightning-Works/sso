@@ -30,8 +30,8 @@ export default function Assistant({ account }: FeatureProps) {
     st.textContent = `
       .as-row{display:flex;align-items:stretch}
       .as-panel{flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid var(--aww-border,rgba(255,255,255,.12));border-radius:14px;overflow:hidden;background:#14141c;min-height:560px;box-shadow:0 0 40px color-mix(in srgb,var(--aww-primary,#8b5cf6) 20%,transparent)}
-      .as-side{display:none;align-self:flex-end;margin-left:-55px;z-index:5;pointer-events:none;flex-shrink:0}
-      .as-side img{height:min(70vh,620px);object-fit:contain;display:block;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55))}
+      .as-side{display:none;align-self:flex-end;margin-left:-70px;z-index:5;pointer-events:none;flex-shrink:0}
+      .as-side img{height:min(56vh,496px);object-fit:contain;display:block;transform:translateX(52px);filter:drop-shadow(0 8px 26px rgba(0,0,0,.55))}
       @media(min-width:1024px){.as-side{display:block}}
     `
     document.head.appendChild(st)
