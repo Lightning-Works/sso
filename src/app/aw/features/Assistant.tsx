@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHead } from '../ui/primitives'
-import { CHARACTERS, askCharacter, type CharDef, type CharStyle } from '../lib/aw/skylie'
+import { CHARACTERS, askCharacter, fetchCharacterStyle, type CharDef, type CharStyle } from '../lib/aw/skylie'
 import type { FeatureProps } from './ctx'
 
 type Msg = { role: 'me' | 'char'; text: string }
@@ -37,10 +37,15 @@ export default function Assistant({ account }: FeatureProps) {
     document.head.appendChild(st)
   }, [])
 
-  // Reset conversation + style when switching character.
+  // Reset conversation + style when switching character. Pull the character's REAL
+  // bubble colours/font/avatar from the API on mount (a free __init__ handshake),
+  // so the bubbles are right before the first reply — not the placeholder colours.
   useEffect(() => {
+    let cancelled = false
     setStyle(active.style)
     setMsgs([{ role: 'char', text: active.ready ? `Hi, I’m ${active.name} — your guide to Alien Worlds. Ask me anything about mining, tools, shining, shards, syndicates, the bridge, or your wallet.` : `${active.name} isn’t connected yet — the chat key is on the way. Chat with Skylie in the meantime.` }])
+    if (active.ready) fetchCharacterStyle(active.apiKey).then(live => { if (!cancelled && live && Object.keys(live).length) setStyle(s => ({ ...s, ...live })) })
+    return () => { cancelled = true }
   }, [active])
 
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }) }, [msgs, busy])
@@ -101,7 +106,8 @@ export default function Assistant({ account }: FeatureProps) {
                   border={m.role === 'me' ? 'color-mix(in srgb, var(--aww-primary,#8b5cf6) 55%, transparent)' : border}
                   inner={m.role === 'me' ? 'transparent' : inner}
                   color={m.role === 'me' ? 'var(--aww-text)' : textColor}
-                  font={style.bubbleFontFamily} />
+                  font={style.bubbleFontFamily}
+                  size={m.role === 'me' ? undefined : style.bubbleFontSize} />
               </div>
             ))}
             {busy && <div style={{ marginLeft: 42, fontSize: 13, fontStyle: 'italic', color: 'var(--aww-text-muted,#9aa)' }}>{active.name} is thinking…</div>}
@@ -139,7 +145,7 @@ function CharAvatar({ style }: { style: CharStyle }) {
   )
 }
 
-function Bubble({ side, text, bg, border, inner, color, font }: { side: 'left' | 'right'; text: string; bg: string; border: string; inner: string; color: string; font?: string }) {
+function Bubble({ side, text, bg, border, inner, color, font, size }: { side: 'left' | 'right'; text: string; bg: string; border: string; inner: string; color: string; font?: string; size?: number }) {
   const tail: React.CSSProperties = side === 'left'
     ? { left: -7, borderRight: `8px solid ${border}` }
     : { right: -7, borderLeft: `8px solid ${border}` }
@@ -147,7 +153,7 @@ function Bubble({ side, text, bg, border, inner, color, font }: { side: 'left' |
     <div style={{
       position: 'relative', maxWidth: '76%', background: bg, color, border: `2px solid ${border}`,
       boxShadow: inner !== 'transparent' ? `inset 0 0 0 1px ${inner}` : 'none',
-      borderRadius: 14, padding: '9px 13px', fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+      borderRadius: 14, padding: '9px 13px', fontSize: size || 14, lineHeight: 1.5, whiteSpace: 'pre-wrap',
       fontFamily: font || 'inherit',
     }}>
       {text}
