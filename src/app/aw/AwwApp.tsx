@@ -29,6 +29,11 @@ const groupOf = (childId: string): NavGroup =>
 const METAVERSE_URL = process.env.NEXT_PUBLIC_METAVERSE_URL || 'https://starblink.pages.dev'
 const METAVERSE_ORIGIN = (() => { try { return new URL(METAVERSE_URL).origin } catch { return '' } })()
 
+// The metaverse overlay gets its own URL, so it can be linked, bookmarked and closed with the
+// browser's Back button. /aw is an optional catch-all route, so this path already resolves to this
+// same shell; no new route file is needed.
+const METAVERSE_PATH = '/aw/metaverse'
+
 export default function AwwApp() {
   const { skinId, vars, setToken, applySkin, reset, importVars } = useTheme()
 
@@ -45,7 +50,7 @@ export default function AwwApp() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
-  const [metaverseOpen, setMetaverseOpen] = useState(false)
+  const [metaverseOpen, setMetaverseOpen] = useState(() => (pathname || '') === METAVERSE_PATH)
   const [navOpen, setNavOpen] = useState(false)
   const [isFrame, setIsFrame] = useState(false)
   const [isSuper, setIsSuper] = useState(false)
@@ -168,6 +173,10 @@ export default function AwwApp() {
   // Keep in sync with browser back/forward.
   useEffect(() => {
     const onPop = () => {
+      // Back/forward onto (or off) the metaverse URL just opens or closes the overlay; it is not
+      // a nav child, so mapping it through childForPath would silently jump the page underneath.
+      if (window.location.pathname === METAVERSE_PATH) { setMetaverseOpen(true); return }
+      setMetaverseOpen(false)
       const id = childForPath(segsOf(window.location.pathname))
       setActive(id)
       setExpanded(prev => new Set(prev).add(groupOf(id).id))
@@ -175,6 +184,22 @@ export default function AwwApp() {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  // Opening and closing the metaverse pushes/pops its URL, using the same History-API approach
+  // the nav uses — no Next navigation, so the session, holdings and wallet connection survive.
+  const openMetaverse = useCallback(() => {
+    setMetaverseOpen(true)
+    if (typeof window !== 'undefined' && window.location.pathname !== METAVERSE_PATH) {
+      window.history.pushState(null, '', METAVERSE_PATH)
+    }
+  }, [])
+
+  const closeMetaverse = useCallback(() => {
+    setMetaverseOpen(false)
+    if (typeof window !== 'undefined' && window.location.pathname === METAVERSE_PATH) {
+      window.history.pushState(null, '', pathForChild(active))
+    }
+  }, [active])
 
   const onGroup = (g: NavGroup) => {
     if (expanded.has(g.id)) {
@@ -204,7 +229,7 @@ export default function AwwApp() {
         <div className={s.brand}>
           <img src="/aww/aw-logo.webp" alt="Alien Worlds Community" className={s.brandLogo} />
         </div>
-        <button className={s.metaverseBtn} onClick={() => setMetaverseOpen(true)} title="Enter the Starblind Metaverse">
+        <button className={s.metaverseBtn} onClick={openMetaverse} title="Enter the Starblink Metaverse">
           ENTER THE METAVERSE
         </button>
 
@@ -303,7 +328,7 @@ export default function AwwApp() {
       {metaverseOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5000, background: '#05030f', display: 'flex', flexDirection: 'column' }}>
           <button
-            onClick={() => setMetaverseOpen(false)}
+            onClick={closeMetaverse}
             style={{ position: 'absolute', top: 12, right: 14, zIndex: 2, background: 'rgba(0,0,0,.55)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', borderRadius: 9, padding: '6px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
           >
             ✕ Close
@@ -311,7 +336,7 @@ export default function AwwApp() {
           <iframe
             ref={metaFrame}
             src={METAVERSE_URL}
-            title="Starblind Metaverse"
+            title="Starblink Metaverse"
             allow="fullscreen; gamepad; microphone; autoplay; xr-spatial-tracking; clipboard-write; pointer-lock"
             onLoad={sendMetaverseIdentity}
             style={{ flex: 1, width: '100%', border: 'none', display: 'block' }}
