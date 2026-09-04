@@ -6,15 +6,32 @@ import { NextResponse } from 'next/server'
  * the Pinata gateway blocks cross-origin JSON fetches from the browser).
  */
 const API = 'https://api.alienworlds.io/v1/missions/missions?page[limit]=100&page[number]=0&page[order]=desc'
-const GATE = 'https://alienworlds.mypinata.cloud/ipfs/'
+// Mission reward metadata lives on the wider IPFS network (the AW Pinata gateway
+// returns empty for these CIDs); dweb.link/ipfs.io resolve it (server follows the
+// 301 to the subdomain gateway automatically).
+const GATEWAYS = ['https://dweb.link/ipfs/', 'https://ipfs.io/ipfs/']
 
 export const revalidate = 60 // cache the enriched list for a minute
 
+const cidOf = (u: unknown): string | null => {
+  const s = typeof u === 'string' ? u : ''
+  if (!s) return null
+  return s.replace(/^ipfs:\/\//, '').replace(/^ipfs\//, '')
+}
 const ipfs = (u: unknown): string | null => {
   const s = typeof u === 'string' ? u : ''
   if (!s) return null
   if (s.startsWith('http')) return s
-  return GATE + s.replace(/^ipfs:\/\//, '').replace(/^ipfs\//, '')
+  return GATEWAYS[0] + cidOf(s)
+}
+async function fetchIpfsJson(cid: string): Promise<Record<string, unknown> | null> {
+  for (const g of GATEWAYS) {
+    try {
+      const r = await fetch(g + cid, { signal: AbortSignal.timeout(8000) })
+      if (r.ok) return await r.json()
+    } catch { /* next gateway */ }
+  }
+  return null
 }
 function timeLeft(sec: number): string {
   if (sec <= 0) return 'now'
@@ -61,12 +78,12 @@ export async function GET() {
     missions = missions.slice(0, 30)
 
     await Promise.all(missions.map(async m => {
-      if (!m.nftTokenURI) return
-      try {
-        const meta = await fetch(ipfs(m.nftTokenURI)!, { signal: AbortSignal.timeout(8000) }).then(r => r.json())
-        m.rewardName = meta.name || null
-        m.rewardImg = ipfs(meta.image ?? meta.img)
-      } catch { /* leave null */ }
+      const cid = cidOf(m.nftTokenURI)
+      if (!cid) return
+      const meta = await fetchIpfsJson(cid)
+      if (!meta) return
+      m.rewardName = (meta.name as string) || null
+      m.rewardImg = ipfs(meta.image ?? meta.img)
     }))
 
     return NextResponse.json({ missions: missions.map(({ nftTokenURI: _drop, ...m }) => m) })
