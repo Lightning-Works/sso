@@ -55,7 +55,7 @@ const ASH_STYLE: CharStyle = {
 }
 
 export const CHARACTERS: CharDef[] = [
-  { id: 'skylie', name: 'Skylie', apiKey: 'kinet_sHDSunxqq48ym0tVFiS61DotKZSfaitYWHL9xkAefWOJWG12', sideImg: `${STORAGE_BASE}/app_side_image/skylie_side_img_1800px.webp`, ready: true, style: SKYLIE_STYLE },
+  { id: 'skylie', name: 'Skylie', apiKey: 'kinet_sHDSunxqq48ym0tVFiS61DotKZSfaitYWHL9xkAefWOJWG12', sideImg: '/aww/skylie_side_anim.webp', ready: true, style: SKYLIE_STYLE },
   { id: 'ash', name: 'Ash', apiKey: 'kinet_7hum8THxYcMgy0PcahdF9QQglNgsYLWIeoSSrovFoOt6W22R', sideImg: `${STORAGE_BASE}/app_side_image/ash_side_img_1800px.webp`, ready: true, style: ASH_STYLE },
 ]
 
