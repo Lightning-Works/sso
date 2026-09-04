@@ -13,6 +13,7 @@ import Balances from './features/Balances'
 import Staking from './features/Staking'
 import DiviGoConnect from './features/DiviGoConnect'
 import MetaMaskConnect from './features/MetaMaskConnect'
+import Missions from './features/Missions'
 import Syndicates from './features/Syndicates'
 import PlanetDetail from './features/PlanetDetail'
 import Inventory from './features/Inventory'
@@ -79,7 +80,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'missions', label: 'Missions', icon: 'rocket', slug: 'missions', children: [
-      { id: 'mis.send', label: 'Send Mission', slug: 'send', render: stub('Phase 4', 'Send a Mission', ['Lock Trilium on Binance to send a mining spacecraft (40–2000 TLM).', 'Earn a share of the reward pool + up to 5 NFTs per mission.'], ['Launch']) },
+      { id: 'mis.send', label: 'Browse Missions', slug: 'browse', render: () => <Missions /> },
       { id: 'mis.mine', label: 'My Missions', slug: 'my-missions', render: stub('Phase 4', 'My Missions', ['Active and completed missions, lockups and rewards.']) },
       { id: 'mis.adv', label: 'Adventures', slug: 'adventures', render: stub('Phase 4', 'Adventures', ['Send your NFTs on 24h adventures for Reward Points and XP.'], ['Send on adventure']) },
     ],
