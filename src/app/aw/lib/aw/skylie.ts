@@ -44,10 +44,16 @@ const SKYLIE_STYLE: CharStyle = {
   bubbleTextColor: '#ffffff', bubbleFontFamily: 'Arial, sans-serif', bubbleFontSize: 14,
 }
 
+const ASH_STYLE: CharStyle = {
+  avatarUrl: 'https://matteqdhinpiwfnvxaef.supabase.co/storage/v1/object/public/character-images/f8447706-e49d-46be-95f1-29e5d6695a36/character_snapshot_ash_falcone.webp',
+  imagePanX: 0.5, imagePanY: 0.5, imageZoom: 1,
+  bubbleBackgroundColor: '#553C9A', bubbleBorderColor: '#6B46C1', bubbleInnerLineColor: '#9F7AEA',
+  bubbleTextColor: '#ffffff', bubbleFontFamily: 'Arial, sans-serif', bubbleFontSize: 14,
+}
+
 export const CHARACTERS: CharDef[] = [
   { id: 'skylie', name: 'Skylie', apiKey: 'kinet_sHDSunxqq48ym0tVFiS61DotKZSfaitYWHL9xkAefWOJWG12', sideImg: `${STORAGE_BASE}/app_side_image/skylie_side_img_1800px.webp`, ready: true, style: SKYLIE_STYLE },
-  // Ash — full-body art known; awaiting his public-chat key on this deployment.
-  { id: 'ash', name: 'Ash', apiKey: '', sideImg: `${STORAGE_BASE}/app_side_image/ash_side_img_1800px.webp`, ready: false, style: {} },
+  { id: 'ash', name: 'Ash', apiKey: 'kinet_7hum8THxYcMgy0PcahdF9QQglNgsYLWIeoSSrovFoOt6W22R', sideImg: `${STORAGE_BASE}/app_side_image/ash_side_img_1800px.webp`, ready: true, style: ASH_STYLE },
 ]
 
 export async function askCharacter(apiKey: string, message: string): Promise<{ reply: string; name: string; style: CharStyle }> {
