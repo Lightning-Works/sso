@@ -86,7 +86,11 @@ export async function GET() {
       const meta = await fetchIpfsJson(cid)
       if (!meta) return
       m.rewardName = (meta.name as string) || null
-      m.rewardImg = ipfs(meta.image ?? meta.img)
+      // Normalise any /ipfs/<cid> image URL to dweb.link so it rides the same
+      // reliable path as the WAX NFT art (proxy + gateway fallback).
+      const raw = String(meta.image ?? meta.img ?? '')
+      const cidMatch = raw.match(/\/ipfs\/([^/?#]+)/)
+      m.rewardImg = cidMatch ? `https://dweb.link/ipfs/${cidMatch[1]}` : ipfs(meta.image ?? meta.img)
     }))
 
     return NextResponse.json({ missions: missions.map(({ nftTokenURI: _drop, ...m }) => m) })
