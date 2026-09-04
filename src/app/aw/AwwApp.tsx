@@ -19,6 +19,12 @@ import { connectWax, autoLoginWax, rememberedAccount } from '@/lib/wallets/waxSe
 const groupOf = (childId: string): NavGroup =>
   NAV.find(g => g.children.some(c => c.id === childId)) ?? NAV[0]
 
+// Starblind Metaverse game (in build by a separate agent). Embedded as a
+// fullscreen iframe. Set the real URL here (or via NEXT_PUBLIC_METAVERSE_URL)
+// once the game's host is ready — see docs/METAVERSE_EMBED_SPEC.md.
+const METAVERSE_URL = process.env.NEXT_PUBLIC_METAVERSE_URL || 'https://starblind.io'
+const METAVERSE_ORIGIN = (() => { try { return new URL(METAVERSE_URL).origin } catch { return '' } })()
+
 export default function AwwApp() {
   const { skinId, vars, setToken, applySkin, reset, importVars } = useTheme()
 
@@ -35,12 +41,38 @@ export default function AwwApp() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
+  const [metaverseOpen, setMetaverseOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [isFrame, setIsFrame] = useState(false)
   const [isSuper, setIsSuper] = useState(false)
   const session = useSessionWax()
   const autoLoaded = useRef(false)
   const beaconed = useRef(false)
+  const metaFrame = useRef<HTMLIFrameElement>(null)
+
+  // Hand the player's identity to the Metaverse game over postMessage (never in
+  // the URL — email is personal). Only ever posted to the game's exact origin.
+  const sendMetaverseIdentity = useCallback(() => {
+    if (!METAVERSE_ORIGIN) return
+    try {
+      metaFrame.current?.contentWindow?.postMessage(
+        { type: 'lw-identity', app: 'alien-worlds-wallet', wax: loaded || null, email: session.email || null },
+        METAVERSE_ORIGIN,
+      )
+    } catch { /* ignore */ }
+  }, [loaded, session.email])
+
+  // The game can ask for identity, or ask us to close the overlay.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (!METAVERSE_ORIGIN || e.origin !== METAVERSE_ORIGIN) return
+      const t = (e.data as { type?: string })?.type
+      if (t === 'lw-close') setMetaverseOpen(false)
+      else if (t === 'lw-request-identity') sendMetaverseIdentity()
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [sendMetaverseIdentity])
 
   useEffect(() => { fetchPlanets().then(setPlanets).catch(() => setPlanets([])) }, [])
   // Auto-load the logged-in SSO user's linked WAX account (their NFTs/WAX/TLM).
@@ -168,6 +200,9 @@ export default function AwwApp() {
         <div className={s.brand}>
           <img src="/aww/aw-logo.webp" alt="Alien Worlds Community" className={s.brandLogo} />
         </div>
+        <button className={s.metaverseBtn} onClick={() => setMetaverseOpen(true)} title="Enter the Starblind Metaverse">
+          ENTER THE METAVERSE
+        </button>
 
         {groups.map(g => {
           const open = expanded.has(g.id)
@@ -260,6 +295,25 @@ export default function AwwApp() {
       </div>
 
       </div>
+
+      {metaverseOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 5000, background: '#05030f', display: 'flex', flexDirection: 'column' }}>
+          <button
+            onClick={() => setMetaverseOpen(false)}
+            style={{ position: 'absolute', top: 12, right: 14, zIndex: 2, background: 'rgba(0,0,0,.55)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', borderRadius: 9, padding: '6px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            ✕ Close
+          </button>
+          <iframe
+            ref={metaFrame}
+            src={METAVERSE_URL}
+            title="Starblind Metaverse"
+            allow="fullscreen; gamepad; microphone; autoplay; xr-spatial-tracking; clipboard-write"
+            onLoad={sendMetaverseIdentity}
+            style={{ flex: 1, width: '100%', border: 'none', display: 'block' }}
+          />
+        </div>
+      )}
 
       {panelOpen && (
         <StylingPanel
