@@ -6,9 +6,11 @@
  * joined, min TLM, duration and time left. Joining (approve TLM + board) is
  * Phase B and needs the connected MetaMask wallet.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHead, Card, Empty } from '../ui/primitives'
 import { NftThumb } from '../ui/NftThumb'
+import { useThumbnails } from '@/lib/wallets/useThumbnails'
+import type { NftItem } from '@/components/NftGrid'
 import { fetchMissions, type Mission } from '../lib/aw/missions'
 import { usePrices } from '../lib/aw/usePrices'
 
@@ -21,6 +23,13 @@ export default function Missions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const prices = usePrices()
+  const { fetchThumbs, applyThumbs, thumbsLoading } = useThumbnails()
+
+  // Reward NFT art via the proxy (same-origin webp) — the source is on Pinata/IPFS
+  // which the browser can't load cross-origin reliably.
+  const items = useMemo<NftItem[]>(() => (missions || []).filter(m => m.rewardImg).map(m => ({ id: m.id, name: m.rewardName || m.name, imageUrl: m.rewardImg, chain: 'BSC', collection: 'AW Missions' })), [missions])
+  useEffect(() => { if (items.length) fetchThumbs(items, 'aww-missions') }, [items, fetchThumbs])
+  const imgByMission = useMemo(() => { const map: Record<string, string | null> = {}; for (const it of applyThumbs(items)) map[it.id] = it.thumbUrl || it.imageUrl; return map }, [items, applyThumbs])
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -47,7 +56,7 @@ export default function Missions() {
                 return (
                   <div key={m.id} style={{ background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 12, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ position: 'relative' }}>
-                      <NftThumb src={m.rewardImg} alt={m.rewardName || m.name} radius={0} />
+                      <NftThumb src={imgByMission[m.id] ?? m.rewardImg} loading={!imgByMission[m.id] && thumbsLoading} alt={m.rewardName || m.name} radius={0} />
                       <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 800, letterSpacing: '.04em', color: '#05030f', background: STATUS_COLOR[m.status], borderRadius: 6, padding: '3px 7px' }}>
                         {m.statusLabel.toUpperCase()}
                       </span>
