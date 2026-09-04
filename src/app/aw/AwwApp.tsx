@@ -312,7 +312,7 @@ export default function AwwApp() {
             ref={metaFrame}
             src={METAVERSE_URL}
             title="Starblind Metaverse"
-            allow="fullscreen; gamepad; microphone; autoplay; xr-spatial-tracking; clipboard-write"
+            allow="fullscreen; gamepad; microphone; autoplay; xr-spatial-tracking; clipboard-write; pointer-lock"
             onLoad={sendMetaverseIdentity}
             style={{ flex: 1, width: '100%', border: 'none', display: 'block' }}
           />
