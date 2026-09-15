@@ -100,7 +100,7 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
               {stacks.map(t => (
                 <button key={t.templateId} onClick={() => onOpen(t.templateId)}
                   style={{ textAlign: 'left', padding: 0, background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}>
-                  <NftThumb src={imgByTid[t.templateId] ?? null} loading={!imgByTid[t.templateId] && thumbsLoading} alt={t.name} radius={0} />
+                  <NftThumb src={imgByTid[t.templateId] ?? t.img} loading={!imgByTid[t.templateId] && !t.img && thumbsLoading} alt={t.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.name}>{t.name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
@@ -189,7 +189,7 @@ function DrillView({ templateId, onBack, usdText }: { templateId: number; onBack
                 return (
                   <div key={r.saleId} onClick={() => setSelected(r)}
                     style={{ background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-                    <NftThumb src={tImg} loading={!tImg && thumbsLoading} alt={r.name} radius={0} />
+                    <NftThumb src={tImg ?? one?.imageUrl ?? null} loading={!tImg && !one?.imageUrl && thumbsLoading} alt={r.name} radius={0} />
                     <div style={{ padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {cols <= 8 && <div style={{ fontSize: 11, color: MUTED }}>Mint #{r.mintNumber || '—'}</div>}
                       <div style={{ fontSize: 12, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.priceWax)} $WAX</div>

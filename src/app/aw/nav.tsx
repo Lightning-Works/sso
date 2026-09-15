@@ -11,6 +11,9 @@ import type { FeatureProps } from './features/ctx'
 import { PLANETS } from './lib/waxData'
 import Balances from './features/Balances'
 import Staking from './features/Staking'
+import Send from './features/Send'
+import Receive from './features/Receive'
+import Activity from './features/Activity'
 import DiviGoConnect from './features/DiviGoConnect'
 import MetaMaskConnect from './features/MetaMaskConnect'
 import Missions from './features/Missions'
@@ -41,9 +44,9 @@ export const NAV: NavGroup[] = [
     id: 'wallet', label: 'Wallet', icon: 'wallet', slug: 'wallet', children: [
       { id: 'wallet.overview', label: 'Overview', slug: 'overview', render: p => <Balances {...p} /> },
       { id: 'wallet.staking', label: 'Staking (WAX)', slug: 'staking', render: p => <Staking {...p} /> },
-      { id: 'wallet.send', label: 'Send', slug: 'send', render: stub('Phase 1', 'Send', ['Send WAX, Trilium or planet tokens to another account.'], ['Send']) },
-      { id: 'wallet.receive', label: 'Receive', slug: 'receive', render: stub('Phase 1', 'Receive', ['Show your account name and a QR code to receive tokens.']) },
-      { id: 'wallet.activity', label: 'Activity', slug: 'activity', render: stub('Phase 1', 'Activity', ['Recent transactions on your account.']) },
+      { id: 'wallet.send', label: 'Send', slug: 'send', render: p => <Send {...p} /> },
+      { id: 'wallet.receive', label: 'Receive', slug: 'receive', render: p => <Receive {...p} /> },
+      { id: 'wallet.activity', label: 'Activity', slug: 'activity', render: p => <Activity {...p} /> },
       { id: 'wallet.divigo', label: 'DiviGo (Telegram)', slug: 'divigo', render: () => <DiviGoConnect /> },
       { id: 'wallet.metamask', label: 'Binance (MetaMask)', slug: 'metamask', render: () => <MetaMaskConnect /> },
     ],

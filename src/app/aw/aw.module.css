@@ -1162,3 +1162,97 @@
 .miningPick { display: block; transform-origin: 88% 50%; }
 .miningPickAnim { animation: pickSwing .7s ease-in-out infinite; }
 @keyframes pickSwing { 0%, 100% { transform: rotate(-16deg); } 50% { transform: rotate(16deg); } }
+
+/* ================= Wallet: Send / Receive / Activity ================= */
+.formLabel {
+  font-family: var(--aww-font-mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--aww-text-muted); margin-bottom: 8px; font-weight: 600;
+}
+
+/* --- Send: token picker --- */
+.sendTokens { display: flex; flex-wrap: wrap; gap: 10px; }
+.sendToken {
+  display: flex; align-items: center; gap: 8px; padding: 9px 13px 9px 10px;
+  border-radius: var(--aww-radius); cursor: pointer;
+  border: 1px solid var(--aww-border);
+  background: color-mix(in srgb, var(--aww-surface-3) 70%, transparent);
+  color: var(--aww-text-dim); transition: border-color .18s, box-shadow .18s, color .18s, background .18s;
+}
+.sendToken:hover { color: var(--aww-text); border-color: color-mix(in srgb, var(--aww-primary) 45%, transparent); }
+.sendTokenOn {
+  color: var(--aww-text);
+  border-color: color-mix(in srgb, var(--aww-primary) 65%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aww-primary) 24%, transparent), color-mix(in srgb, var(--aww-primary) 6%, transparent));
+  box-shadow: inset 0 1px 0 var(--aww-hairline), 0 0 22px -8px var(--aww-glow);
+}
+.sendTokenIcon { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 0 6px var(--aww-glow)); }
+.sendTokenDot { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px -1px currentColor; }
+.sendTokenSym { font-family: var(--aww-font-head); font-weight: 700; font-size: 14px; letter-spacing: .02em; }
+.sendTokenBal { font-family: var(--aww-font-mono); font-size: 12px; color: var(--aww-text-muted); font-variant-numeric: tabular-nums; }
+
+/* --- Send: fields --- */
+.sendField { position: relative; display: flex; align-items: center; gap: 10px; }
+.sendField .input { flex: 1; }
+.sendCheck { position: absolute; right: 13px; font-family: var(--aww-font-mono); font-size: 12px; pointer-events: none; }
+.sendMuted { color: var(--aww-text-muted); font-family: var(--aww-font-mono); font-size: 12px; font-weight: 500; }
+.sendMax {
+  padding: 9px 14px; border-radius: var(--aww-radius); cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--aww-primary) 50%, transparent);
+  background: color-mix(in srgb, var(--aww-primary) 14%, transparent);
+  color: var(--aww-text); font-family: var(--aww-font-head); font-weight: 700; font-size: 12px; letter-spacing: .06em;
+  transition: box-shadow .18s, border-color .18s, background .18s;
+}
+.sendMax:hover { background: color-mix(in srgb, var(--aww-primary) 26%, transparent); box-shadow: 0 0 22px -8px var(--aww-glow); }
+.sendMeta { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; font-family: var(--aww-font-mono); font-size: 12px; color: var(--aww-text-dim); min-height: 16px; }
+
+/* --- Send: review --- */
+.reviewBox {
+  border: 1px solid var(--aww-border); border-radius: var(--aww-radius);
+  background: color-mix(in srgb, var(--aww-surface-3) 60%, transparent);
+  padding: 16px 18px; margin-bottom: 14px;
+}
+.reviewAmt { display: flex; align-items: center; gap: 10px; font-family: var(--aww-font-head); font-size: 22px; color: var(--aww-text); padding-bottom: 14px; margin-bottom: 12px; border-bottom: 1px solid var(--aww-border); }
+.reviewAmt b { font-weight: 700; }
+.reviewRow { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; font-size: 13px; }
+.reviewRow i { color: var(--aww-text-muted); font-style: normal; font-family: var(--aww-font-mono); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; padding-top: 2px; }
+.reviewRow b { color: var(--aww-text); font-weight: 600; font-family: var(--aww-font-mono); text-align: right; word-break: break-all; }
+.txLink { color: var(--aww-primary); font-family: var(--aww-font-mono); font-size: 13px; text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--aww-primary) 45%, transparent); }
+.txLink:hover { color: var(--aww-text); }
+
+/* --- Receive --- */
+.receiveWrap { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
+.receiveQr {
+  flex-shrink: 0; width: 244px; height: 244px; display: grid; place-items: center;
+  padding: 12px; border-radius: 16px; background: #fff;
+  box-shadow: 0 0 40px -10px var(--aww-glow), inset 0 0 0 1px var(--aww-border);
+}
+.receiveQr img { display: block; border-radius: 6px; }
+.receiveQrEmpty { color: #555; font-family: var(--aww-font-mono); font-size: 12px; }
+.receiveInfo { flex: 1; min-width: 240px; }
+.receiveName {
+  font-family: var(--aww-font-mono); font-size: 26px; font-weight: 700; color: var(--aww-text);
+  letter-spacing: .01em; word-break: break-all; margin: 4px 0 14px; text-shadow: 0 0 30px var(--aww-glow);
+}
+@media (max-width: 560px) { .receiveWrap { justify-content: center; } .receiveName { font-size: 22px; } }
+
+/* --- Activity --- */
+.actList { display: flex; flex-direction: column; }
+.actRow {
+  display: flex; align-items: center; gap: 14px; padding: 12px 6px; text-decoration: none;
+  border-bottom: 1px solid var(--aww-border); color: var(--aww-text); transition: background .16s;
+}
+.actRow:last-child { border-bottom: none; }
+.actRow:hover { background: color-mix(in srgb, var(--aww-primary) 7%, transparent); }
+.actIcon {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+  font-size: 17px; font-weight: 700; border: 1.5px solid currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.actMid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.actTop { font-size: 14px; color: var(--aww-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actTop b { color: var(--aww-text); font-weight: 700; }
+.actParty { font-family: var(--aww-font-mono); color: var(--aww-text); }
+.actMemo { font-size: 12px; color: var(--aww-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.actRight { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; }
+.actVal { font-family: var(--aww-font-mono); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.actTime { font-family: var(--aww-font-mono); font-size: 11px; color: var(--aww-text-muted); }

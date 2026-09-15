@@ -41,16 +41,34 @@ function thumbPath(chain: string, id: string): string {
   return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.${THUMB_VERSION}.webp`
 }
 
-async function downloadImage(url: string): Promise<Buffer | null> {
+// Public IPFS gateways, in preference order. The wallet hands us dweb.link URLs,
+// but those (and ipfs.io) frequently rate-limit (HTTP 429) server-side, which
+// silently failed thumbnail generation for any not-yet-cached NFT. When a URL is
+// an /ipfs/<cid> link we walk these gateways until one returns the image, so a
+// single gateway being throttled no longer breaks thumbnails.
+const IPFS_GATEWAYS = [
+  'https://gateway.pinata.cloud/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://ipfs.io/ipfs/',
+  'https://atomichub-ipfs.com/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+]
+function ipfsCid(url: string): string | null {
+  const m = url.match(/\/ipfs\/(.+)$/)
+  return m ? m[1] : null
+}
+
+async function fetchImageOnce(url: string): Promise<Buffer | null> {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT)
     const res = await fetch(url, {
       signal: controller.signal,
+      redirect: 'follow',
       headers: { 'User-Agent': 'LightningWorks-SSO/1.0' },
     })
     clearTimeout(timeout)
-    if (!res.ok) return null
+    if (!res.ok) return null // 429/5xx from a throttled gateway → try the next one
     const contentType = res.headers.get('content-type') || ''
     if (contentType.startsWith('video/')) return null
     const buffer = Buffer.from(await res.arrayBuffer())
@@ -59,6 +77,19 @@ async function downloadImage(url: string): Promise<Buffer | null> {
   } catch {
     return null
   }
+}
+
+async function downloadImage(url: string): Promise<Buffer | null> {
+  const cid = ipfsCid(url)
+  if (!cid) return fetchImageOnce(url)
+  // Try the gateway the URL already points at first, then the rest.
+  const origin = (() => { try { return new URL(url).origin + '/ipfs/' } catch { return null } })()
+  const gateways = [...new Set([...(origin ? [origin] : []), ...IPFS_GATEWAYS])]
+  for (const g of gateways) {
+    const buf = await fetchImageOnce(g + cid)
+    if (buf) return buf
+  }
+  return null
 }
 
 async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
