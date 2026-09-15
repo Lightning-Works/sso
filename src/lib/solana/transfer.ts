@@ -17,7 +17,7 @@ import {
 } from '@metaplex-foundation/mpl-bubblegum'
 import { dasApi } from '@metaplex-foundation/digital-asset-standard-api'
 import type { DasApiInterface } from '@metaplex-foundation/digital-asset-standard-api'
-import { SOLANA_RPC } from '@/lib/blockchain/rpc'
+import { getSolanaRpc } from './config'
 
 // `.use(dasApi())` adds the DAS rpc methods at runtime, but the base `Umi` type
 // doesn't reflect it, so getAssetWithProof (which requires a DAS-typed rpc) won't
@@ -56,7 +56,7 @@ export async function buildCnftTransfer(
 
   // Keyless umi: identity/fee-payer are NOOP signers (public key only), so the
   // built transaction is unsigned and carries no secret.
-  const umi = createUmi(SOLANA_RPC).use(mplBubblegum()).use(dasApi()) as DasUmi
+  const umi = createUmi(getSolanaRpc()).use(mplBubblegum()).use(dasApi()) as DasUmi
   const ownerNoop = createNoopSigner(publicKey(input.from))
   const payerNoop = createNoopSigner(publicKey(feePayer))
   umi.use(signerIdentity(payerNoop))

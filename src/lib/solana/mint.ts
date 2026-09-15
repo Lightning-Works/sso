@@ -26,14 +26,14 @@ import {
   parseLeafFromMintV1Transaction,
 } from '@metaplex-foundation/mpl-bubblegum'
 import { dasApi } from '@metaplex-foundation/digital-asset-standard-api'
-import { SOLANA_RPC } from '@/lib/blockchain/rpc'
+import { getSolanaRpc } from './config'
 
 // SOLANA_MINT_AUTHORITY_SECRET accepts a base58 string OR a JSON byte array (both
 // common export formats). Server-only; never NEXT_PUBLIC.
 let _umi: Umi | null = null
 function getUmi(): Umi {
   if (_umi) return _umi
-  const umi = createUmi(SOLANA_RPC).use(mplBubblegum()).use(dasApi())
+  const umi = createUmi(getSolanaRpc()).use(mplBubblegum()).use(dasApi())
   const raw = (process.env.SOLANA_MINT_AUTHORITY_SECRET || '').trim()
   if (!raw) throw new Error('SOLANA_MINT_AUTHORITY_SECRET is not set')
   const secret = raw.startsWith('[')
