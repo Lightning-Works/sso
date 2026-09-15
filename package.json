@@ -10,6 +10,10 @@
   },
   "dependencies": {
     "@metamask/sdk": "^0.33.1",
+    "@metaplex-foundation/digital-asset-standard-api": "2.1.1",
+    "@metaplex-foundation/mpl-bubblegum": "5.1.0",
+    "@metaplex-foundation/umi": "1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "1.5.1",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-wallets": "^0.19.37",
