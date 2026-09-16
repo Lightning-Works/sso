@@ -15,9 +15,7 @@ import { NftDetailModal } from '../ui/NftDetailModal'
 import { fetchTemplateStacks, fetchTemplateListings, type TemplateStack, type SaleNft } from '../lib/aw/market'
 import { buildBuyActions } from '../lib/aw/buyTool'
 import { currentAccount, connectWax, transact } from '@/lib/wallets/waxSession'
-import { useThumbnails } from '@/lib/wallets/useThumbnails'
 import { usePrices } from '../lib/aw/usePrices'
-import type { NftItem } from '@/components/NftGrid'
 
 const MUTED = 'var(--aww-text-muted, #9aa)'
 const STACK_PAGE = 24
@@ -25,6 +23,46 @@ const DRILL_PAGE = 24
 const COL_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 15, 20]
 const price = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 const templateFromUrl = (): number | null => { try { const v = new URLSearchParams(window.location.search).get('template'); return v ? Number(v) || null : null } catch { return null } }
+
+/**
+ * Load card art thumbnails PROGRESSIVELY: request the boomerang (forward-then-
+ * reverse, half-speed) webp in small chunks with two requests in flight, and
+ * reveal each as it arrives — so tiles pop in one-by-one under their spinners
+ * instead of the whole grid appearing at once after a long wait. Returns a map
+ * of id → thumbnail URL (same-origin webp).
+ */
+function useBoomerangThumbs(items: { id: string; imageUrl: string | null }[]): Record<string, string> {
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const key = items.map(i => i.id).join(',')
+  useEffect(() => {
+    let cancelled = false
+    const list = items.filter(i => i.imageUrl)
+    if (!list.length) return
+    const CHUNK = 3, WORKERS = 2
+    // chunk the list
+    const chunks: typeof list[] = []
+    for (let i = 0; i < list.length; i += CHUNK) chunks.push(list.slice(i, i + CHUNK))
+    let next = 0
+    const worker = async () => {
+      while (!cancelled && next < chunks.length) {
+        const chunk = chunks[next++]
+        try {
+          const res = await fetch('/api/nft-thumbs', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anim: 'boomerang', walletAddress: 'aww-market', nfts: chunk.map(n => ({ id: n.id, imageUrl: n.imageUrl, chain: 'WAX' })) }),
+          })
+          const d = await res.json()
+          if (!cancelled && d.thumbs) setThumbs(prev => ({ ...prev, ...d.thumbs }))
+        } catch { /* leave those tiles spinning; a later visit retries */ }
+      }
+    }
+    setThumbs({})
+    Promise.all(Array.from({ length: WORKERS }, worker))
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return thumbs
+}
 
 export default function Market({ schema, label }: { schema?: string; label?: string }) {
   const [drill, setDrill] = useState<number | null>(null)
@@ -77,7 +115,6 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
   const [stacks, setStacks] = useState<TemplateStack[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const { fetchThumbs, applyThumbs, thumbsLoading } = useThumbnails()
 
   useEffect(() => { setPage(1) }, [schema])
   useEffect(() => {
@@ -85,9 +122,8 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
     fetchTemplateStacks({ schema, page, limit: STACK_PAGE }).then(setStacks).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
   }, [schema, page])
 
-  const items = useMemo<NftItem[]>(() => (stacks || []).map(t => ({ id: String(t.templateId), name: t.name, imageUrl: t.img, chain: 'WAX', collection: 'Alien Worlds' })), [stacks])
-  useEffect(() => { if (items.length) fetchThumbs(items, 'aww-market') }, [items, fetchThumbs])
-  const imgByTid = useMemo(() => { const m: Record<number, string | null> = {}; for (const it of applyThumbs(items)) m[Number(it.id)] = it.thumbUrl || null; return m }, [items, applyThumbs])
+  const items = useMemo(() => (stacks || []).map(t => ({ id: String(t.templateId), imageUrl: t.img })), [stacks])
+  const thumbs = useBoomerangThumbs(items)
 
   return (
     <Card title="Browse by design — floor price & how many listed" tag="live · AtomicMarket">
@@ -100,7 +136,7 @@ function StackView({ schema, onOpen, usdText }: { schema?: string; onOpen: (t: n
               {stacks.map(t => (
                 <button key={t.templateId} onClick={() => onOpen(t.templateId)}
                   style={{ textAlign: 'left', padding: 0, background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}>
-                  <NftThumb src={imgByTid[t.templateId] ?? t.img} loading={!imgByTid[t.templateId] && !t.img && thumbsLoading} alt={t.name} radius={0} />
+                  <NftThumb src={thumbs[String(t.templateId)] ?? null} loading={!thumbs[String(t.templateId)]} alt={t.name} radius={0} />
                   <div style={{ padding: '8px 9px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--aww-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.name}>{t.name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
@@ -131,7 +167,6 @@ function DrillView({ templateId, onBack, usdText }: { templateId: number; onBack
   const [buy, setBuy] = useState<{ saleId: string; stage: 'confirm' | 'working' | 'done' | 'err'; msg?: string } | null>(null)
   const [selected, setSelected] = useState<SaleNft | null>(null)
   const [cols, setCols] = useState(6)
-  const { fetchThumbs, applyThumbs, thumbsLoading } = useThumbnails()
   const grid = useGridCols(cols)
 
   useEffect(() => { try { const v = Number(localStorage.getItem('aww-market-cols')); if (COL_OPTIONS.includes(v)) setCols(v) } catch { /* ignore */ } }, [])
@@ -143,10 +178,10 @@ function DrillView({ templateId, onBack, usdText }: { templateId: number; onBack
     fetchTemplateListings(templateId, page, DRILL_PAGE).then(setNfts).catch(e => setError(e instanceof Error ? e.message : 'failed')).finally(() => setLoading(false))
   }, [templateId, page])
 
-  // All listings share ONE design image → fetch a single thumbnail for the template.
+  // All listings share ONE design image → fetch a single boomerang thumbnail for the template.
   const one = nfts?.[0]
-  useEffect(() => { if (one?.imageUrl) fetchThumbs([{ id: String(templateId), name: one.name, imageUrl: one.imageUrl, chain: 'WAX', collection: 'Alien Worlds' }], 'aww-market') }, [templateId, one, fetchThumbs])
-  const tImg = useMemo(() => applyThumbs([{ id: String(templateId), name: one?.name || '', imageUrl: one?.imageUrl ?? null, chain: 'WAX', collection: 'Alien Worlds' }])[0]?.thumbUrl || null, [templateId, one, applyThumbs])
+  const oneItem = useMemo(() => (one?.imageUrl ? [{ id: String(templateId), imageUrl: one.imageUrl }] : []), [templateId, one])
+  const tImg = useBoomerangThumbs(oneItem)[String(templateId)] ?? null
 
   const onBuy = useCallback(async (r: SaleNft) => {
     const armed = buy?.saleId === r.saleId && buy.stage === 'confirm'
@@ -187,9 +222,9 @@ function DrillView({ templateId, onBack, usdText }: { templateId: number; onBack
                 const b = buy?.saleId === r.saleId ? buy : null
                 const btn = b?.stage === 'working' ? 'Buying…' : b?.stage === 'done' ? 'Bought ✓' : b?.stage === 'confirm' ? 'Confirm' : 'Buy'
                 return (
-                  <div key={r.saleId} onClick={() => setSelected(r)}
+                  <div key={r.saleId} onClick={() => setSelected({ ...r, thumbUrl: tImg })}
                     style={{ background: 'var(--nft-card-bg, #1a1a1c)', borderRadius: 10, overflow: 'hidden', border: '1px solid color-mix(in srgb, var(--aww-text-muted) 18%, transparent)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-                    <NftThumb src={tImg ?? one?.imageUrl ?? null} loading={!tImg && !one?.imageUrl && thumbsLoading} alt={r.name} radius={0} />
+                    <NftThumb src={tImg} loading={!tImg} alt={r.name} radius={0} />
                     <div style={{ padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {cols <= 8 && <div style={{ fontSize: 11, color: MUTED }}>Mint #{r.mintNumber || '—'}</div>}
                       <div style={{ fontSize: 12, fontWeight: 800, color: 'color-mix(in srgb, var(--aww-primary, #b06cff) 55%, #fff)' }}>{price(r.priceWax)} $WAX</div>

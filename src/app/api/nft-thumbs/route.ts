@@ -24,6 +24,17 @@ const ANIM_PIXEL_BUDGET = 45_000_000 // decoded pixels (frames × w × h) per en
 const GEN_CONCURRENCY = 2      // heavy animated encodes run at most this many at once
 const WEBP_QUALITY = 80
 const DOWNLOAD_TIMEOUT = 20000
+
+// "boomerang" mode: play the animation forward, then in reverse, at half speed —
+// a smoother, nicer loop than a hard forward cut. Baked into the webp so a plain
+// <img> (thumbnail AND modal) gets it with zero client cost. Frames are extracted
+// one page at a time (low memory), spanning the WHOLE animation (so timing stays
+// right, not sped up by truncation).
+const BOOM_SIZE = 340          // px — crisp in a grid tile, acceptable upscaled in the modal
+const BOOM_FWD_FRAMES = 90     // max frames kept for the forward pass (keeps ALL frames for typical <=90-frame cards, so motion stays smooth rather than choppy; larger sources are strided down)
+const BOOM_SLOW = 2           // 2 = half speed
+const BOOM_MAX_DECODE = 130_000_000 // frames × w × h ceiling; above this, fall back to a static frame
+
 // Bump when the thumbnail encoding changes so existing cached thumbs are
 // regenerated under a new key. a5 = adaptive frame cap + limited concurrency, so
 // batches of big animations don't collectively run the disk out of space (which
@@ -36,9 +47,10 @@ interface ThumbRequest {
   chain: string
 }
 
-function thumbPath(chain: string, id: string): string {
+function thumbPath(chain: string, id: string, mode: string): string {
   const safe = id.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 200)
-  return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.${THUMB_VERSION}.webp`
+  const suffix = mode === 'boomerang' ? 'b' : ''
+  return `${chain.toLowerCase().replace(/[^a-z0-9]/g, '')}/${safe}.${THUMB_VERSION}${suffix}.webp`
 }
 
 // Public IPFS gateways, in preference order. The wallet hands us dweb.link URLs,
@@ -79,20 +91,71 @@ async function fetchImageOnce(url: string): Promise<Buffer | null> {
   }
 }
 
+async function fetchImageOrThrow(url: string): Promise<Buffer> {
+  const b = await fetchImageOnce(url)
+  if (!b) throw new Error('no image')
+  return b
+}
+
 async function downloadImage(url: string): Promise<Buffer | null> {
   const cid = ipfsCid(url)
   if (!cid) return fetchImageOnce(url)
-  // Try the gateway the URL already points at first, then the rest.
+  // Race a few gateways at once and take the first that returns a real image —
+  // one gateway being throttled (429) no longer stalls the whole download, which
+  // is what made generation so slow that most cards timed out before finishing.
   const origin = (() => { try { return new URL(url).origin + '/ipfs/' } catch { return null } })()
-  const gateways = [...new Set([...(origin ? [origin] : []), ...IPFS_GATEWAYS])]
-  for (const g of gateways) {
-    const buf = await fetchImageOnce(g + cid)
-    if (buf) return buf
+  const gateways = [...new Set([...(origin ? [origin] : []), ...IPFS_GATEWAYS])].slice(0, 4)
+  try {
+    return await Promise.any(gateways.map(g => fetchImageOrThrow(g + cid)))
+  } catch {
+    return null
   }
-  return null
 }
 
-async function generateThumb(imageBuffer: Buffer): Promise<Buffer | null> {
+// Build a forward-then-reverse (boomerang), half-speed animated webp. Frames are
+// pulled one page at a time to keep memory low, and span the entire source so the
+// motion plays at the true (halved) speed rather than a truncated fast loop.
+async function generateBoomerang(imageBuffer: Buffer): Promise<Buffer | null> {
+  try {
+    const meta = await sharp(imageBuffer, { animated: true, limitInputPixels: false }).metadata()
+    const n = meta.pages || 1
+    const W = meta.width || 0
+    const pageH = meta.pageHeight || (meta.height && n ? Math.round(meta.height / n) : 0)
+    if (n < 2 || !W || !pageH) return null
+    if (n * W * pageH > BOOM_MAX_DECODE) return null // too big to decode safely → caller uses a static frame
+
+    // Keep frames evenly across the whole animation (K-stride), so timing is preserved.
+    const K = Math.max(1, Math.ceil(n / BOOM_FWD_FRAMES))
+    const idxs: number[] = []
+    for (let i = 0; i < n; i += K) idxs.push(i)
+
+    const frames: Buffer[] = []
+    for (const i of idxs) {
+      frames.push(await sharp(imageBuffer, { page: i, pages: 1, limitInputPixels: false })
+        .resize({ width: BOOM_SIZE, height: BOOM_SIZE, fit: 'inside', withoutEnlargement: true })
+        .png().toBuffer())
+    }
+    if (frames.length < 2) return null
+
+    // forward, then reverse (excluding the two endpoints so they don't double up)
+    const order = frames.length > 2 ? [...frames, ...frames.slice(1, -1).reverse()] : [...frames, frames[0]]
+    const src0 = (meta.delay && meta.delay.length ? meta.delay[0] : 0) || 70
+    const per = Math.min(1000, Math.max(50, Math.round(src0 * K * BOOM_SLOW)))
+    return await sharp(order, { join: { animated: true } })
+      .webp({ quality: WEBP_QUALITY, loop: 0, delay: order.map(() => per), effort: 3 })
+      .toBuffer()
+  } catch {
+    return null
+  }
+}
+
+async function generateThumb(imageBuffer: Buffer, mode = 'default'): Promise<Buffer | null> {
+  // Boomerang mode: forward-then-reverse, half-speed webp. Falls through to the
+  // normal path (or a static frame) if the source is static or too big.
+  if (mode === 'boomerang') {
+    const boom = await generateBoomerang(imageBuffer)
+    if (boom) return boom
+  }
   // Preserve animation: read every frame ({ animated: true }) and re-encode to an
   // animated webp. Some animated files can trip the animated pipeline, so fall
   // back to a static frame rather than producing no thumbnail at all.
@@ -136,6 +199,8 @@ export async function POST(request: Request) {
   }
 
   const action = (body.action as string) || 'generate'
+  // Optional rendering mode. 'boomerang' = forward-then-reverse, half-speed webp.
+  const mode = body.anim === 'boomerang' ? 'boomerang' : 'default'
 
   // ── Single NFT refresh ──
   if (action === 'refresh') {
@@ -145,13 +210,13 @@ export async function POST(request: Request) {
     }
 
     try {
-      const path = thumbPath(nft.chain, nft.id)
+      const path = thumbPath(nft.chain, nft.id, mode)
       const imageBuffer = await downloadImage(nft.imageUrl)
       if (!imageBuffer) {
         return NextResponse.json({ error: 'Failed to download image' }, { status: 502 })
       }
 
-      const thumb = await generateThumb(imageBuffer)
+      const thumb = await generateThumb(imageBuffer, mode)
       if (!thumb) {
         return NextResponse.json({ error: 'Failed to process image' }, { status: 502 })
       }
@@ -196,7 +261,7 @@ export async function POST(request: Request) {
   const toGenerate: ThumbRequest[] = []
   for (const nft of nfts) {
     if (!nft.imageUrl) continue
-    const path = thumbPath(nft.chain, nft.id)
+    const path = thumbPath(nft.chain, nft.id, mode)
     if (existingSet.has(path)) {
       const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
       thumbs[nft.id] = urlData.publicUrl
@@ -213,9 +278,9 @@ export async function POST(request: Request) {
     try {
       const imageBuffer = await downloadImage(nft.imageUrl!)
       if (!imageBuffer) return
-      const thumb = await generateThumb(imageBuffer)
+      const thumb = await generateThumb(imageBuffer, mode)
       if (!thumb) return
-      const path = thumbPath(nft.chain, nft.id)
+      const path = thumbPath(nft.chain, nft.id, mode)
       const { error } = await supabase.storage.from(BUCKET).upload(path, thumb, { contentType: 'image/webp', upsert: true })
       if (!error) {
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)

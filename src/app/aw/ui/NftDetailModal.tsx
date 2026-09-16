@@ -72,11 +72,14 @@ export function NftDetailModal({ nft, onClose }: { nft: AwNft; onClose: () => vo
         backgroundImage: 'linear-gradient(var(--aww-surface, #14141c), var(--aww-surface, #14141c))',
         border: '1px solid var(--aww-border, rgba(255,255,255,.14))', borderRadius: 14, padding: 24,
         boxShadow: '0 0 60px color-mix(in srgb, var(--aww-primary, #8b5cf6) 55%, transparent), 0 0 140px color-mix(in srgb, var(--aww-primary, #8b5cf6) 30%, transparent)',
+        // Own compositor layer so an animated NFT inside repaints only itself and
+        // doesn't re-rasterise the big blurred shadow / starfield (which flickered).
+        transform: 'translateZ(0)', willChange: 'transform',
       }}>
         <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 16, right: 18, zIndex: 2, background: 'rgba(0,0,0,.45)', border: '1px solid var(--aww-border,rgba(255,255,255,.15))', color: 'var(--aww-text)', width: 34, height: 34, borderRadius: 9, cursor: 'pointer', fontSize: 17 }}>×</button>
 
-        {/* LEFT — image, larger */}
-        <div style={{ flex: '1 1 46%', minWidth: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+        {/* LEFT — image, larger. Own layer so animated art repaints in isolation. */}
+        <div style={{ flex: '1 1 46%', minWidth: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', transform: 'translateZ(0)', contain: 'paint' }}>
           {media}
         </div>
 

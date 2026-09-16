@@ -7,9 +7,16 @@ import { NextResponse } from 'next/server'
  * feed. Reads Hyperion history (public), trying several endpoints for resilience
  * (any one can be down/rate-limited), server-side to avoid CORS.
  */
-const HYPERIONS = ['https://wax.eosusa.io', 'https://api.waxsweden.org', 'https://wax.eosphere.io', 'https://wax.cryptolions.io']
+// Full-history Hyperions first. History DEPTH varies a lot per node (some index
+// only recent actions, or none for a given account), so we skip nodes that
+// return nothing and use the first that actually has this account's transfers.
+const HYPERIONS = ['https://wax.eosphere.io', 'https://api.waxsweden.org', 'https://wax.cryptolions.io', 'https://wax.eosusa.io']
+const PER = 100          // Hyperion page size
+const MAX_PAGES = 3      // up to 300 transfers back — years for a typical account
+const MAX_ROWS = 300
 
 export const revalidate = 20
+export const maxDuration = 40
 
 type Act = {
   id: string
@@ -31,19 +38,32 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'valid account required' }, { status: 400 })
   }
 
-  const url = (h: string) =>
-    `${h}/v2/history/get_actions?account=${account}&filter=*:transfer&limit=60&sort=desc`
+  // Page back through a node's history (newest first) up to MAX_PAGES.
+  const fetchNode = async (h: string): Promise<Record<string, unknown>[]> => {
+    const all: Record<string, unknown>[] = []
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const u = `${h}/v2/history/get_actions?account=${account}&filter=*:transfer&limit=${PER}&skip=${page * PER}&sort=desc`
+      const r = await fetch(u, { signal: AbortSignal.timeout(9000), next: { revalidate: 20 } })
+      if (!r.ok) break
+      const d = await r.json()
+      const acts = Array.isArray(d?.actions) ? (d.actions as Record<string, unknown>[]) : []
+      all.push(...acts)
+      if (acts.length < PER) break // reached the end of this account's history
+    }
+    return all
+  }
 
+  // Use the FIRST node that actually returns transfers (history depth varies —
+  // some nodes return nothing for an account that others have years of).
   let raw: Record<string, unknown>[] | null = null
   for (const h of HYPERIONS) {
     try {
-      const r = await fetch(url(h), { signal: AbortSignal.timeout(9000), next: { revalidate: 20 } })
-      if (!r.ok) continue
-      const d = await r.json()
-      if (Array.isArray(d?.actions)) { raw = d.actions; break }
+      const a = await fetchNode(h)
+      if (a.length) { raw = a; break }
+      if (raw === null) raw = a // remember "reachable but empty" so we don't 502
     } catch { /* next endpoint */ }
   }
-  if (!raw) return NextResponse.json({ activity: [], error: 'history unavailable' }, { status: 502 })
+  if (raw === null) return NextResponse.json({ activity: [], error: 'history unavailable' }, { status: 502 })
 
   const out: Act[] = []
   for (const a of raw) {
@@ -69,5 +89,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ activity: out.slice(0, 40) })
+  return NextResponse.json({ activity: out.slice(0, MAX_ROWS) })
 }
