@@ -24,7 +24,7 @@ create table if not exists platform_identities (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null references auth.users(id) on delete cascade,
   platform          text not null,
-  platform_user_id  text not null,
+  platform_user_id  text,  -- null while a link is PENDING (unknown until the bot confirms); set on verify
   platform_username text,
   linked_at         timestamptz not null default now(),
   verified_at       timestamptz,
@@ -33,6 +33,9 @@ create table if not exists platform_identities (
   meta              jsonb,
   unique (platform, platform_user_id)
 );
+
+-- Make platform_user_id nullable for pending rows, safe against the earlier NOT NULL version.
+alter table platform_identities alter column platform_user_id drop not null;
 
 create index if not exists idx_platform_identities_user on platform_identities(user_id);
 create unique index if not exists idx_platform_identities_token

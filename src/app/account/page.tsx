@@ -10,6 +10,7 @@ import type { ConnectedWallet } from '@/lib/wallets/types'
 import { shortenAddress } from '@/lib/wallets/types'
 import { UserImageCircle } from '@/lib/components/UserImageCircle'
 import { LwWalletPanel } from '@/lib/components/LwWalletPanel'
+import { TelegramConnect } from '@/lib/components/TelegramConnect'
 import { logAuth, logProfile } from '@/lib/audit'
 
 export default function AccountPage() {
@@ -479,6 +480,12 @@ export default function AccountPage() {
               )}
             </div>
           ))}
+        </div>
+
+        {/* Connected Telegram */}
+        <div className="lw-section">
+          <h2 className="lw-section-title">Telegram</h2>
+          <TelegramConnect />
         </div>
 
         {/* Connected Wallets */}
