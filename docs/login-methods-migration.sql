@@ -12,7 +12,7 @@ select id, 'Tropisphere', 'tropisphere',
   '{"primary_color": "#0b4c97", "primary_hover_color": "#072a57", "bg_color": "#eef4fb", "panel_bg_color": "#ffffff",
     "text_color": "#16263a", "text_secondary_color": "#4a5d75", "text_muted_color": "#6b7d94", "text_white_color": "#072a57",
     "input_text_color": "#16263a", "divider_color": "#c9d9ec", "border_radius": "12px", "font_family": "''Jost'', sans-serif",
-    "font_size": "16px", "font_url": "https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap"}'::jsonb,
+    "font_size": "16px", "button_text_color": "#ffffff", "input_bg_color": "#f4f8fd", "font_url": "https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap"}'::jsonb,
   array['https://dev.tropisphere.com', 'https://www.tropisphere.com', 'https://tropisphere.com'], array['email', 'google']
 from companies where slug = 'tropisphere'
 on conflict (slug) do update set theme = excluded.theme, redirect_origins = excluded.redirect_origins, login_methods = excluded.login_methods;
