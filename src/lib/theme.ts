@@ -21,6 +21,7 @@ export interface LoginTheme {
   font_family?: string         // body font (e.g. 'Open Sans', 'Inter')
   font_size?: string           // base font size (e.g. '16px')
   font_url?: string            // stylesheet that loads font_family (Google Fonts only, see safeFontUrl)
+  button_text_color?: string   // text on the main button (--lw-btn-text); empty = text_white_color as before
 }
 
 export const DEFAULT_THEME: Required<LoginTheme> = {
@@ -40,6 +41,7 @@ export const DEFAULT_THEME: Required<LoginTheme> = {
   font_family: "'Open Sans', sans-serif",
   font_size: '16px',
   font_url: '',
+  button_text_color: '',
 }
 
 /** All theme keys that can be set */
@@ -142,6 +144,7 @@ export function themeToCssVars(theme: Required<LoginTheme>): string {
       --lw-radius: ${theme.border_radius};
       --lw-radius-sm: ${theme.border_radius};
       --lw-font-body: ${theme.font_family};
+      --lw-btn-text: ${theme.button_text_color || theme.text_white_color};
     }
     body {
       font-size: ${theme.font_size};
