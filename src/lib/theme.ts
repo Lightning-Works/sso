@@ -20,6 +20,7 @@ export interface LoginTheme {
   border_radius?: string       // corner radius (e.g. '8px', '5px')
   font_family?: string         // body font (e.g. 'Open Sans', 'Inter')
   font_size?: string           // base font size (e.g. '16px')
+  font_url?: string            // stylesheet that loads font_family (Google Fonts only, see safeFontUrl)
 }
 
 export const DEFAULT_THEME: Required<LoginTheme> = {
@@ -38,6 +39,7 @@ export const DEFAULT_THEME: Required<LoginTheme> = {
   border_radius: '8px',
   font_family: "'Open Sans', sans-serif",
   font_size: '16px',
+  font_url: '',
 }
 
 /** All theme keys that can be set */
@@ -82,6 +84,15 @@ export function themeFromSearchParams(params: URLSearchParams): LoginTheme {
     }
   }
   return theme
+}
+
+/**
+ * The theme's font stylesheet, only if it's a Google Fonts css URL (anything else is ignored,
+ * so a crafted ?font_url= can't load a stranger's stylesheet into the login page).
+ */
+export function safeFontUrl(theme: LoginTheme): string {
+  const url = theme.font_url || ''
+  return /^https:\/\/fonts\.googleapis\.com\/css2?\?[^"'<>\s]*$/.test(url) ? url : ''
 }
 
 /**
