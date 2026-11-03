@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { CHAT_EMBED_BASE, CHAT_EMBED_ORIGIN, isChatEmbedOrigin } from '@/lib/chat'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { logAuth } from '@/lib/audit'
@@ -324,6 +324,16 @@ function LoginContent() {
     })
     if (error) setError(error.message)
   }
+
+  // ?method=google: the app's own "Continue with Google" button sends the user here, so go straight to Google
+  // (once the app's settings are loaded, and only if that app allows Google). Runs once per page load.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current || !themeReady || searchParams.get('method') !== 'google' || !shows('google')) return
+    autoStarted.current = true
+    handleOAuth('google')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeReady, loginMethods, searchParams])
 
   return (
     <>
